@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ModParks Recipe - Standalone Assembler</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background-color: #121212;
+        color: #e0e0e0;
+        margin: 0;
+        padding: 2rem;
+      }
+      #drop-zone {
+        border: 2px dashed #444;
+        border-radius: 8px;
+        padding: 3rem;
+        text-align: center;
+        background-color: #1e1e1e;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+      }
+      #drop-zone.hover {
+        border-color: #646cff;
+        background-color: #2a2a35;
+      }
+      #results {
+        margin-top: 2rem;
+      }
+      pre {
+        background: #1e1e1e;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ModParks Recipe Assembler</h1>
+    <p>クライアントサイドで完結するレシピ解析ツールです。.jar ファイルをドロップしてください。</p>
+
+    <div id="drop-zone">
+      .jar ファイルをここにドロップ<br>
+      またはクリックしてファイルを選択
+    </div>
+    <input type="file" id="file-input" accept=".jar,.zip" style="display: none;" />
+
+    <div id="results"></div>
+
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

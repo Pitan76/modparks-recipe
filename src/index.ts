@@ -1,0 +1,145 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { serveStatic } from 'hono/cloudflare-workers'
+import { jwt } from 'hono/jwt'
+import JSZip from 'jszip'
+
+type Bindings = {
+  JWT_SECRET: string
+}
+
+const app = new Hono<{ Bindings: Bindings }>()
+
+// CORSの設定: 本体からのアクセスを許可
+app.use('*', cors())
+
+// APIヘルスチェック
+app.get('/api/health', (c) => {
+  return c.json({ status: 'ok', service: 'mp-recipe' })
+})
+
+// === 認証ミドルウェア (デカップリング設計) ===
+// 独立性を保つため、ModParks本体のDBは直接見ず、
+// 本体側で発行・署名されたJWTトークンを検証するのみとする設計です。
+// 環境変数 (JWT_SECRET) が設定されている場合のみ認証を要求します。
+app.use('/api/upload/*', async (c, next) => {
+  const secret = c.env.JWT_SECRET
+  if (!secret) {
+    // 開発環境などでSECRETが無い場合はスキップ（またはエラーにするか選択可能）
+    // 本番環境では必須とするため、設定漏れを防ぐためにエラーにするのが安全です。
+    return c.json({ error: 'Server configuration error: JWT_SECRET is missing' }, 500)
+  }
+
+  const jwtMiddleware = jwt({
+    secret,
+  })
+  return jwtMiddleware(c, next)
+})
+
+import { parseJarForRecipes } from './core/parser'
+
+// === 公開API (誰でもアクセス可能: GET) ===
+
+// 特定のModのレシピ情報一覧を取得
+app.get('/api/recipes/:modid', async (c) => {
+  const modid = c.req.param('modid')
+  // TODO: D1データベースからレシピ一覧を取得して返す
+  return c.json({
+    modid,
+    recipes: []
+  })
+})
+
+// 保存せず、受け取ったJARからレシピ画像（SVG等）を組み立てて返すだけのAPI
+app.post('/api/assemble', async (c) => {
+  const body = await c.req.parseBody()
+  const file = body['file']
+  const modid = body['modid']
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'No jar file provided' }, 400)
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const recipes = await parseJarForRecipes(arrayBuffer, modid as string)
+
+    // TODO: parser結果をSVGなどにレンダリングするロジックを呼ぶ
+    // 今回はパース結果のみ返す
+
+    return c.json({
+      message: 'Assembled recipes',
+      recipeCount: recipes.length,
+      recipes
+    })
+  } catch (e: any) {
+    console.error("Assembly error", e)
+    return c.json({ error: 'Failed to assemble recipes', details: e.message }, 500)
+  }
+})
+
+// === 管理者用API (要JWT認証: POST) ===
+
+// 1. Jarファイルのアップロードと解析（保存目的）
+app.post('/api/upload/jar', async (c) => {
+  const body = await c.req.parseBody()
+  const file = body['file']
+  const modid = body['modid']
+
+  // JWTのペイロードからユーザー情報を取得可能
+  const payload = c.get('jwtPayload')
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'No jar file provided' }, 400)
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const recipes = await parseJarForRecipes(arrayBuffer, modid as string)
+
+    // TODO: ここでレシピデータや生成した画像をD1/R2に保存する処理を入れる
+
+    return c.json({ 
+      message: 'Jar file received and authorized',
+      modid,
+      fileName: file.name,
+      size: file.size,
+      user: payload, // デバッグ用
+      recipeCount: recipes.length,
+      recipes
+    })
+  } catch (e: any) {
+    console.error("JAR parsing error", e)
+    return c.json({ error: 'Failed to parse JAR file', details: e.message }, 500)
+  }
+})
+
+// 2. 個別レシピ画像のアップロード
+app.post('/api/upload/image', async (c) => {
+  const body = await c.req.parseBody()
+  const image = body['image']
+  const modid = body['modid']
+  const recipeId = body['recipeId']
+
+  if (!image || !(image instanceof File)) {
+    return c.json({ error: 'No image provided' }, 400)
+  }
+
+  // TODO: R2 バケットに画像を保存
+  // パス例: /recipes/{modid}/{recipeId}.png
+
+  return c.json({ 
+    message: 'Image uploaded',
+    modid,
+    recipeId,
+    fileName: image.name 
+  })
+})
+
+// === 静的ファイル (CDN) の配信 ===
+// wrangler.toml で設定した public/ ディレクトリ内のファイルを配信する
+// (* にマッチしないリクエストは自動的に serveStatic へフォールバックされるが、
+// 明示的にエンドポイントを作ることも可能。ここでは /assets/* をCDN用とする)
+app.get('/*', serveStatic())
+
+export default app
