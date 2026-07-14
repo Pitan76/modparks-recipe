@@ -7,12 +7,13 @@ compatibility_date = "2024-09-09"
 bucket = "./public"
 
 # Database for Recipes
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "mp-recipe-db"
-# database_id = "your-database-id"
+[[d1_databases]]
+binding = "DB"
+database_name = "mp-recipe-db"
+database_id = "your-database-id" # 後で本番用のIDに置き換えます
+migrations_dir = "migrations"
 
 # Storage for Recipe Images
-# [[r2_buckets]]
-# binding = "BUCKET"
-# bucket_name = "mp-recipe-images"
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "mp-recipe-images"

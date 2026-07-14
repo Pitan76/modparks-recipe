@@ -6,6 +6,8 @@ import JSZip from 'jszip'
 
 type Bindings = {
   JWT_SECRET: string
+  DB: D1Database
+  BUCKET: R2Bucket
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -37,17 +39,45 @@ app.use('/api/upload/*', async (c, next) => {
 })
 
 import { parseJarForRecipes } from './core/parser'
+import { renderRecipeToPng } from './core/renderer'
 
 // === 公開API (誰でもアクセス可能: GET) ===
 
 // 特定のModのレシピ情報一覧を取得
 app.get('/api/recipes/:modid', async (c) => {
   const modid = c.req.param('modid')
-  // TODO: D1データベースからレシピ一覧を取得して返す
-  return c.json({
-    modid,
-    recipes: []
-  })
+  
+  // D1から対象のレシピ一覧を取得
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM recipes WHERE modid = ? ORDER BY created_at DESC'
+    ).bind(modid).all()
+
+    return c.json({
+      modid,
+      recipes: results
+    })
+  } catch (e: any) {
+    return c.json({ error: 'Database error', details: e.message }, 500)
+  }
+})
+
+// R2から画像を配信するエンドポイント
+app.get('/images/:modid/:filename', async (c) => {
+  const modid = c.req.param('modid')
+  const filename = c.req.param('filename')
+  const key = `images/${modid}/${filename}`
+
+  const object = await c.env.BUCKET.get(key)
+  if (!object) {
+    return c.notFound()
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+
+  return new Response(object.body, { headers })
 })
 
 // 保存せず、受け取ったJARからレシピ画像（SVG等）を組み立てて返すだけのAPI
@@ -96,17 +126,51 @@ app.post('/api/upload/jar', async (c) => {
   try {
     const arrayBuffer = await file.arrayBuffer()
     const recipes = await parseJarForRecipes(arrayBuffer, modid as string)
+    const savedRecipes: any[] = []
 
-    // TODO: ここでレシピデータや生成した画像をD1/R2に保存する処理を入れる
+    // パースしたレシピを画像化してD1/R2に保存する
+    for (const r of recipes) {
+      try {
+        // 画像生成
+        const pngBytes = await renderRecipeToPng(r.recipe)
+        
+        // R2への保存
+        // path は 'data/namespace/recipes/abc.json' など
+        const filename = r.path.split('/').pop()?.replace('.json', '.png') || 'recipe.png'
+        const imageKey = `images/${modid}/${filename}`
+        
+        await c.env.BUCKET.put(imageKey, pngBytes, {
+          httpMetadata: { contentType: 'image/png' }
+        })
+        
+        // D1への保存
+        const id = `${modid}:${r.path}`
+        const dataJson = JSON.stringify(r.recipe)
+        const now = Date.now()
+        
+        await c.env.DB.prepare(
+          `INSERT OR REPLACE INTO recipes (id, modid, path, data, image_key, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(id, modid, r.path, dataJson, imageKey, now).run()
+
+        savedRecipes.push({
+          id,
+          path: r.path,
+          imageKey
+        })
+      } catch (err) {
+        console.error(`Failed to save recipe ${r.path}`, err)
+      }
+    }
 
     return c.json({ 
-      message: 'Jar file received and authorized',
+      message: 'Jar file parsed and recipes saved',
       modid,
       fileName: file.name,
       size: file.size,
       user: payload, // デバッグ用
-      recipeCount: recipes.length,
-      recipes
+      savedCount: savedRecipes.length,
+      recipes: savedRecipes
     })
   } catch (e: any) {
     console.error("JAR parsing error", e)
