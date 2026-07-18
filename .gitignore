@@ -44,6 +44,8 @@ next-env.d.ts
 /.wrangler/
 /.open-next/
 
+/.press/
+
 data/
 render_out/
 render_out_png/
