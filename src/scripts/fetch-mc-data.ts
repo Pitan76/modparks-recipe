@@ -72,7 +72,7 @@ async function run() {
     const nodeStream = Readable.fromWeb(response.body as any);
 
     let count = 0;
-    let promises: Promise<void>[] = [];
+    let promises: Promise<any>[] = [];
 
     console.log("Starting extraction and upload...");
 

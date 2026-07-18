@@ -13,12 +13,14 @@
     "dotenv": "^17.4.2",
     "hono": "^4.6.1",
     "jszip": "^3.10.1",
+    "omggif": "^1.0.10",
     "satori": "^0.26.0",
     "ts-node": "^10.9.2",
     "unzipper": "^0.12.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",
+    "@types/omggif": "^1.0.5",
     "@types/unzipper": "^0.10.11",
     "typescript": "^5.0.4",
     "vite": "^8.1.4",
