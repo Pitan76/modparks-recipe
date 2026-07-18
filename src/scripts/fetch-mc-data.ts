@@ -1,4 +1,6 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import https from 'https';
 import * as unzipper from 'unzipper';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
@@ -28,6 +30,9 @@ const s3 = new S3Client({
     accessKeyId: ACCESS_KEY_ID,
     secretAccessKey: SECRET_ACCESS_KEY,
   },
+  requestHandler: new NodeHttpHandler({
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 })
+  })
 });
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
@@ -154,31 +159,16 @@ async function run() {
                       const svg = await renderModelToSvg(modelId, getModelJson, getTextureBase64);
                       if (svg) {
                           const itemName = key.replace('item/', '').replace('.json', '');
-                          const uploadPath = `assets/minecraft/textures/render/${itemName}.svg`;
-                          const p = s3.send(new PutObjectCommand({
-                              Bucket: BUCKET_NAME,
-                              Key: uploadPath,
-                              Body: Buffer.from(svg, 'utf-8'),
-                              ContentType: 'image/svg+xml'
-                          })).catch(err => console.error(`Failed to upload SVG ${uploadPath}`, err));
-                          
-                          promises.push(p);
+                          const localPath = path.join(process.cwd(), 'render_out', `${itemName}.svg`);
+                          fs.writeFileSync(localPath, svg, 'utf-8');
                           renderCount++;
-                          // Very slow concurrency to avoid R2 SSL handshake rate limits
-                          if (promises.length >= 3) {
-                              await Promise.all(promises);
-                              promises = [];
-                          }
                       }
                   } catch(e) {
                       console.error(`Failed to render ${modelId}`, e);
                   }
               }
           }
-          if (promises.length > 0) {
-              await Promise.all(promises);
-          }
-          console.log(`Rendered and uploaded ${renderCount} SVGs.`);
+          console.log(`Rendered and saved ${renderCount} SVGs locally.`);
           
           resolve();
         })
