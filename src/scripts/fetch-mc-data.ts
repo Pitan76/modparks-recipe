@@ -121,8 +121,8 @@ async function run() {
                 promises.push(p);
                 count++;
 
-                // Batch size of 100 concurrent uploads to avoid overloading network/memory
-                if (promises.length >= 100) {
+                // Batch size of 10 concurrent uploads to avoid overloading network/memory/SSL handshakes
+                if (promises.length >= 10) {
                   entry.pause();
                   await Promise.all(promises);
                   promises = [];
@@ -171,7 +171,7 @@ async function run() {
                           
                           promises.push(p);
                           renderCount++;
-                          if (promises.length >= 50) {
+                          if (promises.length >= 10) {
                               await Promise.all(promises);
                               promises = [];
                           }
