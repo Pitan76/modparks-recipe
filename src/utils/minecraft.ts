@@ -105,7 +105,7 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   const { namespace, path } = parseNamespacedId(id);
   
   // 1. Check for pre-rendered PNG (3D blocks and specialized items)
-  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render/${path}.png`);
+  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
   if (obj) {
       const buffer = await obj.arrayBuffer();
       const base64 = bufferToBase64(buffer);

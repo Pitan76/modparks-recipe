@@ -3,9 +3,7 @@
 ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバーです。  
 
 ## エンドポイントURL
-
-本番環境 (Custom Domain):
-**`https://recipe.modparks.pitan76.net/`**
+- https://recipe.modparks.pitan76.net/
 
 ### 画像取得API
 

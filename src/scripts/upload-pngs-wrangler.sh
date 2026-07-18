@@ -6,7 +6,7 @@ find . -name "*.png" | sed 's/^\.\///' | while read file; do
   echo "Uploading $file..."
   success=false
   for i in {1..3}; do
-    if npx wrangler r2 object put "mp-recipe-images/assets/minecraft/textures/render/$file" --file "$file" --content-type "image/png" > /dev/null 2>&1; then
+    if npx wrangler r2 object put "mp-recipe-images/assets/minecraft/textures/render3d/$file" --file "$file" --content-type "image/png" > /dev/null 2>&1; then
       success=true
       break
     else
