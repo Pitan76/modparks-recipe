@@ -14,7 +14,7 @@ let wasmInitialized = false;
 
 async function getFont() {
   if (!fontBuffer) {
-    const res = await fetch('https://github.com/vercel/satori/raw/main/playground/public/Roboto-Regular.ttf');
+    const res = await fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.13/files/roboto-latin-400-normal.woff');
     fontBuffer = await res.arrayBuffer();
   }
   return fontBuffer;
