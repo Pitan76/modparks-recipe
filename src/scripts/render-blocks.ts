@@ -243,7 +243,7 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
                 case 'up':    brightness = 1.0;  break;
                 case 'north': case 'south': brightness = 0.4; break;
                 case 'east':  case 'west':  brightness = 0.7; break;
-                case 'down':  brightness = 0.5; break;
+                case 'down':  brightness = 0.3; break;
             }
 
             const centroidZ = pts.reduce((s, p) => s + p.z, 0) / 4;
