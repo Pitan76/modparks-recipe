@@ -178,14 +178,8 @@ async function run() {
               }
           }
           
-          // Modern (1.21.2+): Render all item definitions
-          for (const [key, itemData] of itemsCache.entries()) {
-              const itemName = key.replace('.json', '');
-          // Skip old SVG rendering entirely as we now use Node-canvas for PNGs directly.
-          // SVG logic has been moved/superseded by src/scripts/render-blocks.ts
-          
-          console.log(`Rendered and saved ${renderCount} SVGs locally.`);
-          
+          // (SVG rendering logic removed as we use Node-canvas for PNGs directly)
+
           resolve();
         })
         .on('error', reject);
