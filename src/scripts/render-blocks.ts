@@ -241,8 +241,8 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
             let brightness = 1.0;
             switch (dir) {
                 case 'up':    brightness = 1.0;  break;
-                case 'north': case 'south': brightness = 0.6; break;
-                case 'east':  case 'west':  brightness = 0.8; break;
+                case 'north': case 'south': brightness = 0.4; break;
+                case 'east':  case 'west':  brightness = 0.7; break;
                 case 'down':  brightness = 0.5; break;
             }
 
