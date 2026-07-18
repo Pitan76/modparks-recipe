@@ -45,6 +45,27 @@ app.get('/recipe/:namespace/:filename', async (c) => {
   }
 });
 
+// Admin endpoint to clean up old garbage files in R2 (e.g. before re-uploading)
+app.get('/admin/clean/:namespace/:folder', async (c) => {
+  const secret = c.req.query('secret');
+  if (secret !== 'modparks-clean-123') return c.text('Unauthorized', 401);
 
+  const { namespace, folder } = c.req.param();
+  const prefix = `assets/${namespace}/textures/${folder}/`;
+  
+  let count = 0;
+  let cursor: string | undefined = undefined;
+  do {
+    const listed = await c.env.BUCKET.list({ prefix, cursor });
+    const keys = listed.objects.map(o => o.key);
+    if (keys.length > 0) {
+      await c.env.BUCKET.delete(keys);
+      count += keys.length;
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  
+  return c.text(`Deleted ${count} old objects from ${prefix}`);
+});
 
 export default app;

@@ -12,7 +12,10 @@ rm -rf render_out_png/*
 npx tsx src/scripts/render-blocks.ts
 
 echo ""
-echo "=== Step 3: Upload PNGs to R2 with robust retries ==="
+echo "=== Step 3: Clean old files & Upload PNGs to R2 ==="
+echo "Cleaning old files in R2..."
+curl -s "https://mp-recipe.ptms76.workers.dev/admin/clean/minecraft/render3d?secret=modparks-clean-123"
+echo ""
 ./src/scripts/upload-pngs-wrangler.sh
 
 echo ""
