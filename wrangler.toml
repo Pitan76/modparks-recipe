@@ -10,7 +10,7 @@ bucket = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "mp-recipe-db"
-database_id = "your-database-id" # 後で本番用のIDに置き換えます
+database_id = "0fb1922c-7c51-40f1-b4df-9353ce0cfa1f"
 migrations_dir = "migrations"
 
 # Storage for Recipe Images

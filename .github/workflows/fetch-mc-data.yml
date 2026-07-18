@@ -1,0 +1,30 @@
+name: Fetch Minecraft Data
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+  schedule:
+    - cron: '0 0 * * 0' # Runs every Sunday at midnight UTC
+
+jobs:
+  update-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Use Node.js 20 or higher
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch and Upload Minecraft Assets
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
+        run: npm run fetch-mc-data
