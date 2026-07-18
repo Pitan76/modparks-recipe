@@ -38,6 +38,18 @@ const TARGET_PATHS = [
   /^data\/minecraft\/recipe.*\.json$/ // matches recipe/ and recipes/
 ];
 
+const MODEL_PATHS = [
+  /^assets\/minecraft\/models\/item\/.*\.json$/,
+  /^assets\/minecraft\/models\/block\/.*\.json$/
+];
+
+function shouldExtract(path: string): boolean {
+  return TARGET_PATHS.some((regex) => regex.test(path));
+}
+function isModelPath(path: string): boolean {
+  return MODEL_PATHS.some((regex) => regex.test(path));
+}
+
 async function fetchLatestVersionUrl(): Promise<string> {
   console.log("Fetching version manifest...");
   const res = await fetch(MANIFEST_URL);
@@ -56,10 +68,6 @@ async function fetchLatestVersionUrl(): Promise<string> {
   return versionJson.downloads.client.url;
 }
 
-function shouldExtract(path: string): boolean {
-  return TARGET_PATHS.some((regex) => regex.test(path));
-}
-
 async function run() {
   try {
     const clientJarUrl = await fetchLatestVersionUrl();
@@ -76,43 +84,108 @@ async function run() {
 
     console.log("Starting extraction and upload...");
 
+    const modelsCache = new Map<string, any>();
+    const texturesCache = new Map<string, string>(); // base64 strings
+
     await new Promise<void>((resolve, reject) => {
       nodeStream.pipe(unzipper.Parse())
         .on('entry', async (entry: unzipper.Entry) => {
           const fileName = entry.path;
-          
-          if (entry.type === 'File' && shouldExtract(fileName)) {
-            const buffer = await entry.buffer();
-            const contentType = fileName.endsWith('.png') ? 'image/png' : 'application/json';
-            
-            const p = s3.send(new PutObjectCommand({
-              Bucket: BUCKET_NAME,
-              Key: fileName,
-              Body: buffer,
-              ContentType: contentType
-            })).catch(err => {
-              console.error(`Failed to upload ${fileName}`, err);
-            });
-            
-            promises.push(p);
-            count++;
 
-            // Batch size of 100 concurrent uploads to avoid overloading network/memory
-            if (promises.length >= 100) {
-              entry.pause();
-              await Promise.all(promises);
-              promises = [];
-              entry.resume();
+          const extractData = shouldExtract(fileName);
+          const extractModel = isModelPath(fileName);
+
+          if (entry.type === 'File' && (extractData || extractModel)) {
+            const buffer = await entry.buffer();
+            
+            if (extractModel) {
+                try {
+                    modelsCache.set(fileName.replace('assets/minecraft/models/', ''), JSON.parse(buffer.toString('utf-8')));
+                } catch(e) {}
+            }
+            if (fileName.endsWith('.png')) {
+                texturesCache.set(fileName.replace('assets/minecraft/textures/', ''), `data:image/png;base64,${buffer.toString('base64')}`);
+            }
+
+            if (extractData) {
+                const contentType = fileName.endsWith('.png') ? 'image/png' : 'application/json';
+                const p = s3.send(new PutObjectCommand({
+                Bucket: BUCKET_NAME,
+                Key: fileName,
+                Body: buffer,
+                ContentType: contentType
+                })).catch(err => {
+                console.error(`Failed to upload ${fileName}`, err);
+                });
+
+                promises.push(p);
+                count++;
+
+                // Batch size of 100 concurrent uploads to avoid overloading network/memory
+                if (promises.length >= 100) {
+                  entry.pause();
+                  await Promise.all(promises);
+                  promises = [];
+                  entry.resume();
+                }
+            } else {
+                entry.autodrain(); // Drain if we only needed the buffer for cache (which we already consumed)
             }
           } else {
             entry.autodrain();
           }
         })
         .on('finish', async () => {
-          console.log('Finished reading zip file.');
+          console.log('Finished reading zip file. Rendering blocks...');
           if (promises.length > 0) {
             await Promise.all(promises);
           }
+          promises = [];
+
+          // Render step
+          const getModelJson = async (id: string) => {
+              const name = id.replace('minecraft:', '') + '.json';
+              return modelsCache.get(name);
+          };
+          const getTextureBase64 = async (id: string) => {
+              const name = id.replace('minecraft:', '') + '.png';
+              return texturesCache.get(name) || null;
+          };
+
+          // Render all item models (which link to block models if they are blocks)
+          let renderCount = 0;
+          for (const [key, modelData] of modelsCache.entries()) {
+              if (key.startsWith('item/')) {
+                  const modelId = 'minecraft:' + key.replace('.json', '');
+                  try {
+                      const svg = await renderModelToSvg(modelId, getModelJson, getTextureBase64);
+                      if (svg) {
+                          const itemName = key.replace('item/', '').replace('.json', '');
+                          const uploadPath = `assets/minecraft/textures/render/${itemName}.svg`;
+                          const p = s3.send(new PutObjectCommand({
+                              Bucket: BUCKET_NAME,
+                              Key: uploadPath,
+                              Body: Buffer.from(svg, 'utf-8'),
+                              ContentType: 'image/svg+xml'
+                          })).catch(err => console.error(`Failed to upload SVG ${uploadPath}`, err));
+                          
+                          promises.push(p);
+                          renderCount++;
+                          if (promises.length >= 50) {
+                              await Promise.all(promises);
+                              promises = [];
+                          }
+                      }
+                  } catch(e) {
+                      console.error(`Failed to render ${modelId}`, e);
+                  }
+              }
+          }
+          if (promises.length > 0) {
+              await Promise.all(promises);
+          }
+          console.log(`Rendered and uploaded ${renderCount} SVGs.`);
+          
           resolve();
         })
         .on('error', reject);
