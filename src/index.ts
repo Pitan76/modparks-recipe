@@ -48,7 +48,9 @@ app.get('/recipe/:namespace/:filename', async (c) => {
 // Admin endpoint to clean up old garbage files in R2 (e.g. before re-uploading)
 app.get('/admin/clean/:namespace/:folder', async (c) => {
   const secret = c.req.query('secret');
-  if (secret !== 'modparks-clean-123') return c.text('Unauthorized', 401);
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
 
   const { namespace, folder } = c.req.param();
   const prefix = `assets/${namespace}/textures/${folder}/`;

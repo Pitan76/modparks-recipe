@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
+  ADMIN_SECRET: string;
 }
 
 export function parseNamespacedId(id: string): { namespace: string; path: string } {
