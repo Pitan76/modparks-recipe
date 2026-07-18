@@ -1,10 +1,12 @@
-import satori from 'satori';
+import satori, { init as initSatori } from 'satori/standalone';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import { getItemImageBase64, getRecipe, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 
 // @ts-ignore
 import resvgWasmModule from '@resvg/resvg-wasm/index_bg.wasm';
+// @ts-ignore
+import yogaWasmModule from 'satori/yoga.wasm';
 
 // Cache font and wasm
 let fontBuffer: ArrayBuffer | null = null;
@@ -22,6 +24,7 @@ async function initResvg() {
   if (!wasmInitialized) {
     try {
       await initWasm(resvgWasmModule);
+      await initSatori(yogaWasmModule);
       wasmInitialized = true;
     } catch(e) {
       console.error("WASM init error:", e);
