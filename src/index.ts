@@ -9,8 +9,14 @@ app.get('/', (c) => {
 });
 
 // Single recipe endpoint
-app.get('/recipe/:namespace/:id.png', async (c) => {
-  const { namespace, id } = c.req.param();
+app.get('/recipe/:namespace/:filename', async (c) => {
+  const { namespace, filename } = c.req.param();
+  
+  if (!filename.endsWith('.png') && !filename.endsWith('.gif')) {
+    return c.text('Not found', 404);
+  }
+
+  const id = filename.replace(/\.(png|gif)$/, '');
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   
   const recipeId = `${namespace}:${id}`;
@@ -20,34 +26,25 @@ app.get('/recipe/:namespace/:id.png', async (c) => {
     return c.text('Recipe not found', 404);
   }
 
-  const pngBuffer = await renderRecipePng(recipeData, c.env, tagOffset);
-  
-  return new Response(pngBuffer, {
-    headers: {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=86400',
-    },
-  });
-});
-
-app.get('/recipe/:namespace/:id.gif', async (c) => {
-  const { namespace, id } = c.req.param();
-  
-  const recipeId = `${namespace}:${id}`;
-  const recipeData = await getRecipe(recipeId, c.env);
-  
-  if (!recipeData) {
-    return c.text('Recipe not found', 404);
+  if (filename.endsWith('.png')) {
+    const pngBuffer = await renderRecipePng(recipeData, c.env, tagOffset);
+    return new Response(pngBuffer, {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+  } else {
+    const gifBuffer = await renderRecipeGif(recipeData, c.env, 5); // 5 frames
+    return new Response(gifBuffer, {
+      headers: {
+        'Content-Type': 'image/gif',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
   }
-
-  const gifBuffer = await renderRecipeGif(recipeData, c.env, 5); // 5 frames
-  
-  return new Response(gifBuffer, {
-    headers: {
-      'Content-Type': 'image/gif',
-      'Cache-Control': 'public, max-age=86400',
-    },
-  });
 });
+
+
 
 export default app;
