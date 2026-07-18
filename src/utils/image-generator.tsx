@@ -51,7 +51,7 @@ async function resolveIngredient(ingredient: any, env: Env, tagOffset: number): 
     const tagItems = await getTag(ingredient.tag, env);
     if (tagItems.length > 0) {
       const targetItem = tagItems[tagOffset % tagItems.length];
-      return await getItemImageBase64(targetItem, env);
+      return resolveIngredient(targetItem, env, tagOffset);
     }
   }
   return null;
