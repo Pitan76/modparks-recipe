@@ -33,8 +33,8 @@ const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.j
 const TARGET_PATHS = [
   /^assets\/minecraft\/textures\/item\/.*\.png$/,
   /^assets\/minecraft\/textures\/block\/.*\.png$/,
-  /^data\/minecraft\/tags\/items\/.*\.json$/,
-  /^data\/minecraft\/tags\/blocks\/.*\.json$/,
+  /^data\/minecraft\/tags\/items?\/.*\.json$/,
+  /^data\/minecraft\/tags\/blocks?\/.*\.json$/,
   /^data\/minecraft\/recipe.*\.json$/ // matches recipe/ and recipes/
 ];
 
