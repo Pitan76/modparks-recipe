@@ -1,17 +1,15 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")/../.."
 
-cd ../../
-
-echo "=== Step 1: Re-generate SVGs from client.jar ==="
-rm -rf render_out/*.svg
+echo "=== Step 1: Download client.jar & generate data ==="
 npx tsx src/scripts/fetch-mc-data.ts
 
 echo ""
-echo "=== Step 2: Convert 3D SVGs to PNGs via Puppeteer ==="
+echo "=== Step 2: Render 3D block PNGs (node-canvas, no browser needed) ==="
 rm -rf render_out_png/*
-node src/scripts/convert-svgs-to-pngs.js
+npx tsx src/scripts/render-blocks.ts
 
 echo ""
 echo "=== Step 3: Upload PNGs to R2 ==="
