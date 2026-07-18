@@ -155,7 +155,8 @@ export async function renderModelToSvg(
                 p11 = { x: to[0], y: from[1], z: from[2] };
             }
 
-            let pts = [p00, p10, p11, p01];
+            if (!p00 || !p10 || !p11 || !p01) continue;
+            let pts = [p00, p10, p11, p01] as Vector3[];
 
             if (elRot) {
                 const origin = { x: elRot.origin[0], y: elRot.origin[1], z: elRot.origin[2] };
@@ -199,29 +200,30 @@ export async function renderModelToSvg(
     let svg = `<svg viewBox="-24 -24 48 48" xmlns="http://www.w3.org/2000/svg">\n`;
     
     for (const f of facesToRender) {
-        const p = f.pts.map((pt: any) => ({ x: pt.x, y: -pt.y }));
+        const p = f.pts.map((pt: any) => ({ x: pt.x, y: -pt.y })) as {x: number, y: number}[];
+        if (p.length < 4) continue;
         
         const u1 = f.uv[0], v1 = f.uv[1], u2 = f.uv[2], v2 = f.uv[3];
         const w = u2 - u1;
         const h = v2 - v1;
 
-        const vx = (p[1].x - p[0].x) / w;
-        const vy = (p[1].y - p[0].y) / w;
-        const ux = (p[3].x - p[0].x) / h;
-        const uy = (p[3].y - p[0].y) / h;
+        const vx = (p[1]!.x - p[0]!.x) / w;
+        const vy = (p[1]!.y - p[0]!.y) / w;
+        const ux = (p[3]!.x - p[0]!.x) / h;
+        const uy = (p[3]!.y - p[0]!.y) / h;
         
-        const originX = p[0].x - vx * u1 - ux * v1;
-        const originY = p[0].y - vy * u1 - uy * v1;
+        const originX = p[0]!.x - vx * u1 - ux * v1;
+        const originY = p[0]!.y - vy * u1 - uy * v1;
 
         const matrix = `matrix(${vx}, ${vy}, ${ux}, ${uy}, ${originX}, ${originY})`;
         const clipId = `clip_${Math.random().toString(36).substring(7)}`;
 
         svg += `<g>
             <clipPath id="${clipId}">
-                <polygon points="${p[0].x},${p[0].y} ${p[1].x},${p[1].y} ${p[2].x},${p[2].y} ${p[3].x},${p[3].y}"/>
+                <polygon points="${p[0]!.x},${p[0]!.y} ${p[1]!.x},${p[1]!.y} ${p[2]!.x},${p[2]!.y} ${p[3]!.x},${p[3]!.y}"/>
             </clipPath>
             <image href="${f.b64}" width="16" height="16" transform="${matrix}" image-rendering="pixelated" clip-path="url(#${clipId})"/>
-            <polygon points="${p[0].x},${p[0].y} ${p[1].x},${p[1].y} ${p[2].x},${p[2].y} ${p[3].x},${p[3].y}" fill="black" opacity="${f.shade}" />
+            <polygon points="${p[0]!.x},${p[0]!.y} ${p[1]!.x},${p[1]!.y} ${p[2]!.x},${p[2]!.y} ${p[3]!.x},${p[3]!.y}" fill="black" opacity="${f.shade}" />
         </g>\n`;
     }
 

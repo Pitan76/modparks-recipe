@@ -2,6 +2,9 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import * as unzipper from 'unzipper';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
+import fs from 'fs';
+import path from 'path';
+import { renderModelToSvg } from '../utils/model-parser';
 
 // Load environment variables from .env
 dotenv.config();
@@ -76,8 +79,18 @@ async function run() {
     const response = await fetch(clientJarUrl);
     if (!response.body) throw new Error("Failed to get response body");
     
-    // Convert Node.js Web stream to Node Readable stream
-    const nodeStream = Readable.fromWeb(response.body as any);
+    const tempFilePath = path.join(process.cwd(), 'client.jar');
+    const fileStream = fs.createWriteStream(tempFilePath);
+    const nodeWebStream = Readable.fromWeb(response.body as any);
+    
+    console.log("Saving client JAR to disk...");
+    await new Promise<void>((resolve, reject) => {
+        nodeWebStream.pipe(fileStream)
+            .on('finish', () => resolve())
+            .on('error', reject);
+    });
+
+    const nodeStream = fs.createReadStream(tempFilePath);
 
     let count = 0;
     let promises: Promise<any>[] = [];
@@ -107,30 +120,10 @@ async function run() {
                 texturesCache.set(fileName.replace('assets/minecraft/textures/', ''), `data:image/png;base64,${buffer.toString('base64')}`);
             }
 
-            if (extractData) {
-                const contentType = fileName.endsWith('.png') ? 'image/png' : 'application/json';
-                const p = s3.send(new PutObjectCommand({
-                Bucket: BUCKET_NAME,
-                Key: fileName,
-                Body: buffer,
-                ContentType: contentType
-                })).catch(err => {
-                console.error(`Failed to upload ${fileName}`, err);
-                });
-
-                promises.push(p);
-                count++;
-
-                // Batch size of 10 concurrent uploads to avoid overloading network/memory/SSL handshakes
-                if (promises.length >= 10) {
-                  entry.pause();
-                  await Promise.all(promises);
-                  promises = [];
-                  entry.resume();
-                }
-            } else {
-                entry.autodrain(); // Drain if we only needed the buffer for cache (which we already consumed)
-            }
+            // Skip uploading raw files to R2 to avoid SSL handshake rate limits,
+            // we only need them in cache to render the SVGs.
+            entry.autodrain();
+            
           } else {
             entry.autodrain();
           }
@@ -171,7 +164,8 @@ async function run() {
                           
                           promises.push(p);
                           renderCount++;
-                          if (promises.length >= 10) {
+                          // Very slow concurrency to avoid R2 SSL handshake rate limits
+                          if (promises.length >= 3) {
                               await Promise.all(promises);
                               promises = [];
                           }
