@@ -227,8 +227,8 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
             const center = { x: 8, y: 8, z: 8 };
             pts = pts.map(p => {
                 let np = { x: p.x - center.x, y: p.y - center.y, z: p.z - center.z };
-                np = rotateVec(np, 'x', rot[0]);
                 np = rotateVec(np, 'y', rot[1]);
+                np = rotateVec(np, 'x', rot[0]);
                 np = rotateVec(np, 'z', rot[2]);
                 return {
                     x: np.x * scale[0] + trans[0],
