@@ -44,7 +44,9 @@ next-env.d.ts
 /.wrangler/
 /.open-next/
 
+data/
+render_out/
+
 client.jar
 server.jar
-data/
 tail.log
