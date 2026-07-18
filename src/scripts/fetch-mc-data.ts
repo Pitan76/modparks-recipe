@@ -181,22 +181,8 @@ async function run() {
           // Modern (1.21.2+): Render all item definitions
           for (const [key, itemData] of itemsCache.entries()) {
               const itemName = key.replace('.json', '');
-              let modelId = itemData.model?.model;
-              if (!modelId) {
-                  // Fallback if no model is explicitly defined, guess the item model
-                  modelId = `minecraft:item/${itemName}`;
-              }
-              try {
-                  const svg = await renderModelToSvg(modelId, getModelJson, getTextureBase64);
-                  if (svg) {
-                      const localPath = path.join(process.cwd(), 'render_out', `${itemName}.svg`);
-                      fs.writeFileSync(localPath, svg, 'utf-8');
-                      renderCount++;
-                  }
-              } catch(e) {
-                  console.error(`Failed to render item ${itemName} with model ${modelId}`, e);
-              }
-          }
+          // Skip old SVG rendering entirely as we now use Node-canvas for PNGs directly.
+          // SVG logic has been moved/superseded by src/scripts/render-blocks.ts
           
           console.log(`Rendered and saved ${renderCount} SVGs locally.`);
           
