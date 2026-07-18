@@ -3,6 +3,9 @@ import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import { getItemImageBase64, getRecipe, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 
+// @ts-ignore
+import resvgWasmModule from '@resvg/resvg-wasm/index_bg.wasm';
+
 // Cache font and wasm
 let fontBuffer: ArrayBuffer | null = null;
 let wasmInitialized = false;
@@ -17,13 +20,12 @@ async function getFont() {
 
 async function initResvg() {
   if (!wasmInitialized) {
-    // resvg-wasm needs to be initialized. In workers, we typically import the wasm module.
-    // However, @resvg/resvg-wasm handles this via initWasm(fetch(...)) or we can just use the provided version.
     try {
-      const res = await fetch('https://unpkg.com/@resvg/resvg-wasm@2.6.2/index_bg.wasm');
-      await initWasm(res);
+      await initWasm(resvgWasmModule);
       wasmInitialized = true;
-    } catch(e) {}
+    } catch(e) {
+      console.error("WASM init error:", e);
+    }
   }
 }
 
