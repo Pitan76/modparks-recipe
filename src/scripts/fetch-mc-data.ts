@@ -48,7 +48,8 @@ const TARGET_PATHS = [
 
 const MODEL_PATHS = [
   /^assets\/minecraft\/models\/item\/.*\.json$/,
-  /^assets\/minecraft\/models\/block\/.*\.json$/
+  /^assets\/minecraft\/models\/block\/.*\.json$/,
+  /^assets\/minecraft\/items\/.*\.json$/
 ];
 
 function shouldExtract(path: string): boolean {
@@ -103,6 +104,7 @@ async function run() {
     console.log("Starting extraction and upload...");
 
     const modelsCache = new Map<string, any>();
+    const itemsCache = new Map<string, any>();
     const texturesCache = new Map<string, string>(); // base64 strings
 
     await new Promise<void>((resolve, reject) => {
@@ -118,7 +120,11 @@ async function run() {
             
             if (extractModel) {
                 try {
-                    modelsCache.set(fileName.replace('assets/minecraft/models/', ''), JSON.parse(buffer.toString('utf-8')));
+                    if (fileName.startsWith('assets/minecraft/items/')) {
+                        itemsCache.set(fileName.replace('assets/minecraft/items/', ''), JSON.parse(buffer.toString('utf-8')));
+                    } else {
+                        modelsCache.set(fileName.replace('assets/minecraft/models/', ''), JSON.parse(buffer.toString('utf-8')));
+                    }
                 } catch(e) {}
             }
             if (fileName.endsWith('.png')) {
@@ -142,7 +148,9 @@ async function run() {
 
           // Render step
           const getModelJson = async (id: string) => {
-              const name = id.replace('minecraft:', '') + '.json';
+              let name = id;
+              if (name.startsWith('minecraft:')) name = name.replace('minecraft:', '');
+              if (!name.endsWith('.json')) name += '.json';
               return modelsCache.get(name);
           };
           const getTextureBase64 = async (id: string) => {
@@ -150,8 +158,9 @@ async function run() {
               return texturesCache.get(name) || null;
           };
 
-          // Render all item models (which link to block models if they are blocks)
           let renderCount = 0;
+          
+          // Legacy: Render all item models (which link to block models if they are blocks)
           for (const [key, modelData] of modelsCache.entries()) {
               if (key.startsWith('item/')) {
                   const modelId = 'minecraft:' + key.replace('.json', '');
@@ -164,10 +173,31 @@ async function run() {
                           renderCount++;
                       }
                   } catch(e) {
-                      console.error(`Failed to render ${modelId}`, e);
+                      console.error(`Failed to render legacy ${modelId}`, e);
                   }
               }
           }
+          
+          // Modern (1.21.2+): Render all item definitions
+          for (const [key, itemData] of itemsCache.entries()) {
+              const itemName = key.replace('.json', '');
+              let modelId = itemData.model?.model;
+              if (!modelId) {
+                  // Fallback if no model is explicitly defined, guess the item model
+                  modelId = `minecraft:item/${itemName}`;
+              }
+              try {
+                  const svg = await renderModelToSvg(modelId, getModelJson, getTextureBase64);
+                  if (svg) {
+                      const localPath = path.join(process.cwd(), 'render_out', `${itemName}.svg`);
+                      fs.writeFileSync(localPath, svg, 'utf-8');
+                      renderCount++;
+                  }
+              } catch(e) {
+                  console.error(`Failed to render item ${itemName} with model ${modelId}`, e);
+              }
+          }
+          
           console.log(`Rendered and saved ${renderCount} SVGs locally.`);
           
           resolve();

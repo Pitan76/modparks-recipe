@@ -107,7 +107,16 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   // Wait, R2 gets are fast but base64 encoding might be needed repeatedly
   // In a real app we might cache base64 in KV or D1 too, but R2 + memory cache is fine for now
   
-  let obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
+  // 1. Check for rendered SVG
+  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render/${path}.svg`);
+  if (obj) {
+      const buffer = await obj.arrayBuffer();
+      const base64 = bufferToBase64(buffer);
+      return `data:image/svg+xml;base64,${base64}`;
+  }
+  
+  // 2. Fallback to raw flat PNGs
+  obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
   if (!obj) obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
   
   if (!obj) {
