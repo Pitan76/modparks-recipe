@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev src/index.ts",
     "deploy": "wrangler deploy --minify src/index.ts",
-    "fetch-mc-data": "ts-node src/scripts/fetch-mc-data.ts"
+    "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
@@ -22,6 +22,7 @@
     "@cloudflare/workers-types": "^4.20240909.0",
     "@types/omggif": "^1.0.5",
     "@types/unzipper": "^0.10.11",
+    "tsx": "^4.23.1",
     "typescript": "^5.0.4",
     "vite": "^8.1.4",
     "wrangler": "^3.78.0"
