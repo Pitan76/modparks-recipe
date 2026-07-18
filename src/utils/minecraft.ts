@@ -104,27 +104,12 @@ export async function getTag(id: string, env: Env): Promise<string[]> {
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
   
-  // Wait, R2 gets are fast but base64 encoding might be needed repeatedly
-  // In a real app we might cache base64 in KV or D1 too, but R2 + memory cache is fine for now
-  
-  // 1. Check for rendered SVG
-  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render/${path}.svg`);
+  // 1. Check for pre-rendered PNG (3D blocks and specialized items)
+  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render/${path}.png`);
   if (obj) {
-      let svgText = await obj.text();
-      
-      // 2Dアイテム用（単なるPNGラップ）の場合は中のPNG(base64)を直接返すことでChromeでの表示バグを回避
-      const match2d = svgText.match(/href="(data:image\/png;base64,[^"]+)"/);
-      if (svgText.includes('viewBox="0 0 16 16"') && match2d && !svgText.includes('<g>')) {
-          return match2d[1];
-      }
-      
-      // 3Dブロックの場合、表示が「くっそ小さい」問題を解決するためviewBoxを最適化する
-      // 現在の -24 -24 48 48 (50%サイズ) から、-12 -13 24 26 (ほぼ100%サイズ) へ置換
-      if (svgText.includes('viewBox="-24 -24 48 48"')) {
-          svgText = svgText.replace('viewBox="-24 -24 48 48"', 'viewBox="-13 -13.5 26 27"');
-      }
-      
-      return `data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`;
+      const buffer = await obj.arrayBuffer();
+      const base64 = bufferToBase64(buffer);
+      return `data:image/png;base64,${base64}`;
   }
   
   // 2. Fallback to raw flat PNGs

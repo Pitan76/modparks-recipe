@@ -46,6 +46,7 @@ next-env.d.ts
 
 data/
 render_out/
+render_out_png/
 
 client.jar
 server.jar
