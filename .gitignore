@@ -46,3 +46,5 @@ next-env.d.ts
 
 client.jar
 server.jar
+data/
+tail.log

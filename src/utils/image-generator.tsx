@@ -34,6 +34,13 @@ async function initResvg() {
 
 async function resolveIngredient(ingredient: any, env: Env, tagOffset: number): Promise<string | null> {
   if (!ingredient) return null;
+  if (typeof ingredient === 'string') {
+    if (ingredient.startsWith('#')) {
+      return resolveIngredient({ tag: ingredient.substring(1) }, env, tagOffset);
+    } else {
+      return resolveIngredient({ item: ingredient }, env, tagOffset);
+    }
+  }
   if (Array.isArray(ingredient)) {
     return resolveIngredient(ingredient[0], env, tagOffset);
   }
@@ -85,33 +92,30 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
     resultImage = await getItemImageBase64(resId, env);
   }
   
-  // Basic crafting table UI layout
+  // Base64 of public/crafting_3x3.png
+  const bgBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==";
+
   const element = (
-    <div style={{ display: 'flex', backgroundColor: '#C6C6C6', padding: '10px', border: '2px solid #555', borderRadius: '5px', width: '250px', height: '120px', alignItems: 'center' }}>
+    <div style={{ display: 'flex', backgroundImage: `url(${bgBase64})`, backgroundSize: '236px 112px', width: '236px', height: '112px', position: 'relative' }}>
       {/* 3x3 Grid */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', width: '96px', height: '96px', backgroundColor: '#8B8B8B' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', width: '108px', height: '108px', position: 'absolute', top: '2px', left: '2px' }}>
         {grid.map((img, i) => (
-          <div key={i} style={{ width: '30px', height: '30px', backgroundColor: '#8B8B8B', border: '1px solid #373737', margin: '1px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {img && <img src={img} width={24} height={24} style={{ imageRendering: 'pixelated' }} />}
+          <div key={i} style={{ width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            {img && <img src={img} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
           </div>
         ))}
       </div>
       
-      {/* Arrow */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', fontSize: '24px', fontWeight: 'bold', color: '#373737', paddingLeft: '10px' }}>
-        →
-      </div>
-      
       {/* Output */}
-      <div style={{ width: '40px', height: '40px', backgroundColor: '#8B8B8B', border: '2px solid #373737', marginLeft: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ position: 'absolute', top: '38px', right: '12px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         {resultImage && <img src={resultImage} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
       </div>
     </div>
   );
 
   return satori(element, {
-    width: 250,
-    height: 120,
+    width: 236,
+    height: 112,
     fonts: [{ name: 'Roboto', data: font, weight: 400, style: 'normal' }],
   });
 }
