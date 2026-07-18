@@ -10,11 +10,11 @@ if (!fs.existsSync(outDir)) {
 }
 
 async function run() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
   const page = await browser.newPage();
   
-  // Set viewport to the desired image size
-  await page.setViewport({ width: 256, height: 256, deviceScaleFactor: 1 });
+  // Set viewport to 64x64 - appropriate for recipe item slots
+  await page.setViewport({ width: 64, height: 64, deviceScaleFactor: 2 }); // 2x for retina-quality
 
   const files = fs.readdirSync(inDir).filter(f => f.endsWith('.svg'));
   
@@ -26,37 +26,33 @@ async function run() {
     const svgPath = path.join(inDir, file);
     const pngPath = path.join(outDir, `${name}.png`);
     
-    // Skip if SVG is just a 2D wrapper
     const svgContent = fs.readFileSync(svgPath, 'utf-8');
-    if (svgContent.includes('<svg viewBox="0 0 16 16"')) {
-        continue; // 2D item, we'll let minecraft.ts handle it using the original item/xxx.png
+    
+    // Skip 2D items - the worker already handles these with the flat texture
+    if (svgContent.includes('viewBox="0 0 16 16"')) {
+        continue;
     }
 
     try {
-        // Fix the viewBox to make it fit nicely!
-        // We know from earlier that viewBox="-13 -13.5 26 27" is perfect
-        let modifiedSvg = svgContent.replace('viewBox="-24 -24 48 48"', 'viewBox="-13 -13.5 26 27"');
-        
-        // Load it into puppeteer
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <body style="margin:0;padding:0;background:transparent;">
-          ${modifiedSvg}
-        </body>
-        </html>
-        `;
+        // The SVG already has a properly auto-sized viewBox, no modification needed
+        const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:transparent;display:flex;align-items:center;justify-content:center;width:64px;height:64px;">
+  <div style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;">
+    ${svgContent.replace(/width="[^"]*"/, 'width="64"').replace(/height="[^"]*"/, 'height="64"')}
+  </div>
+</body>
+</html>`;
         
         await page.setContent(html, { waitUntil: 'load' });
         
-        // Take a screenshot of the svg element itself for perfect transparency
         const svgElement = await page.$('svg');
         if (svgElement) {
            await svgElement.screenshot({ path: pngPath, omitBackground: true });
-           if (i % 50 === 0) console.log(`Converted ${i}/${files.length} (${name}.png)`);
+           if (i % 100 === 0) console.log(`Converted ${i}/${files.length} (${name}.png)`);
         }
     } catch (e) {
-        console.error(`Failed to convert ${file}:`, e);
+        console.error(`Failed to convert ${file}:`, e.message);
     }
   }
   
