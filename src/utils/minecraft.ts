@@ -2,6 +2,22 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ADMIN_SECRET: string;
+  // Secret required for the write/upload API. Falls back to ADMIN_SECRET.
+  UPLOAD_SECRET?: string;
+}
+
+export function resultItemOf(data: any): string | null {
+  const r = data?.result;
+  if (!r) return null;
+  const id = typeof r === 'string' ? r : (r.id || r.item || null);
+  if (!id || typeof id !== 'string') return null;
+  return id.includes(':') ? id : `minecraft:${id}`;
+}
+
+export function isCraftingType(type: unknown): boolean {
+  if (typeof type !== 'string') return false;
+  const t = type.replace(/^minecraft:/, '');
+  return t === 'crafting_shaped' || t === 'crafting_shapeless';
 }
 
 export function parseNamespacedId(id: string): { namespace: string; path: string } {
