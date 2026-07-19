@@ -119,7 +119,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
             e(MenuItem, { value: 'png' }, 'PNG'),
             e(MenuItem, { value: 'gif' }, 'GIF'),
             e(MenuItem, { value: 'jpg' }, 'JPG')),
-          e(Button, { type: 'submit', variant: 'contained', size: 'large' }, '表示'))),
+          e(Button, { type: 'submit', variant: 'contained', size: 'large', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, '表示'))),
 
       // Preview card: all recipes producing the selected item
       sel && e(Card, { variant: 'outlined', sx: { mb: 3 } },
