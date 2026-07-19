@@ -98,8 +98,8 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
 
   const element = (
     <div style={{ display: 'flex', backgroundImage: `url(${bgBase64})`, backgroundSize: '236px 112px', width: '236px', height: '112px', position: 'relative' }}>
-      {/* 3x3 Grid (cell centers measured from crafting_3x3.png: 19,55,91 in this 236x112 space) */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', width: '108px', height: '108px', position: 'absolute', top: '1px', left: '1px' }}>
+      {/* 3x3 Grid */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', width: '108px', height: '108px', position: 'absolute', top: '2px', left: '2px' }}>
         {grid.map((img, i) => (
           <div key={i} style={{ width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {img && <img src={img} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
@@ -107,8 +107,8 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
         ))}
       </div>
       
-      {/* Output (slot center measured from crafting_3x3.png: 207,55 in this 236x112 space) */}
-      <div style={{ position: 'absolute', top: '37px', left: '189px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      {/* Output. Slot center measured at 207,55; +1px to match the grid's render bias -> center 208,56 */}
+      <div style={{ position: 'absolute', top: '38px', left: '190px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         {resultImage && <img src={resultImage} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
       </div>
     </div>
