@@ -87,10 +87,11 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
     while (palSize < palette.length) palSize <<= 1;
     while (palette.length < palSize) palette.push(0x000000);
 
-    gifWriter.addFrame(0, 0, width, height, indexedPixels, {
+    // omggif's types declare number[], but it accepts any indexable byte buffer.
+    gifWriter.addFrame(0, 0, width, height, indexedPixels as unknown as number[], {
       palette: palette,
       delay: Math.round((frame.delayMs || globalDelayMs) / 10), // omggif delay is in hundredths of a second
-      transparent: transparentIndex >= 0 ? transparentIndex : null,
+      transparent: transparentIndex >= 0 ? transparentIndex : undefined,
     });
   }
 

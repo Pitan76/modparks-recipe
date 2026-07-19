@@ -11,5 +11,8 @@
     ],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
-  }
+  },
+  "include": ["src"],
+  "comment": "src/client and src/core are the browser-only standalone tool (DOM libs); Vite type-checks them separately.",
+  "exclude": ["node_modules", "dist", "src/client", "src/core"]
 }

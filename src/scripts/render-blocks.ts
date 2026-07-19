@@ -3,9 +3,8 @@
 //
 // Reads models + textures from client.jar, renders isometric 3D block PNGs.
 
-import { createCanvas, loadImage, type Canvas, type CanvasRenderingContext2D, type Image } from 'canvas';
+import { createCanvas, loadImage, type Image } from 'canvas';
 import { execSync } from 'child_process';
-import fs from 'fs';
 import path from 'path';
 import { uploadToR2, runPool, BUCKET_NAME } from './r2';
 

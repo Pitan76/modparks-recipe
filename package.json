@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "wrangler dev src/index.ts",
     "deploy": "wrangler deploy --minify src/index.ts",
-    "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
+    "render-blocks": "tsx src/scripts/render-blocks.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
