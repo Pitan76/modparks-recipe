@@ -22,6 +22,15 @@ function decodeBase64(b64: string): Uint8Array {
   return bytes;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000; // avoid arg-count limits on fromCharCode
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 function contentTypeForKey(key: string): string {
   if (key.endsWith('.png')) return 'image/png';
   if (key.endsWith('.json')) return 'application/json';
@@ -174,6 +183,60 @@ app.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   }
 
   return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
+});
+
+// Batch image endpoint: fetch many recipe images in one request so the web UI
+// doesn't fire one HTTP request per recipe. Body JSON:
+//   { "ids": ["stone_pickaxe", "furnace", ...],
+//     "ext": "png" | "jpg" | "gif",   // optional, default "png"
+//     "scale": 2, "tagOffset": 0 }    // optional
+// Response: { images: { "<id>": "data:image/png;base64,..." | null }, missing: [...] }
+// ids may be bare (use the URL :namespace) or fully-qualified "ns:id".
+app.post('/api/:namespace/batch', async (c) => {
+  const { namespace } = c.req.param();
+  let payload: any;
+  try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
+
+  const ids: string[] = Array.isArray(payload.ids) ? payload.ids : [];
+  if (ids.length === 0) return c.json({ images: {}, missing: [] });
+  if (ids.length > 200) return c.text('Too many ids (max 200)', 400);
+
+  const ext = String(payload.ext || 'png').toLowerCase();
+  const scale = normalizeScale(payload.scale);
+  const tagOffset = parseInt(String(payload.tagOffset ?? 0), 10) || 0;
+
+  let mime: string;
+  let render: (recipe: any) => Promise<Uint8Array>;
+  if (ext === 'gif') {
+    mime = 'image/gif';
+    render = (r) => renderRecipeGif(r, c.env, 5, scale);
+  } else if (ext === 'jpg' || ext === 'jpeg') {
+    mime = 'image/jpeg';
+    render = (r) => renderRecipeJpg(r, c.env, tagOffset, scale);
+  } else {
+    mime = 'image/png';
+    render = (r) => renderRecipePng(r, c.env, tagOffset, scale);
+  }
+
+  const images: Record<string, string | null> = {};
+  const missing: string[] = [];
+  await Promise.all(
+    ids.map(async (rawId) => {
+      const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
+      const recipe = await getRecipe(fullId, c.env);
+      if (!recipe) {
+        images[rawId] = null;
+        missing.push(rawId);
+        return;
+      }
+      const bytes = await render(recipe);
+      images[rawId] = `data:${mime};base64,${bytesToBase64(bytes)}`;
+    })
+  );
+
+  return c.json({ images, missing }, 200, {
+    'Cache-Control': 'public, max-age=86400',
+  });
 });
 
 // Single recipe image endpoint: /api/:namespace/:id.(png|gif|jpg)
