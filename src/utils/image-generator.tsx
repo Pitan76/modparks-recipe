@@ -89,8 +89,10 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
   
   let resultImage: string | null = null;
   if (recipeData.result) {
-    const resId = typeof recipeData.result === 'string' ? recipeData.result : recipeData.result.id;
-    resultImage = await getItemImageBase64(resId, env);
+    const resId = typeof recipeData.result === 'string'
+      ? recipeData.result
+      : (recipeData.result.id || recipeData.result.item);
+    if (resId) resultImage = await getItemImageBase64(resId, env);
   }
   
   // Base64 of public/crafting_3x3.png
