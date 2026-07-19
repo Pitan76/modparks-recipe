@@ -22,10 +22,8 @@ if [ -z "$ADMIN_SECRET" ]; then
   exit 1
 fi
 
-echo "=== Step 3: Clean old files & Upload PNGs to R2 ==="
-echo "Cleaning old files in R2..."
-curl -s "https://mp-recipe.ptms76.workers.dev/admin/clean/minecraft/render3d?secret=$ADMIN_SECRET"
-echo ""
+echo "=== Step 3: Upload PNGs to R2 ==="
+echo "Uploading new files to R2 (overwriting existing ones)..."
 ./src/scripts/upload-pngs-wrangler.sh
 
 echo ""
