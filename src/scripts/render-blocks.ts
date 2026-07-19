@@ -277,32 +277,37 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
     const cx = SIZE / 2 - (minX + maxX) / 2 * fitScale;
     const cy = SIZE / 2 - (minY + maxY) / 2 * fitScale;
 
-    // Create canvas
+    // Create main canvas
     const canvas = createCanvas(SIZE, SIZE);
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.antialias = 'none';
+
+    // Create a temporary canvas for compositing faces correctly (to preserve transparency)
+    const tCanvas = createCanvas(SIZE, SIZE);
+    const tCtx = tCanvas.getContext('2d');
+    tCtx.imageSmoothingEnabled = false;
+    tCtx.antialias = 'none';
 
     for (const face of faces) {
         const p = face.pts2d.map(v => ({ x: v.x * fitScale + cx, y: v.y * fitScale + cy }));
         const [u1, v1, u2, v2] = face.uv;
         const sw = u2 - u1;
         const sh = v2 - v1;
-        if (sw <= 0 || sh <= 0) continue;
 
-        ctx.save();
+        if (sw === 0 || sh === 0) continue;
 
-        // Clip to face polygon
-        ctx.beginPath();
-        ctx.moveTo(p[0].x, p[0].y);
-        ctx.lineTo(p[1].x, p[1].y);
-        ctx.lineTo(p[2].x, p[2].y);
-        ctx.lineTo(p[3].x, p[3].y);
-        ctx.closePath();
-        ctx.clip();
+        tCtx.clearRect(0, 0, SIZE, SIZE);
+        tCtx.save();
 
-        // Affine transform: map UV space → screen
-        // p[0] ↔ (u1,v1),  p[1] ↔ (u2,v1),  p[3] ↔ (u1,v2)
+        tCtx.beginPath();
+        tCtx.moveTo(p[0].x, p[0].y);
+        tCtx.lineTo(p[1].x, p[1].y);
+        tCtx.lineTo(p[2].x, p[2].y);
+        tCtx.lineTo(p[3].x, p[3].y);
+        tCtx.closePath();
+        tCtx.clip();
+
         const ax = (p[1].x - p[0].x) / sw;
         const ay = (p[1].y - p[0].y) / sw;
         const bx = (p[3].x - p[0].x) / sh;
@@ -310,17 +315,21 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
         const ex = p[0].x - ax * u1 - bx * v1;
         const ey = p[0].y - ay * u1 - by * v1;
 
-        ctx.setTransform(ax, ay, bx, by, ex, ey);
-        ctx.drawImage(face.img, 0, 0);
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        tCtx.setTransform(ax, ay, bx, by, ex, ey);
+        tCtx.drawImage(face.img, 0, 0);
+        tCtx.setTransform(1, 0, 0, 1, 0, 0);
 
-        // Apply Minecraft face shading
+        // Apply Minecraft face shading ONLY to the opaque pixels of this face
         if (face.brightness < 1.0) {
-            ctx.fillStyle = `rgba(0,0,0,${1.0 - face.brightness})`;
-            ctx.fill(); // fills the clipped polygon
+            tCtx.globalCompositeOperation = 'source-atop';
+            tCtx.fillStyle = `rgba(0,0,0,${1.0 - face.brightness})`;
+            tCtx.fillRect(0, 0, SIZE, SIZE);
         }
 
-        ctx.restore();
+        tCtx.restore();
+
+        // Draw the composited face onto the main canvas
+        ctx.drawImage(tCanvas, 0, 0);
     }
 
     return canvas.toBuffer('image/png');
