@@ -281,6 +281,7 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
     const canvas = createCanvas(SIZE, SIZE);
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
+    ctx.antialias = 'none';
 
     for (const face of faces) {
         const p = face.pts2d.map(v => ({ x: v.x * fitScale + cx, y: v.y * fitScale + cy }));
