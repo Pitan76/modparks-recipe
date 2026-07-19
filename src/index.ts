@@ -10,6 +10,21 @@ app.get('/', (c) => {
   return c.html(RECIPE_PAGE_HTML);
 });
 
+// Browsable recipe index (generated once by the CI pipeline; just streamed
+// back from R2 with a long cache, so it adds no per-request scanning load).
+app.get('/api/list.json', async (c) => {
+  const obj = await c.env.BUCKET.get('index/recipes.json');
+  if (!obj) {
+    return c.json({ count: 0, ids: [] });
+  }
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
+});
+
 // Single recipe image endpoint: /api/:namespace/:id.(png|gif|jpg)
 app.get('/api/:namespace/:filename', async (c) => {
   const { namespace, filename } = c.req.param();

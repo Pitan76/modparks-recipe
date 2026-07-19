@@ -114,24 +114,33 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
     </div>
   );
 
-  return satori(element, {
+  const svg = await satori(element, {
     width: 236,
     height: 112,
     fonts: [{ name: 'Roboto', data: font, weight: 400, style: 'normal' }],
   });
+
+  // Force nearest-neighbor sampling on every embedded texture so pixel-art
+  // stays crisp. resvg maps image-rendering="optimizeSpeed" to nearest-neighbor;
+  // relying on satori's CSS output alone still produced antialiased edges.
+  return svg.replace(/<image /g, '<image image-rendering="optimizeSpeed" ');
 }
+
+// Render at an integer zoom to avoid fractional resampling of the whole canvas
+// (which reintroduces antialiasing). 236x112 -> 944x448 at 4x.
+const RENDER_ZOOM = 4;
 
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
   await initResvg();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 250 } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
   return resvg.render().asPng();
 }
 
 export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
   await initResvg();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 250 } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;
 
@@ -156,7 +165,7 @@ export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: numb
   
   for (let i = 0; i < maxFrames; i++) {
     const svg = await generateRecipeSvg(recipeData, env, i);
-    const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 250 } });
+    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
     const rendered = resvg.render();
     frames.push({
       width: rendered.width,
