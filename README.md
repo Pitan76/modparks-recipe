@@ -68,10 +68,52 @@ CI パイプラインが生成した索引（R2上の静的ファイル）をそ
   {
     "count": 1234,
     "generatedAt": "2026-01-01T00:00:00.000Z",
-    "ids": ["minecraft:wooden_sword", "minecraft:iron_ingot"]
+    "recipes": [
+      { "id": "minecraft:iron_ingot_from_nuggets", "result": "minecraft:iron_ingot", "type": "crafting_shapeless" }
+    ]
   }
   ```
-  索引が未生成の場合は `{ "count": 0, "ids": [] }` を返します。
+  crafting レシピのみを含みます（`result` で結果アイテム別にグルーピング可能）。索引が未生成の場合は `{ "count": 0, "ids": [] }` を返します。
+
+### 書き込みAPI（Mod向け）
+
+Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPIです。バニラのjarパイプラインに依存せず、**本体側のCIから叩く**ことも想定しています。
+
+- **認証**: `Authorization: Bearer <secret>` ヘッダ、または `?secret=<secret>`。環境変数 `UPLOAD_SECRET`（未設定時は `ADMIN_SECRET`）と一致しない場合は `401`。
+- **注意**: Worker上ではNode-canvasが使えないため**3Dブロックのオンザフライ生成は不可**。Mod側は item/block のフラットテクスチャを渡せば2Dアイコンでレシピ描画されます。3Dアイコンが必要な場合は事前レンダリング済みPNGを `render3d/<id>.png` として上げてください。
+
+- **`PUT /api/:namespace/recipe/:id`**
+  レシピJSON（ボディ）を `data/:namespace/recipe/:id.json` に保存し、D1キャッシュ破棄・索引更新まで行います。
+  ```bash
+  curl -X PUT "https://recipe.modparks.pitan76.net/api/mymod/recipe/gadget" \
+    -H "Authorization: Bearer $UPLOAD_SECRET" \
+    -H "Content-Type: application/json" \
+    --data @gadget_recipe.json
+  ```
+
+- **`PUT /api/:namespace/texture/:path`**
+  `assets/:namespace/textures/:path` にバイナリ保存します（例: `item/gadget.png`、`block/foo.png`、`render3d/foo.png`）。
+  ```bash
+  curl -X PUT "https://recipe.modparks.pitan76.net/api/mymod/texture/item/gadget.png" \
+    -H "Authorization: Bearer $UPLOAD_SECRET" \
+    --data-binary @gadget.png
+  ```
+
+- **`PUT /api/:namespace/tag/:path`**
+  タグJSONを `data/:namespace/tags/:path.json` に保存します（例: `item/planks`）。
+
+- **`POST /api/:namespace/recipe/:id/bundle`**
+  レシピ1つと、それが参照するテクスチャを**1リクエストで一括投入**します。テクスチャは base64。
+  ```json
+  {
+    "recipe": { "type": "minecraft:crafting_shaped", "pattern": ["#"], "key": { "#": { "item": "mymod:gadget" } }, "result": { "id": "mymod:widget" } },
+    "textures": {
+      "item/gadget.png": "<base64>",
+      "item/widget.png": "<base64>"
+    }
+  }
+  ```
+  レスポンス: `{ "ok": true, "id": "mymod:gadget", "recipeStored": true, "textureCount": 2 }`
 
 ### 管理者API
 
@@ -92,18 +134,19 @@ CI パイプラインが生成した索引（R2上の静的ファイル）をそ
 1. **Cloudflare R2**:
    - `minecraft.jar` などから抽出したアセット（テクスチャPNG）やJSONデータ（レシピ・タグ）のマスター保存領域。
    - GitHub Actions（[.github/workflows/fetch-mc-data.yml](.github/workflows/fetch-mc-data.yml)）が週次で以下を実行します:
-     1. `npm run fetch-mc-data` — 最新版クライアントjarをDLし、レシピ/タグJSONとitem/blockテクスチャをR2へアップロード（in-jarパスを保持）。
-     2. `render-blocks.ts` — jarから3DブロックPNGを等角投影でレンダリング。
-     3. `upload-pngs-wrangler.sh` — 3DPNGを `assets/<ns>/textures/render3d/` へアップロード。
-   - 必要なSecrets: `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`（S3互換アップロード用）、`CLOUDFLARE_API_TOKEN`（wrangler経由のPNGアップロード用）。
+     1. `npm run fetch-mc-data` — 最新版クライアントjarをDLし、レシピ/タグJSONとitem/blockテクスチャをR2へアップロード（in-jarパスを保持）。同時に crafting レシピの索引 `index/recipes.json` も生成。
+     2. `render-blocks.ts` — jarから3DブロックPNGを等角投影でレンダリングし、`assets/<ns>/textures/render3d/` へ直接アップロード（S3クライアントで並列）。
+   - CIに必要なSecrets: `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`（R2のS3互換キー）。
+   - **Modのアセット/レシピ**はこのバニラパイプラインには含まれません。書き込みAPI（上記）で投入します。
    - Workerのデプロイ（`npm run deploy`）はコード変更時に手動で行います（データ更新では不要）。
 
 2. **Cloudflare D1**:
    - R2上のJSONファイルは読み込みコストがかかるため、一度アクセスされたレシピやタグの情報はD1データベースに Lazy Cache（遅延保存） されます。
 
 3. **Cloudflare Workers (Hono)**:
-   - Satori と `@resvg/resvg-wasm` を用いて、MinecraftのクラフトグリッドUI（3x3、矢印、出力枠）を動的にSVG化し、PNGにエンコードして返却します。
-   - `omggif` を用いて、複数のPNGフレームからアニメーションGIFをオンザフライで生成します。
+   - Satori と `@resvg/resvg-wasm` を用いて、MinecraftのクラフトグリッドUI（3x3、矢印、出力枠）を動的にSVG化し、PNGにエンコードして返却します。JPGは `jpeg-js`、GIFは `omggif` で生成します。
+   - `chest` などのブロックエンティティは、`render-blocks.ts` がエンティティアトラス（`entity/chest/*.png`）からボックスモデルを合成してレンダリングします。
+   - Workerシークレット: `ADMIN_SECRET`（管理者API用）、`UPLOAD_SECRET`（書き込みAPI用。未設定時は `ADMIN_SECRET` にフォールバック）。`npx wrangler secret put <NAME>` で設定します。
 
 ## 開発・セットアップ
 
