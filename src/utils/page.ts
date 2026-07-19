@@ -28,7 +28,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
   const e = React.createElement;
   const MUI = MaterialUI;
   const {
-    ThemeProvider, createTheme, CssBaseline, Container, Box, Card, CardContent,
+    ThemeProvider, createTheme, CssBaseline, Container, Box,
     Typography, TextField, MenuItem, Button, Stack, Link, CircularProgress,
     List, ListItemButton, ListItemText, Chip
   } = MUI;
@@ -48,9 +48,6 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: { root: { textTransform: 'none', fontWeight: 600, transition: 'all 0.2s ease-in-out' } }
-      },
-      MuiCard: {
-        styleOverrides: { root: { background: '#1e293b', border: '1px solid #334155', borderRadius: 4 } }
       },
       MuiChip: {
         styleOverrides: { root: { borderRadius: 4, fontWeight: 500 } }
