@@ -170,6 +170,88 @@ export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: numb
   return new Uint8Array(jpg.data);
 }
 
+// Base recipe canvas dimensions (before scaling).
+export const TILE_BASE_WIDTH = 236;
+export const TILE_BASE_HEIGHT = 112;
+
+function bytesToBase64Local(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+export interface SpriteSheet {
+  png: Uint8Array;
+  tileWidth: number;
+  tileHeight: number;
+  columns: number;
+  rows: number;
+  count: number;
+  /** ids in tile order (row-major); a null means that slot rendered blank. */
+  order: Array<string | null>;
+  missing: string[];
+}
+
+/**
+ * Render many recipes into a single PNG sprite sheet, tiled row-major. Each tile
+ * is TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale. Callers slice tiles by index:
+ *   col = i % columns, row = floor(i / columns)
+ *   x = col * tileWidth, y = row * tileHeight
+ * Recipes are rendered once each to PNG, then composited via one outer SVG so
+ * the sheet is produced in a single resvg pass.
+ */
+export async function renderRecipeSpriteSheet(
+  entries: Array<{ id: string; recipe: any | null }>,
+  env: Env,
+  columns: number = 8,
+  scale: number = DEFAULT_SCALE
+): Promise<SpriteSheet> {
+  await initResvg();
+
+  const tileWidth = TILE_BASE_WIDTH * scale;
+  const tileHeight = TILE_BASE_HEIGHT * scale;
+  const cols = Math.max(1, Math.floor(columns));
+  const count = entries.length;
+  const rows = Math.max(1, Math.ceil(count / cols));
+
+  const order: Array<string | null> = [];
+  const missing: string[] = [];
+  const tiles: string[] = [];
+
+  await Promise.all(
+    entries.map(async (entry, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * tileWidth;
+      const y = row * tileHeight;
+      if (!entry.recipe) {
+        order[i] = null;
+        missing.push(entry.id);
+        return;
+      }
+      const png = await renderRecipePng(entry.recipe, env, 0, scale);
+      const dataUrl = `data:image/png;base64,${bytesToBase64Local(png)}`;
+      order[i] = entry.id;
+      tiles[i] = `<image x="${x}" y="${y}" width="${tileWidth}" height="${tileHeight}" image-rendering="optimizeSpeed" href="${dataUrl}" />`;
+    })
+  );
+
+  const sheetWidth = cols * tileWidth;
+  const sheetHeight = rows * tileHeight;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${sheetWidth}" height="${sheetHeight}" viewBox="0 0 ${sheetWidth} ${sheetHeight}">` +
+    tiles.filter(Boolean).join('') +
+    `</svg>`;
+
+  const resvg = new Resvg(svg, { fitTo: { mode: 'original' } });
+  const png = resvg.render().asPng();
+
+  return { png, tileWidth, tileHeight, columns: cols, rows, count, order, missing };
+}
+
 export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await initResvg();
   const frames = [];

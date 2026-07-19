@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Env, getRecipe, resultItemOf, isCraftingType } from './utils/minecraft';
-import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale } from './utils/image-generator';
+import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from './utils/image-generator';
 import { RECIPE_PAGE_HTML } from './utils/page';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -185,6 +185,47 @@ app.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
 });
 
+// Shared batch renderer for the POST/GET batch endpoints below. Renders each id
+// to a base64 data URL, running all ids in parallel. Missing ids -> null.
+async function renderBatch(
+  env: Env,
+  namespace: string,
+  ids: string[],
+  ext: string,
+  scale: number,
+  tagOffset: number
+): Promise<{ images: Record<string, string | null>; missing: string[] }> {
+  let mime: string;
+  let render: (recipe: any) => Promise<Uint8Array>;
+  if (ext === 'gif') {
+    mime = 'image/gif';
+    render = (r) => renderRecipeGif(r, env, 5, scale);
+  } else if (ext === 'jpg' || ext === 'jpeg') {
+    mime = 'image/jpeg';
+    render = (r) => renderRecipeJpg(r, env, tagOffset, scale);
+  } else {
+    mime = 'image/png';
+    render = (r) => renderRecipePng(r, env, tagOffset, scale);
+  }
+
+  const images: Record<string, string | null> = {};
+  const missing: string[] = [];
+  await Promise.all(
+    ids.map(async (rawId) => {
+      const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
+      const recipe = await getRecipe(fullId, env);
+      if (!recipe) {
+        images[rawId] = null;
+        missing.push(rawId);
+        return;
+      }
+      const bytes = await render(recipe);
+      images[rawId] = `data:${mime};base64,${bytesToBase64(bytes)}`;
+    })
+  );
+  return { images, missing };
+}
+
 // Batch image endpoint: fetch many recipe images in one request so the web UI
 // doesn't fire one HTTP request per recipe. Body JSON:
 //   { "ids": ["stone_pickaxe", "furnace", ...],
@@ -205,37 +246,51 @@ app.post('/api/:namespace/batch', async (c) => {
   const scale = normalizeScale(payload.scale);
   const tagOffset = parseInt(String(payload.tagOffset ?? 0), 10) || 0;
 
-  let mime: string;
-  let render: (recipe: any) => Promise<Uint8Array>;
-  if (ext === 'gif') {
-    mime = 'image/gif';
-    render = (r) => renderRecipeGif(r, c.env, 5, scale);
-  } else if (ext === 'jpg' || ext === 'jpeg') {
-    mime = 'image/jpeg';
-    render = (r) => renderRecipeJpg(r, c.env, tagOffset, scale);
-  } else {
-    mime = 'image/png';
-    render = (r) => renderRecipePng(r, c.env, tagOffset, scale);
-  }
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset);
+  return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
+});
 
-  const images: Record<string, string | null> = {};
-  const missing: string[] = [];
-  await Promise.all(
+// Cacheable GET variant: returns ONE PNG sprite sheet with all requested
+// recipes tiled row-major, so the browser fetches a single cacheable image.
+//   GET /api/:namespace/sprite?ids=stone_pickaxe,furnace&cols=8&scale=2
+// Tiles are TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale. Slice tile i by:
+//   col = i % cols, row = floor(i / cols); x = col*tileW, y = row*tileH.
+// Layout metadata is returned in response headers so the client can map ids
+// (given in the same order) to tile positions:
+//   X-Sprite-Columns, X-Sprite-Rows, X-Sprite-Count,
+//   X-Sprite-Tile-Width, X-Sprite-Tile-Height, X-Sprite-Missing (comma list)
+app.get('/api/:namespace/sprite', async (c) => {
+  const { namespace } = c.req.param();
+  const ids = (c.req.query('ids') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return c.text('No ids', 400);
+  if (ids.length > 200) return c.text('Too many ids (max 200)', 400);
+
+  const scale = normalizeScale(c.req.query('scale'));
+  const cols = Math.max(1, Math.min(32, parseInt(c.req.query('cols') || '8', 10) || 8));
+
+  const entries = await Promise.all(
     ids.map(async (rawId) => {
-      const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
-      const recipe = await getRecipe(fullId, c.env);
-      if (!recipe) {
-        images[rawId] = null;
-        missing.push(rawId);
-        return;
-      }
-      const bytes = await render(recipe);
-      images[rawId] = `data:${mime};base64,${bytesToBase64(bytes)}`;
+      const fullId = rawId.includes(':') ? rawId : `${namespace}:${rawId}`;
+      return { id: rawId, recipe: await getRecipe(fullId, c.env) };
     })
   );
 
-  return c.json({ images, missing }, 200, {
-    'Cache-Control': 'public, max-age=86400',
+  const sheet = await renderRecipeSpriteSheet(entries, c.env, cols, scale);
+
+  return new Response(sheet.png, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+      'X-Sprite-Columns': String(sheet.columns),
+      'X-Sprite-Rows': String(sheet.rows),
+      'X-Sprite-Count': String(sheet.count),
+      'X-Sprite-Tile-Width': String(sheet.tileWidth),
+      'X-Sprite-Tile-Height': String(sheet.tileHeight),
+      'X-Sprite-Missing': sheet.missing.join(','),
+    },
   });
 });
 
