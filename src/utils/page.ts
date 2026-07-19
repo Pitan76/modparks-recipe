@@ -58,7 +58,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
           imageRendering: 'pixelated', maxWidth: '100%', borderRadius: 6, background: '#1e1e1e'
         }
       }),
-      st === 'ok' && e(Box, { sx: { mt: 0.5, fontSize: 12, wordBreak: 'break-all' } },
+      st === 'ok' && e(Box, { sx: { mt: 0.5, fontSize: 12, overflowWrap: 'anywhere' } },
         e(Link, { href: path }, p.ns + ':' + p.id)));
   }
 
@@ -125,7 +125,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
       sel && e(Card, { variant: 'outlined', sx: { mb: 3 } },
         e(CardContent, null,
           e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' } },
-            e(Typography, { variant: 'h6', sx: { wordBreak: 'break-all' } }, sel.label),
+            e(Typography, { variant: 'h6', sx: { overflowWrap: 'anywhere' } }, sel.label),
             e(Chip, { size: 'small', label: sel.recipeIds.length + ' レシピ' })),
           e(Box, { sx: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } },
             sel.recipeIds.map(function (rid) {
