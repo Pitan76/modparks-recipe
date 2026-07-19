@@ -74,7 +74,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     return e(Container, { maxWidth: 'md', sx: { py: 6 } },
       e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, 'ModParks Recipe'),
       e(Typography, { color: 'text.secondary', sx: { mb: 3 } },
-        'アイテムを一覧から選ぶか、ID（例: minecraft:wooden_sword）を入力してレシピを表示します。'),
+        'ID（例: minecraft:wooden_sword）を入力してレシピを表示します。'),
 
       e('form', { onSubmit: openTyped },
         e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, sx: { mb: 2 } },

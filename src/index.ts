@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Env, getRecipe } from './utils/minecraft';
-import { renderRecipePng, renderRecipeGif, renderRecipeJpg } from './utils/image-generator';
+import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale } from './utils/image-generator';
 import { RECIPE_PAGE_HTML } from './utils/page';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -35,6 +35,7 @@ app.get('/api/:namespace/:filename', async (c) => {
   }
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
+  const scale = normalizeScale(c.req.query('scale'));
 
   const recipeData = await getRecipe(`${namespace}:${id}`, c.env);
   if (!recipeData) {
@@ -44,13 +45,13 @@ app.get('/api/:namespace/:filename', async (c) => {
   let body: Uint8Array;
   let contentType: string;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, 5); // 5 frames
+    body = await renderRecipeGif(recipeData, c.env, 5, scale); // 5 frames
     contentType = 'image/gif';
   } else if (ext === 'jpg' || ext === 'jpeg') {
-    body = await renderRecipeJpg(recipeData, c.env, tagOffset);
+    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale);
     contentType = 'image/jpeg';
   } else {
-    body = await renderRecipePng(recipeData, c.env, tagOffset);
+    body = await renderRecipePng(recipeData, c.env, tagOffset, scale);
     contentType = 'image/png';
   }
 

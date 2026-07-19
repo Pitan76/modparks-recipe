@@ -128,20 +128,28 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
 
 // Render at an integer zoom to avoid fractional resampling of the whole canvas
 // (which reintroduces antialiasing). Integer scaling keeps pixel art crisp.
-// 236x112 -> 472x224 at 2x. Set to 1 for native size, or higher for sharper output.
-const RENDER_ZOOM = 2;
+// Base canvas is 236x112, so scale N -> (236*N)x(112*N). Default 2x = 472x224.
+export const DEFAULT_SCALE = 2;
+export const MAX_SCALE = 8;
 
-export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
+/** Clamp a caller-supplied scale to a safe integer range. */
+export function normalizeScale(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_SCALE;
+  return Math.min(n, MAX_SCALE);
+}
+
+export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await initResvg();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
   return resvg.render().asPng();
 }
 
-export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
+export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await initResvg();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;
 
@@ -160,13 +168,13 @@ export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: numb
   return new Uint8Array(jpg.data);
 }
 
-export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5): Promise<Uint8Array> {
+export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await initResvg();
   const frames = [];
-  
+
   for (let i = 0; i < maxFrames; i++) {
     const svg = await generateRecipeSvg(recipeData, env, i);
-    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: RENDER_ZOOM } });
+    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
     const rendered = resvg.render();
     frames.push({
       width: rendered.width,
