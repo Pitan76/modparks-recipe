@@ -74,11 +74,11 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     return e(Container, { maxWidth: 'md', sx: { py: 6 } },
       e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, 'ModParks Recipe'),
       e(Typography, { color: 'text.secondary', sx: { mb: 3 } },
-        'ID（例: minecraft:wooden_sword）を入力してレシピを表示します。'),
+        'IDを入力してレシピを表示します。'),
 
       e('form', { onSubmit: openTyped },
         e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, sx: { mb: 2 } },
-          e(TextField, { label: '検索 / ID入力', placeholder: 'wooden_sword', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true }),
+          e(TextField, { label: 'ID', placeholder: 'minecraft:wooden_sword', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true }),
           e(TextField, { label: '形式', select: true, value: fmt, onChange: function (x) { setFmt(x.target.value); }, sx: { width: { sm: 130 } } },
             e(MenuItem, { value: 'png' }, 'PNG'),
             e(MenuItem, { value: 'gif' }, 'GIF'),
