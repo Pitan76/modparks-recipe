@@ -110,9 +110,72 @@ export async function getTag(id: string, env: Env): Promise<string[]> {
 // Images
 // ----------------------------------------------------
 
+/** Fetch a texture PNG from R2 by its resource id (e.g. "ns:item/foo") as a data URL. */
+async function textureDataUrl(texId: string, defaultNs: string, env: Env): Promise<string | null> {
+  const tns = texId.includes(':') ? texId.split(':')[0] : defaultNs;
+  const tpath = texId.includes(':') ? texId.split(':').slice(1).join(':') : texId;
+  let obj = await env.BUCKET.get(`assets/${tns}/textures/${tpath}.png`);
+  // Unprefixed refs default to minecraft; if the mod ns had no match, try minecraft too.
+  if (!obj && tns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${tpath}.png`);
+  if (!obj) return null;
+  return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
+}
+
+/** Walk a model's parent chain, merging texture maps (child overrides parent). */
+async function mergedModelTextures(
+  ns: string,
+  modelPath: string,
+  env: Env,
+  seen: Set<string>
+): Promise<Record<string, string>> {
+  const key = `${ns}:${modelPath}`;
+  if (seen.has(key) || seen.size > 12) return {};
+  seen.add(key);
+
+  const obj = await env.BUCKET.get(`assets/${ns}/models/${modelPath}.json`);
+  if (!obj) return {};
+  let model: any;
+  try { model = JSON.parse(await obj.text()); } catch { return {}; }
+
+  let base: Record<string, string> = {};
+  if (typeof model.parent === 'string' && !model.parent.includes('builtin/')) {
+    const p = model.parent;
+    const pns = p.includes(':') ? p.split(':')[0] : ns;
+    const pPath = p.includes(':') ? p.split(':').slice(1).join(':') : p;
+    base = await mergedModelTextures(pns, pPath, env, seen);
+  }
+  return { ...base, ...(model.textures || {}) };
+}
+
+/** Pick a concrete (non-#reference) texture from a merged model texture map. */
+function pickModelTexture(textures: Record<string, string>): string | null {
+  const prefer = ['layer0', 'all', 'texture', 'side', 'front', 'particle', 'end', 'top'];
+  for (const k of prefer) {
+    const v = textures[k];
+    if (typeof v === 'string' && v && !v.startsWith('#')) return v;
+  }
+  for (const v of Object.values(textures)) {
+    if (typeof v === 'string' && v && !v.startsWith('#')) return v;
+  }
+  return null;
+}
+
+/** Resolve an item's texture via its model JSON (for items whose id != texture filename). */
+async function resolveViaModel(namespace: string, path: string, env: Env): Promise<string | null> {
+  for (const kind of ['item', 'block']) {
+    const textures = await mergedModelTextures(namespace, `${kind}/${path}`, env, new Set());
+    const texId = pickModelTexture(textures);
+    if (texId) {
+      const url = await textureDataUrl(texId, namespace, env);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
-  
+
   // 1. Check for pre-rendered PNG (3D blocks and specialized items)
   let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
   if (obj) {
@@ -120,11 +183,17 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
       const base64 = bufferToBase64(buffer);
       return `data:image/png;base64,${base64}`;
   }
-  
-  // 2. Fallback to raw flat PNGs
+
+  // 2. Flat PNGs whose filename matches the item id
   obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
   if (!obj) obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
-  
+
+  if (!obj) {
+    // 3. Filename != id: resolve the item/block model JSON to its texture.
+    const viaModel = await resolveViaModel(namespace, path, env);
+    if (viaModel) return viaModel;
+  }
+
   if (!obj) {
     // No texture available. Return a transparent 16x16 PNG. Block entities that
     // need special handling (chests, ...) are rendered by render-blocks.ts.

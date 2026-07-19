@@ -105,6 +105,21 @@ app.put('/api/:namespace/texture/:path{.+}', async (c) => {
   return c.json({ ok: true, key });
 });
 
+// Upload a model JSON under assets/<ns>/models/<path>.json (path e.g. "item/gadget"
+// or "block/machine"). Lets the renderer resolve items whose texture filename
+// differs from their id by following the model's textures/parent chain.
+app.put('/api/:namespace/model/:path{.+}', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace, path } = c.req.param();
+  const body = await c.req.text();
+  try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
+  const id = path.replace(/\.json$/, '');
+  await c.env.BUCKET.put(`assets/${namespace}/models/${id}.json`, body, {
+    httpMetadata: { contentType: 'application/json' },
+  });
+  return c.json({ ok: true, key: `assets/${namespace}/models/${id}.json` });
+});
+
 // Upload a tag JSON under data/<ns>/tags/<path>.json (path e.g. "item/planks").
 app.put('/api/:namespace/tag/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
@@ -145,7 +160,20 @@ app.post('/api/:namespace/recipe/:id/bundle', async (c) => {
     textureCount++;
   }
 
-  return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount });
+  // Optional model JSONs so items whose texture filename != id can be resolved.
+  // Keys are paths under assets/<ns>/models/ (e.g. "item/gadget.json"); values
+  // are the model JSON as a string or object.
+  let modelCount = 0;
+  for (const [modelPath, val] of Object.entries(payload.models || {})) {
+    const rel = modelPath.replace(/\.json$/, '');
+    const json = typeof val === 'string' ? val : JSON.stringify(val);
+    await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    modelCount++;
+  }
+
+  return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
 });
 
 // Single recipe image endpoint: /api/:namespace/:id.(png|gif|jpg)
