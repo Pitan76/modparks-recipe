@@ -91,6 +91,20 @@ async function run() {
     });
 
     console.log(`Done. Uploaded ${uploaded} files, ${failed} failures.`);
+
+    // Build a static recipe index so the lookup page can show a browsable list
+    // without any per-request scanning. Derived purely from the recipe keys we
+    // already have (e.g. data/minecraft/recipe/wooden_sword.json -> minecraft:wooden_sword).
+    const ids = entries
+      .map((e) => e.key)
+      .map((key) => key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map((m) => `${m[1]}:${m[2]}`)
+      .sort();
+    const index = { count: ids.length, generatedAt: new Date().toISOString(), ids };
+    await uploadToR2('index/recipes.json', Buffer.from(JSON.stringify(index)));
+    console.log(`Wrote recipe index with ${ids.length} entries to index/recipes.json`);
+
     if (failed > 0) process.exit(1);
   } catch (error) {
     console.error('Error during execution:', error);

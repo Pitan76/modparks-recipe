@@ -37,6 +37,9 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     const [fmt, setFmt] = React.useState('png');
     const [src, setSrc] = React.useState(null);
     const [status, setStatus] = React.useState('idle'); // idle | loading | ok | error
+    // Details of the item currently shown in the card (captured on submit so the
+    // caption doesn't change while the user edits the fields).
+    const [shown, setShown] = React.useState(null);
 
     const path = id.trim()
       ? '/api/' + encodeURIComponent(ns.trim() || 'minecraft') + '/' + encodeURIComponent(id.trim()) + '.' + fmt
@@ -46,6 +49,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
       ev.preventDefault();
       if (!path) return;
       setStatus('loading');
+      setShown({ ns: ns.trim() || 'minecraft', id: id.trim(), fmt: fmt, path: path });
       setSrc(path + '?t=' + Date.now());
     }
 
@@ -62,8 +66,11 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
             e(MenuItem, { value: 'gif' }, 'GIF'),
             e(MenuItem, { value: 'jpg' }, 'JPG')),
           e(Button, { type: 'submit', variant: 'contained', size: 'large' }, '表示'))),
-      status !== 'idle' && e(Card, { variant: 'outlined' },
+      status !== 'idle' && shown && e(Card, { variant: 'outlined' },
         e(CardContent, { sx: { textAlign: 'center' } },
+          e(Typography, { variant: 'h6', sx: { mb: 0.5, wordBreak: 'break-all' } }, shown.ns + ':' + shown.id),
+          e(Typography, { variant: 'caption', color: 'text.secondary', sx: { display: 'block', mb: 2 } },
+            'namespace: ' + shown.ns + ' / item: ' + shown.id + ' / ' + shown.fmt.toUpperCase()),
           status === 'loading' && e(CircularProgress, { size: 28 }),
           status === 'error' && e(Typography, { color: 'error' }, 'レシピが見つかりませんでした。'),
           e('img', {
@@ -77,8 +84,8 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
               borderRadius: 6, background: '#1e1e1e'
             }
           }),
-          status === 'ok' && path && e(Box, { sx: { mt: 1.5, fontSize: 13, wordBreak: 'break-all' } },
-            e(Link, { href: path }, location.origin + path)))));
+          status === 'ok' && e(Box, { sx: { mt: 1.5, fontSize: 13, wordBreak: 'break-all' } },
+            e(Link, { href: shown.path }, location.origin + shown.path)))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(
