@@ -98,6 +98,27 @@ function rotateVec(v: Vec3, axis: string, angleDeg: number): Vec3 {
     return v;
 }
 
+// Projected size (in model units) of a canonical full 16³ block under the
+// default GUI transform. Used as a FIXED normalization denominator so that
+// small blocks (buttons, slabs, ...) render smaller than full blocks instead of
+// each being stretched to fill the frame.
+function referenceProjectedSize(): number {
+    const rot = [30, 225, 0], scale = [0.625, 0.625, 0.625];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const x of [0, 16]) for (const y of [0, 16]) for (const z of [0, 16]) {
+        let np: Vec3 = { x: x - 8, y: y - 8, z: z - 8 };
+        np = rotateVec(np, 'y', rot[1]);
+        np = rotateVec(np, 'x', rot[0]);
+        np = rotateVec(np, 'z', rot[2]);
+        const px = np.x * scale[0];
+        const py = -(np.y * scale[1]);
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+    }
+    return Math.max(maxX - minX, maxY - minY);
+}
+const REF_SIZE = referenceProjectedSize();
+
 // ── Rendering ────────────────────────────────────────────
 
 interface FaceData {
@@ -270,9 +291,12 @@ async function renderBlock(modelId: string): Promise<Buffer | null> {
         }
     }
 
+    // Fixed scale relative to a full block, so smaller blocks stay smaller
+    // (a button shouldn't fill the slot like a full cube). Center by the model's
+    // own bounding box. Clamp so an unusually large model can't overflow.
     const bw = maxX - minX;
     const bh = maxY - minY;
-    const fitScale = SIZE / Math.max(bw, bh) * 0.9; // 90% fill
+    const fitScale = Math.min(SIZE / REF_SIZE * 0.9, SIZE / Math.max(bw, bh, 1));
     const cx = SIZE / 2 - (minX + maxX) / 2 * fitScale;
     const cy = SIZE / 2 - (minY + maxY) / 2 * fitScale;
 
