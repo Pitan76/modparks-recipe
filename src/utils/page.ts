@@ -14,7 +14,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ModParks Recipe</title>
 <style>
-  html, body { margin: 0; background: #121212; }
+  html, body { margin: 0; background: #0f172a; }
 </style>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -32,7 +32,37 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     List, ListItemButton, ListItemText, Chip
   } = MUI;
 
-  const theme = createTheme({ palette: { mode: 'dark', primary: { main: '#646cff' } } });
+  // Match the ModParks site design (dark palette, subtle borders, flat buttons).
+  const theme = createTheme({
+    palette: {
+      mode: 'dark',
+      primary: { main: '#3b82f6', light: '#60a5fa', dark: '#2563eb', contrastText: '#ffffff' },
+      secondary: { main: '#10b981', light: '#34d399', dark: '#059669', contrastText: '#ffffff' },
+      background: { default: '#0f172a', paper: '#1e293b' },
+      text: { primary: '#f8fafc', secondary: '#94a3b8' },
+      divider: '#334155'
+    },
+    shape: { borderRadius: 4 },
+    components: {
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: { root: { textTransform: 'none', fontWeight: 600, transition: 'all 0.2s ease-in-out' } }
+      },
+      MuiCard: {
+        styleOverrides: { root: { background: '#1e293b', border: '1px solid #334155', borderRadius: 4 } }
+      },
+      MuiChip: {
+        styleOverrides: { root: { borderRadius: 4, fontWeight: 500 } }
+      },
+      MuiLink: {
+        defaultProps: { color: 'primary.light' },
+        styleOverrides: { root: { textDecoration: 'none', '&:hover': { textDecoration: 'underline' } } }
+      },
+      MuiListItemButton: {
+        styleOverrides: { root: { transition: 'all 0.2s ease-in-out' } }
+      }
+    }
+  });
   const MAX_ROWS = 300; // cap rendered rows so a huge list stays responsive
 
   function splitId(full) {
