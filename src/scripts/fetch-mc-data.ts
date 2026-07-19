@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
 import { uploadToR2, runPool, BUCKET_NAME } from './r2';
+import { resultItemOf, isCraftingType } from '../utils/minecraft';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
 
@@ -18,24 +19,6 @@ const TARGET_PATHS: RegExp[] = [
 
 function shouldExtract(p: string): boolean {
   return TARGET_PATHS.some((regex) => regex.test(p));
-}
-
-// Extract the result item id from a recipe JSON across the various shapes
-// Minecraft has used (result as a string, {item}, or {id}).
-function resultItemOf(data: any): string | null {
-  const r = data?.result;
-  if (!r) return null;
-  const id = typeof r === 'string' ? r : (r.id || r.item || null);
-  if (!id || typeof id !== 'string') return null;
-  return id.includes(':') ? id : `minecraft:${id}`;
-}
-
-// Only crafting recipes can be rendered today. Keep this narrow so the page
-// lists nothing it can't draw; widen it here when furnace/stonecutter/etc. land.
-function isSupportedType(type: unknown): boolean {
-  if (typeof type !== 'string') return false;
-  const t = type.replace(/^minecraft:/, '');
-  return t === 'crafting_shaped' || t === 'crafting_shapeless';
 }
 
 async function fetchLatestVersionUrl(): Promise<string> {
@@ -120,7 +103,7 @@ async function run() {
       try {
         const data = JSON.parse(entry.body.toString('utf-8'));
         // Skip non-crafting recipes for now; the renderer only draws crafting.
-        if (!isSupportedType(data.type)) continue;
+        if (!isCraftingType(data.type)) continue;
         recipes.push({
           id: `${m[1]}:${m[2]}`,
           result: resultItemOf(data),

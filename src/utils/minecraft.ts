@@ -74,14 +74,6 @@ export async function getRecipe(id: string, env: Env): Promise<any | null> {
   return data;
 }
 
-export async function getRecipesByResultItem(resultItemId: string, env: Env): Promise<{id: string, data: any}[]> {
-  const { results } = await env.DB.prepare('SELECT id, data FROM recipes WHERE result_item = ?').bind(resultItemId).all();
-  return (results || []).map(r => ({
-    id: r.id as string,
-    data: JSON.parse(r.data as string)
-  }));
-}
-
 // ----------------------------------------------------
 // Tags
 // ----------------------------------------------------
