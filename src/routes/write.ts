@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
-import { storeRecipe } from '../utils/recipe-store';
+import { storeRecipe, putRecipeBody, updateIndexMany } from '../utils/recipe-store';
 
 // ---- Write API (authenticated) ----------------------------------------------
 // Lets mods push their own recipes/textures instead of relying on the vanilla
@@ -100,4 +100,63 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   }
 
   return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
+});
+
+// Bulk ingest: one request carrying many recipes/tags/textures/models for a
+// namespace. Lets the extractor push a whole mod in a handful of calls instead
+// of ~1 subrequest per file, which otherwise blows the caller's subrequest
+// limit (recipes upload first, so all assets end up in the dropped tail).
+// Body JSON (all optional):
+//   { "recipes": { "<id>": <json|string>, ... },   // id may contain slashes
+//     "tags":    { "<path>": <json|string>, ... },  // e.g. "item/planks"
+//     "textures":{ "<path>": "<base64>", ... },     // e.g. "item/foo.png"
+//     "models":  { "<path>": <json|string>, ... } } // e.g. "item/foo"
+writeRoutes.post('/api/:namespace/bulk', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace } = c.req.param();
+  let p: any;
+  try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
+
+  const indexEntries: { fullId: string; data: any }[] = [];
+  let recipes = 0, tags = 0, textures = 0, models = 0;
+
+  for (const [id, val] of Object.entries(p.recipes || {})) {
+    const body = typeof val === 'string' ? val : JSON.stringify(val);
+    let data: any;
+    try { data = JSON.parse(body); } catch { continue; }
+    await putRecipeBody(c.env, namespace, id, body);
+    indexEntries.push({ fullId: `${namespace}:${id}`, data });
+    recipes++;
+  }
+  await updateIndexMany(c.env, indexEntries);
+
+  for (const [path, val] of Object.entries(p.tags || {})) {
+    const body = typeof val === 'string' ? val : JSON.stringify(val);
+    try { JSON.parse(body); } catch { continue; }
+    const id = path.replace(/\.json$/, '');
+    await c.env.BUCKET.put(`data/${namespace}/tags/${id}.json`, body, {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    await c.env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
+    tags++;
+  }
+
+  for (const [path, b64] of Object.entries(p.textures || {})) {
+    const key = `assets/${namespace}/textures/${path}`;
+    await c.env.BUCKET.put(key, decodeBase64(b64 as string), {
+      httpMetadata: { contentType: contentTypeForKey(key) },
+    });
+    textures++;
+  }
+
+  for (const [path, val] of Object.entries(p.models || {})) {
+    const rel = (path as string).replace(/\.json$/, '');
+    const json = typeof val === 'string' ? val : JSON.stringify(val);
+    await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    models++;
+  }
+
+  return c.json({ ok: true, namespace, recipes, tags, textures, models });
 });
