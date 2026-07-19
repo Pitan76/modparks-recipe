@@ -30,6 +30,14 @@ function resultItemOf(data: any): string | null {
   return id.includes(':') ? id : `minecraft:${id}`;
 }
 
+// Only crafting recipes can be rendered today. Keep this narrow so the page
+// lists nothing it can't draw; widen it here when furnace/stonecutter/etc. land.
+function isSupportedType(type: unknown): boolean {
+  if (typeof type !== 'string') return false;
+  const t = type.replace(/^minecraft:/, '');
+  return t === 'crafting_shaped' || t === 'crafting_shapeless';
+}
+
 async function fetchLatestVersionUrl(): Promise<string> {
   console.log('Fetching version manifest...');
   const res = await fetch(MANIFEST_URL);
@@ -105,17 +113,22 @@ async function run() {
     // Build a static recipe index so the lookup page can show a browsable list
     // (grouped by result item) without any per-request scanning. Both the recipe
     // id and its result item are derived from data we already have in memory.
-    const recipes: { id: string; result: string | null }[] = [];
+    const recipes: { id: string; result: string | null; type: string }[] = [];
     for (const entry of entries) {
       const m = entry.key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/);
       if (!m) continue;
-      let result: string | null = null;
       try {
-        result = resultItemOf(JSON.parse(entry.body.toString('utf-8')));
+        const data = JSON.parse(entry.body.toString('utf-8'));
+        // Skip non-crafting recipes for now; the renderer only draws crafting.
+        if (!isSupportedType(data.type)) continue;
+        recipes.push({
+          id: `${m[1]}:${m[2]}`,
+          result: resultItemOf(data),
+          type: String(data.type).replace(/^minecraft:/, ''),
+        });
       } catch {
         // ignore malformed recipe json
       }
-      recipes.push({ id: `${m[1]}:${m[2]}`, result });
     }
     recipes.sort((a, b) => a.id.localeCompare(b.id));
     const index = { count: recipes.length, generatedAt: new Date().toISOString(), recipes };
