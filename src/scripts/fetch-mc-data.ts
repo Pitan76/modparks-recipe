@@ -20,6 +20,16 @@ function shouldExtract(p: string): boolean {
   return TARGET_PATHS.some((regex) => regex.test(p));
 }
 
+// Extract the result item id from a recipe JSON across the various shapes
+// Minecraft has used (result as a string, {item}, or {id}).
+function resultItemOf(data: any): string | null {
+  const r = data?.result;
+  if (!r) return null;
+  const id = typeof r === 'string' ? r : (r.id || r.item || null);
+  if (!id || typeof id !== 'string') return null;
+  return id.includes(':') ? id : `minecraft:${id}`;
+}
+
 async function fetchLatestVersionUrl(): Promise<string> {
   console.log('Fetching version manifest...');
   const res = await fetch(MANIFEST_URL);
@@ -93,17 +103,24 @@ async function run() {
     console.log(`Done. Uploaded ${uploaded} files, ${failed} failures.`);
 
     // Build a static recipe index so the lookup page can show a browsable list
-    // without any per-request scanning. Derived purely from the recipe keys we
-    // already have (e.g. data/minecraft/recipe/wooden_sword.json -> minecraft:wooden_sword).
-    const ids = entries
-      .map((e) => e.key)
-      .map((key) => key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/))
-      .filter((m): m is RegExpMatchArray => m !== null)
-      .map((m) => `${m[1]}:${m[2]}`)
-      .sort();
-    const index = { count: ids.length, generatedAt: new Date().toISOString(), ids };
+    // (grouped by result item) without any per-request scanning. Both the recipe
+    // id and its result item are derived from data we already have in memory.
+    const recipes: { id: string; result: string | null }[] = [];
+    for (const entry of entries) {
+      const m = entry.key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/);
+      if (!m) continue;
+      let result: string | null = null;
+      try {
+        result = resultItemOf(JSON.parse(entry.body.toString('utf-8')));
+      } catch {
+        // ignore malformed recipe json
+      }
+      recipes.push({ id: `${m[1]}:${m[2]}`, result });
+    }
+    recipes.sort((a, b) => a.id.localeCompare(b.id));
+    const index = { count: recipes.length, generatedAt: new Date().toISOString(), recipes };
     await uploadToR2('index/recipes.json', Buffer.from(JSON.stringify(index)));
-    console.log(`Wrote recipe index with ${ids.length} entries to index/recipes.json`);
+    console.log(`Wrote recipe index with ${recipes.length} entries to index/recipes.json`);
 
     if (failed > 0) process.exit(1);
   } catch (error) {
