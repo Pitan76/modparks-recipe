@@ -15,16 +15,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Use Node.js 20 or higher
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Fetch and Upload Minecraft Assets
+      # 1. Download client.jar and mirror recipe/tag JSON + flat item/block
+      #    textures into R2 (preserving their in-jar paths).
+      - name: Fetch data and upload to R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
         run: npm run fetch-mc-data
+
+      # 2. Render isometric 3D block PNGs from the downloaded client.jar.
+      - name: Render 3D block PNGs
+        run: npx tsx src/scripts/render-blocks.ts
+
+      # 3. Upload rendered PNGs to R2 via wrangler.
+      - name: Upload rendered PNGs to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: bash src/scripts/upload-pngs-wrangler.sh

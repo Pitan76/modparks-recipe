@@ -1,5 +1,6 @@
 import satori, { init as initSatori } from 'satori/standalone';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
+import { encode as encodeJpeg } from 'jpeg-js';
 import { getItemImageBase64, getRecipe, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 
@@ -125,6 +126,28 @@ export async function renderRecipePng(recipeData: any, env: Env, tagOffset: numb
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
   const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 250 } });
   return resvg.render().asPng();
+}
+
+export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
+  await initResvg();
+  const svg = await generateRecipeSvg(recipeData, env, tagOffset);
+  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 250 } });
+  const rendered = resvg.render();
+  const { width, height, pixels } = rendered;
+
+  // JPEG has no alpha channel, so flatten the transparent recipe image onto
+  // a solid white background to avoid black fringing on transparent pixels.
+  const rgba = new Uint8Array(pixels);
+  for (let i = 0; i < rgba.length; i += 4) {
+    const a = rgba[i + 3] / 255;
+    rgba[i]     = Math.round(rgba[i]     * a + 255 * (1 - a));
+    rgba[i + 1] = Math.round(rgba[i + 1] * a + 255 * (1 - a));
+    rgba[i + 2] = Math.round(rgba[i + 2] * a + 255 * (1 - a));
+    rgba[i + 3] = 255;
+  }
+
+  const jpg = encodeJpeg({ data: Buffer.from(rgba), width, height }, 90);
+  return new Uint8Array(jpg.data);
 }
 
 export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5): Promise<Uint8Array> {
