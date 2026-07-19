@@ -16,6 +16,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 <style>
   html, body { margin: 0; background: #0f172a; }
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/@mui/material@5.15.20/umd/material-ui.production.min.js"></script>
@@ -138,9 +139,15 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     }
 
     return e(Container, { maxWidth: 'md', sx: { py: 6 } },
-      e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, 'ModParks Recipe'),
+      e(Box, { sx: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 } },
+        e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, 'ModParks Recipe'),
+        e(Link, {
+          href: 'https://github.com/Pitan76/modparks-recipe', target: '_blank', rel: 'noopener',
+          color: 'text.secondary', title: 'GitHub',
+          sx: { fontSize: 28, display: 'inline-flex', '&:hover': { color: 'text.primary' } }
+        }, e('i', { className: 'fa-brands fa-github' }))),
       e(Typography, { color: 'text.secondary', sx: { mb: 3 } },
-        'IDを入力してレシピを表示します。'),
+        'レシピIDを入力してレシピを表示します。'),
 
       e('form', { onSubmit: openTyped },
         e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, sx: { mb: 2 } },
