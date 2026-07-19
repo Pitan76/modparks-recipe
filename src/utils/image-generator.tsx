@@ -107,8 +107,8 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
         ))}
       </div>
       
-      {/* Output. Slot center measured at 207,55; +1px to match the grid's render bias -> center 208,56 */}
-      <div style={{ position: 'absolute', top: '38px', left: '190px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      {/* Output. Slot center measured from crafting_3x3.png at 207,55 in this 236x112 space. */}
+      <div style={{ position: 'absolute', top: '37px', left: '189px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         {resultImage && <img src={resultImage} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
       </div>
     </div>
