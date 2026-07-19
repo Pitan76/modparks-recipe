@@ -118,8 +118,10 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   if (!obj) obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
   
   if (!obj) {
-    // Return a transparent 16x16 PNG or missing texture fallback
-    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAcSURBVDhPY3hAIP+PgYGBkIGxAaNgFIwCFAYGBgA9Vww1u0dD/wAAAABJRU5ErkJggg==";
+    // No item/block texture available (e.g. block entities like chests, signs,
+    // beds — rendered specially by MC and not present as flat textures). Show
+    // the classic magenta/black "missing texture" so it's clearly a placeholder.
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAAMklEQVQ4jWP8wfDjPwMewMHAgU+agQmvLBFg1IDBYAAjAwMD3nTwg+EHbV0wasBgMAAAFaYGDRv4BZYAAAAASUVORK5CYII=";
   }
   
   const buffer = await obj.arrayBuffer();
