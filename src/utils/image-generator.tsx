@@ -127,8 +127,9 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
 }
 
 // Render at an integer zoom to avoid fractional resampling of the whole canvas
-// (which reintroduces antialiasing). 236x112 -> 944x448 at 4x.
-const RENDER_ZOOM = 4;
+// (which reintroduces antialiasing). Integer scaling keeps pixel art crisp.
+// 236x112 -> 472x224 at 2x. Set to 1 for native size, or higher for sharper output.
+const RENDER_ZOOM = 2;
 
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0): Promise<Uint8Array> {
   await initResvg();
