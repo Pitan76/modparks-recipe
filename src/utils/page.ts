@@ -158,22 +158,21 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
             e(MenuItem, { value: 'jpg' }, 'JPG')),
           e(Button, { type: 'submit', variant: 'contained', size: 'large', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, '表示'))),
 
-      // Preview card: all recipes producing the selected item
-      sel && e(Card, { variant: 'outlined', sx: { mb: 3 } },
-        e(CardContent, null,
-          e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' } },
-            e(Typography, { variant: 'h6', sx: { overflowWrap: 'anywhere' } }, sel.label),
-            e(Chip, { size: 'small', label: sel.recipeIds.length + ' レシピ' })),
-          e(Box, { sx: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } },
-            sel.recipeIds.map(function (rid) {
-              return e(ImageTile, { key: rid, recipeId: rid, fmt: fmt, nonce: nonce });
-            })))),
+      // Preview: all recipes producing the selected item
+      sel && e(Box, { sx: { mb: 3 } },
+        e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' } },
+          e(Typography, { variant: 'h6', sx: { overflowWrap: 'anywhere' } }, sel.label),
+          e(Chip, { size: 'small', label: sel.recipeIds.length + ' レシピ' })),
+        e(Box, { sx: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } },
+          sel.recipeIds.map(function (rid) {
+            return e(ImageTile, { key: rid, recipeId: rid, fmt: fmt, nonce: nonce });
+          }))),
 
       // Item list
       e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1 } },
         e(Typography, { variant: 'subtitle1', fontWeight: 600 }, 'アイテム一覧'),
         recipes && e(Chip, { size: 'small', label: filtered.length + (query ? ' / ' + items.length : '') })),
-      e(Card, { variant: 'outlined' },
+      e(Box, null,
         recipes === null
           ? e(Box, { sx: { p: 3, textAlign: 'center' } }, e(CircularProgress, { size: 24 }))
           : items.length === 0
