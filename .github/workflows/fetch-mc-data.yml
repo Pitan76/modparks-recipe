@@ -31,13 +31,12 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
         run: npm run fetch-mc-data
 
-      # 2. Render isometric 3D block PNGs from the downloaded client.jar.
-      - name: Render 3D block PNGs
-        run: npx tsx src/scripts/render-blocks.ts
-
-      # 3. Upload rendered PNGs to R2 via wrangler.
-      - name: Upload rendered PNGs to R2
+      # 2. Render isometric 3D block PNGs from the downloaded client.jar and
+      #    upload them to R2 (render3d/) directly via the S3 client.
+      - name: Render and upload 3D block PNGs
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-        run: bash src/scripts/upload-pngs-wrangler.sh
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
+        run: npx tsx src/scripts/render-blocks.ts

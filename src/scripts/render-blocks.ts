@@ -7,12 +7,11 @@ import { createCanvas, loadImage, type Canvas, type CanvasRenderingContext2D, ty
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { uploadToR2, runPool, BUCKET_NAME } from './r2';
 
 const JAR_PATH = path.join(process.cwd(), 'client.jar');
-const OUT_DIR = path.join(process.cwd(), 'render_out_png');
 const SIZE = 128; // Output image size
-
-if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
+const R2_PREFIX = 'assets/minecraft/textures/render3d/';
 
 // ── Jar reading ──────────────────────────────────────────
 
@@ -346,7 +345,9 @@ async function main() {
     const itemPaths = listOutput.split('\n').filter(Boolean);
     console.log(`Found ${itemPaths.length} item definitions`);
 
-    let count = 0;
+    // Render first (single-threaded canvas work), then upload the results to R2
+    // with bounded concurrency in one Node process.
+    const rendered: { name: string; png: Buffer }[] = [];
     for (let i = 0; i < itemPaths.length; i++) {
         const itemPath = itemPaths[i];
         const itemName = path.basename(itemPath, '.json');
@@ -362,15 +363,29 @@ async function main() {
             const png = await renderBlock(modelId);
             if (!png) continue;
 
-            fs.writeFileSync(path.join(OUT_DIR, `${itemName}.png`), png);
-            count++;
-            if (count % 50 === 0) console.log(`  Rendered ${count} blocks... (${itemName})`);
+            rendered.push({ name: itemName, png });
+            if (rendered.length % 50 === 0) console.log(`  Rendered ${rendered.length} blocks... (${itemName})`);
         } catch (e: any) {
             // Skip items that can't be rendered
         }
     }
 
-    console.log(`\nDone! Rendered ${count} block PNGs to ${OUT_DIR}`);
+    console.log(`\nRendered ${rendered.length} block PNGs. Uploading to R2 bucket "${BUCKET_NAME}"...`);
+    let uploaded = 0;
+    let failed = 0;
+    await runPool(rendered, 20, async ({ name, png }) => {
+        try {
+            await uploadToR2(`${R2_PREFIX}${name}.png`, png);
+            uploaded++;
+            if (uploaded % 100 === 0) console.log(`  Uploaded ${uploaded}/${rendered.length}...`);
+        } catch (e) {
+            failed++;
+            console.error(`  Failed to upload ${name}.png:`, (e as Error).message);
+        }
+    });
+
+    console.log(`Done. Uploaded ${uploaded} block PNGs, ${failed} failures.`);
+    if (failed > 0) process.exitCode = 1;
 }
 
 main().catch(console.error);
