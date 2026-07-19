@@ -85,7 +85,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
         onError: function () { setSt('error'); },
         style: {
           display: st === 'ok' ? 'block' : 'none',
-          imageRendering: 'pixelated', maxWidth: '100%', borderRadius: 6, background: '#1e1e1e'
+          imageRendering: 'pixelated', maxWidth: '100%', borderRadius: 4, background: '#1e293b'
         }
       }),
       st === 'ok' && e(Box, { sx: { mt: 0.5, fontSize: 12, overflowWrap: 'anywhere' } },
