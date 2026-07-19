@@ -81,6 +81,12 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
       }
     }
 
+    // omggif requires the palette length to be a power of two (2..256).
+    // Pad with black entries so encoding never throws "Invalid color table size".
+    let palSize = 2;
+    while (palSize < palette.length) palSize <<= 1;
+    while (palette.length < palSize) palette.push(0x000000);
+
     gifWriter.addFrame(0, 0, width, height, indexedPixels, {
       palette: palette,
       delay: Math.round((frame.delayMs || globalDelayMs) / 10), // omggif delay is in hundredths of a second
