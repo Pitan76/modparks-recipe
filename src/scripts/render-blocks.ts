@@ -135,8 +135,8 @@ interface FaceData {
 // renderer treats face.uv. Uses the standard Minecraft box unwrap.
 function boxFaces(tx: number, ty: number, w: number, h: number, d: number) {
     return {
-        up:    { uv: [tx + d, ty, tx + d + w, ty + d] },
-        down:  { uv: [tx + d + w, ty, tx + d + 2 * w, ty + d] },
+        up:    { uv: [tx + d + w, ty, tx + d + 2 * w, ty + d] },
+        down:  { uv: [tx + d, ty, tx + d + w, ty + d] },
         east:  { uv: [tx, ty + d, tx + d, ty + d + h] },
         north: { uv: [tx + d, ty + d, tx + d + w, ty + d + h] },
         west:  { uv: [tx + d + w, ty + d, tx + 2 * d + w, ty + d + h] },
