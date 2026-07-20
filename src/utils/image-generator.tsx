@@ -1,7 +1,7 @@
 import satori, { init as initSatori } from 'satori/standalone';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import { encode as encodeJpeg } from 'jpeg-js';
-import { getItemImageBase64, getRecipe, getTag, Env } from './minecraft';
+import { getItemImageBase64, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 
 // @ts-ignore
