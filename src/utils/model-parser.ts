@@ -182,8 +182,11 @@ function buildSvg(faces: SvgFace[]): string {
         // matrix as well and clip away most of the texture.
         defs += `<clipPath id="${clipId}"><polygon points="${points}"/></clipPath>\n`;
         const filter = f.brightness < 1 ? ` filter="url(#${shadeId(f.brightness)})"` : '';
-        body += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="${f.texW}" height="${f.texH}"`
-            + ` transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"${filter}/></g>\n`;
+        // Shading goes on the <g>, not the <image>: a filter on the image is
+        // resolved against its own pre-transform box, which the UV matrix then
+        // shrinks, and resvg drops faces whose filter region collapses.
+        body += `<g clip-path="url(#${clipId})"${filter}><image href="${f.b64}" width="${f.texW}" height="${f.texH}"`
+            + ` transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"/></g>\n`;
         if (f.brightness < 1) brightnesses.add(f.brightness);
     }
 
@@ -200,10 +203,6 @@ function shadeId(brightness: number): string {
 /** Shading multiplies RGB and leaves alpha alone, so cut-out textures don't
  *  gain a black quad the way a flat overlay would. */
 function shadeFilter(b: number): string {
-    // An explicit, generous region: the default (-10%..120% of the object
-    // bounding box) is computed before the face's UV matrix is applied, and can
-    // clip a face away entirely once that matrix scales it.
-    return `<filter id="${shadeId(b)}" color-interpolation-filters="sRGB"`
-        + ` x="-50%" y="-50%" width="200%" height="200%">`
+    return `<filter id="${shadeId(b)}" color-interpolation-filters="sRGB">`
         + `<feColorMatrix type="matrix" values="${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0"/></filter>\n`;
 }
