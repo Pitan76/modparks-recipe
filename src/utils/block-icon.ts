@@ -2,7 +2,6 @@ import type { Env } from './minecraft';
 import { loadModel, renderModelToSvg } from './model-parser';
 import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
-import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
 import { getAssetVersion } from './cache-version';
 
@@ -39,15 +38,12 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
   const getModel = (id: string) => modelJson(env, id);
   const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
 
-  // The item model (`ns:item/<path>`) is what the game actually shows in a slot.
-  // For a block item it just points at the block model via `parent`, but some
-  // blocks are deliberately drawn flat there instead: a torch's item model is
-  // `item/generated` over the block/torch texture, so the game shows the 2D
-  // sprite, not the 3D torch. Honour that and stop — falling through to the
-  // block model would render a 3D shape the game never displays.
-  const itemModel = await loadModel(`${ns}:item/${path}`, getModel);
-  if (isFlatItemModel(itemModel)) return null;
-
+  // Prefer 3D for anything with a block model, even when the item model says
+  // draw it flat. Vanilla shows a torch as a 2D sprite in the inventory, but a
+  // recipe image reads better with every block drawn the same way, so the flat
+  // `item/generated` model is skipped in favour of `block/<path>` below.
+  // Genuine items (a stick, a sword) have no block model and still fall back to
+  // their flat texture.
   // Block entities (chests, ...) resolve to `builtin/entity` with no elements;
   // their geometry has to be synthesized from the entity atlas instead.
   const synthetic = ns === 'minecraft' && CHEST_VARIANTS[path]
@@ -72,11 +68,6 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
   return null;
 }
 
-/** True when the item is meant to be drawn as a flat sprite rather than in 3D. */
-function isFlatItemModel(model: any): boolean {
-  return !!model && FLAT_ITEM_PARENTS.has(model.parent);
-}
-
 /** True only when the resolved model chain yielded real, renderable geometry. */
 function hasGeometry(model: any): boolean {
   return !!model && Array.isArray(model.elements) && model.elements.length > 0;
@@ -85,10 +76,10 @@ function hasGeometry(model: any): boolean {
 // Rendering one icon re-reads the same objects several times over: the parent
 // chain is walked once for `item/<path>`, again for `block/<path>`, and a third
 // time inside renderModelToSvg, and a nine-slot recipe repeats all of it per
-// slot. Shared vanilla parents like `block/cube_all` are the worst of it. Left
-// unmemoized that is hundreds of sequential R2 round trips per image — barely
-// visible in production, where the bucket is a colo away, and crippling from a
-// dev machine talking to the real bucket over `wrangler dev --remote`.
+// slot. Shared vanilla parents like `block/cube_all` are the worst of it. Every
+// one of those reads is sequential, so they add up: measured over
+// `wrangler dev --remote`, a single warm `minecraft:stone` icon went from
+// ~4.6s to ~250ms once these two reads were memoized.
 //
 // Promises are stored rather than resolved values, so the concurrent lookups
 // that parallel slots fire for the same parent collapse into one read too.
