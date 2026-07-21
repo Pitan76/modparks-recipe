@@ -187,14 +187,27 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
+  // 3. Block: render its model to a 3D isometric icon, matching how the offline
+  //    pipeline renders vanilla blocks, and cache it under render3d/ so later
+  //    requests hit step 1. Returns null unless the model chain resolved to real
+  //    geometry, so blocks it can't render still get their flat texture below.
+  const icon = await renderBlockIconPng(env, namespace, path).catch(() => null);
+  if (icon) {
+    await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
+      httpMetadata: { contentType: 'image/png' },
+    }).catch(() => {});
+    return `data:image/png;base64,${bytesToBase64(icon)}`;
+  }
+
+  // 4. Flat block texture (block with no renderable model).
   obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 3. Filename != id: resolve the item/block model JSON to its texture.
+  // 5. Filename != id: resolve the item/block model JSON to its texture.
   const viaModel = await resolveViaModel(namespace, path, env);
   if (viaModel) return viaModel;
 
-  // 4. No texture available. Block entities needing special handling (chests, …)
+  // 6. No texture available. Block entities needing special handling (chests, …)
   //    are covered by the offline render-blocks pipeline.
   return TRANSPARENT_PNG;
 }

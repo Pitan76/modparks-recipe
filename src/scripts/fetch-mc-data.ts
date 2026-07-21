@@ -12,6 +12,10 @@ const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.j
 const TARGET_PATHS: RegExp[] = [
   /^assets\/minecraft\/textures\/item\/.*\.png$/,
   /^assets\/minecraft\/textures\/block\/.*\.png$/,
+  // Vanilla model JSONs. Mod block models inherit from these
+  // (`"parent": "minecraft:block/cube"`), so the Worker cannot resolve a mod
+  // block's geometry unless the vanilla parents are in R2 too.
+  /^assets\/minecraft\/models\/.*\.json$/,
   /^data\/minecraft\/tags\/items?\/.*\.json$/,
   /^data\/minecraft\/tags\/blocks?\/.*\.json$/,
   /^data\/minecraft\/recipe.*\.json$/, // matches recipe/ and recipes/
