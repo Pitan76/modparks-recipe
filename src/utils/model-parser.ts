@@ -104,7 +104,7 @@ export async function renderModelToSvg(
         if (texPath) {
             const b64 = await getTextureBase64(texPath);
             if (b64) {
-                return `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><image href="${b64}" width="16" height="16" image-rendering="pixelated"/></svg>`;
+                return `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><image href="${b64}" width="16" height="16" image-rendering="optimizeSpeed"/></svg>`;
             }
         }
         return null;
@@ -297,7 +297,7 @@ export async function renderModelToSvg(
         defs += `<clipPath id="${clipId}"><polygon points="${points}"/></clipPath>\n`;
         const b = 1 - f.shade;
         const filter = f.shade > 0 ? ` filter="url(#shade${Math.round(b * 100)})"` : '';
-        svg += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="16" height="16" transform="${matrix}" image-rendering="pixelated"${filter}/></g>\n`;
+        svg += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="16" height="16" transform="${matrix}" image-rendering="optimizeSpeed"${filter}/></g>\n`;
         shades.add(b);
     }
 

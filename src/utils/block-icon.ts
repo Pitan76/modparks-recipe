@@ -31,7 +31,14 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
     await ensureWasm();
     const svg = await renderModelToSvg(modelId, getModel, getTexture);
     if (!svg) continue;
-    return svgToPng(svg, { fitTo: { mode: 'width', value: ICON_SIZE } });
+    // Pixel art: no antialiasing anywhere. shapeRendering 0 (optimizeSpeed)
+    // stops the face clip paths from feathering their edges, imageRendering 1
+    // (optimizeSpeed) samples the textures nearest-neighbour.
+    return svgToPng(svg, {
+      fitTo: { mode: 'width', value: ICON_SIZE },
+      shapeRendering: 0,
+      imageRendering: 1,
+    });
   }
   return null;
 }
