@@ -82,23 +82,73 @@ function hasGeometry(model: any): boolean {
   return !!model && Array.isArray(model.elements) && model.elements.length > 0;
 }
 
-async function modelJson(env: Env, id: string): Promise<any | null> {
-  const { ns, path } = split(id);
-  const obj = await env.BUCKET.get(`assets/${ns}/models/${path}.json`);
-  if (!obj) return null;
-  try {
-    return JSON.parse(await obj.text());
-  } catch {
-    return null;
-  }
+// Rendering one icon re-reads the same objects several times over: the parent
+// chain is walked once for `item/<path>`, again for `block/<path>`, and a third
+// time inside renderModelToSvg, and a nine-slot recipe repeats all of it per
+// slot. Shared vanilla parents like `block/cube_all` are the worst of it. Left
+// unmemoized that is hundreds of sequential R2 round trips per image — barely
+// visible in production, where the bucket is a colo away, and crippling from a
+// dev machine talking to the real bucket over `wrangler dev --remote`.
+//
+// Promises are stored rather than resolved values, so the concurrent lookups
+// that parallel slots fire for the same parent collapse into one read too.
+const memo = new Map<string, Promise<any>>();
+
+/**
+ * Cap on retained entries. An isolate that has churned through this many is
+ * mostly holding superseded versions, so drop everything rather than track LRU:
+ * the cost of a miss is one R2 get.
+ */
+const MEMO_MAX = 2000;
+
+/**
+ * Read an asset once per isolate per asset version. Keying on the version is
+ * what makes this safe against the write API: an upload bumps it and every
+ * entry for the old version becomes unreachable, exactly as for rendered images.
+ */
+async function memoized<T>(env: Env, ns: string, key: string, load: () => Promise<T>): Promise<T> {
+  const version = await getAssetVersion(env, ns);
+  const memoKey = `${version}:${ns}:${key}`;
+
+  const hit = memo.get(memoKey);
+  if (hit) return hit as Promise<T>;
+
+  if (memo.size >= MEMO_MAX) memo.clear();
+  // A failed read must not be remembered, or one transient R2 error would stick
+  // to this isolate for as long as the version holds.
+  const pending = load().catch((err) => {
+    memo.delete(memoKey);
+    throw err;
+  });
+  memo.set(memoKey, pending);
+  return pending as Promise<T>;
 }
 
-async function textureDataUrl(env: Env, defaultNs: string, ref: string): Promise<string | null> {
+function modelJson(env: Env, id: string): Promise<any | null> {
+  const { ns, path } = split(id);
+  return memoized(env, ns, `models/${path}`, async () => {
+    const obj = await env.BUCKET.get(`assets/${ns}/models/${path}.json`);
+    if (!obj) return null;
+    try {
+      return JSON.parse(await obj.text());
+    } catch {
+      return null;
+    }
+  });
+}
+
+function textureDataUrl(env: Env, defaultNs: string, ref: string): Promise<string | null> {
   const { ns, path } = split(ref, defaultNs);
-  let obj = await env.BUCKET.get(`assets/${ns}/textures/${path}.png`);
-  if (!obj && ns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${path}.png`);
-  if (!obj) return null;
-  return `data:image/png;base64,${bytesToBase64(new Uint8Array(await obj.arrayBuffer()))}`;
+  // Keyed on the requesting namespace's version even when the read falls back to
+  // vanilla, so a `minecraft` upload alone won't invalidate a mod's entry. That
+  // only matters for re-uploaded vanilla textures, which the offline pipeline
+  // writes once per version anyway.
+  return memoized(env, ns, `textures/${path}`, async () => {
+    let obj = await env.BUCKET.get(`assets/${ns}/textures/${path}.png`);
+    if (!obj && ns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${path}.png`);
+    if (!obj) return null;
+    return `data:image/png;base64,${bytesToBase64(new Uint8Array(await obj.arrayBuffer()))}`;
+  });
 }
 
 function split(id: string, fallbackNs = 'minecraft'): { ns: string; path: string } {
