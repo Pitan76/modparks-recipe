@@ -210,11 +210,12 @@ export const REF_SIZE = (() => {
 })();
 
 /**
- * Frame size as a multiple of REF_SIZE. 1.0 lets a full cube span the whole
- * frame, the way it does in the game's own slots; larger values pad it inwards.
- * Both renderers read this, so their output stays interchangeable.
+ * Frame size as a multiple of REF_SIZE: a full cube occupies 1/FRAME_MARGIN of
+ * the frame and the rest is padding. Both renderers read this, so their output
+ * stays interchangeable — and this value keeps them matching the icons already
+ * rendered and uploaded (a full block at 90% of the frame).
  */
-export const FRAME_MARGIN = 1.0;
+export const FRAME_MARGIN = 1 / 0.9;
 
 /**
  * Model parents that mean "draw this item as a flat 2D sprite". A torch's item
