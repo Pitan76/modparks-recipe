@@ -1,19 +1,36 @@
-import satori from 'satori/standalone';
 import { Resvg } from '@resvg/resvg-wasm';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { getItemImageBase64, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 import { ensureWasm } from './wasm';
 
-// Cache font
-let fontBuffer: ArrayBuffer | null = null;
+// ---- Crafting UI layout -----------------------------------------------------
+// Icon positions measured off the reference renderer's output with its outer
+// margin clipped away, giving a 236x112 canvas. Coordinates are in base pixels;
+// `scale` multiplies the whole canvas.
 
-async function getFont() {
-  if (!fontBuffer) {
-    const res = await fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.13/files/roboto-latin-400-normal.woff');
-    fontBuffer = await res.arrayBuffer();
-  }
-  return fontBuffer;
+const CANVAS_W = 236;
+const CANVAS_H = 112;
+
+// public/crafting_3x3.png: the crafting UI (slots and arrow) at its native
+// 118x56, drawn at 2x here. Slot borders and the arrow's stepped edge come from
+// the image, so nothing about the frame is redrawn in code.
+const BACKGROUND = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==';
+
+const ICON = 32;
+
+/** Top-left of the first slot's interior, and the pitch between slots. */
+const GRID_X = 4;
+const GRID_Y = 4;
+const SLOT = 36;
+
+/** Top-left of the result icon, centred in the wider output slot. */
+const OUT_X = 192;
+const OUT_Y = 40;
+
+function iconSvg(href: string, x: number, y: number): string {
+  return `<image href="${href}" x="${x}" y="${y}" width="${ICON}" height="${ICON}"`
+    + ` image-rendering="optimizeSpeed" preserveAspectRatio="xMidYMid meet"/>`;
 }
 
 /**
@@ -100,44 +117,23 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
     ? (typeof recipeData.result === 'string' ? recipeData.result : recipeData.result.id || recipeData.result.item)
     : null;
 
-  // Font, grid and result icon are independent; resolve them together.
-  const [font, grid, resultImage] = await Promise.all([
-    getFont(),
+  const [grid, resultImage] = await Promise.all([
     createRecipeGrid(recipeData, env, tagOffset, cache),
     resultId ? itemIcon(resultId, env, cache) : Promise.resolve(null),
   ]);
 
-  // Base64 of public/crafting_3x3.png
-  const bgBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==";
+  let body = `<image href="${BACKGROUND}" x="0" y="0" width="${CANVAS_W}" height="${CANVAS_H}"`
+    + ` image-rendering="optimizeSpeed"/>`;
 
-  const element = (
-    <div style={{ display: 'flex', backgroundImage: `url(${bgBase64})`, backgroundSize: '236px 112px', width: '236px', height: '112px', position: 'relative' }}>
-      {/* 3x3 Grid */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', width: '108px', height: '108px', position: 'absolute', top: '2px', left: '2px' }}>
-        {grid.map((img, i) => (
-          <div key={i} style={{ width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {img && <img src={img} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
-          </div>
-        ))}
-      </div>
-      
-      {/* Output. Slot center measured from crafting_3x3.png at 207,55 in this 236x112 space. */}
-      <div style={{ position: 'absolute', top: '37px', left: '188px', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        {resultImage && <img src={resultImage} width={32} height={32} style={{ imageRendering: 'pixelated' }} />}
-      </div>
-    </div>
-  );
+  for (let i = 0; i < 9; i++) {
+    if (!grid[i]) continue;
+    body += iconSvg(grid[i]!, GRID_X + (i % 3) * SLOT, GRID_Y + Math.floor(i / 3) * SLOT);
+  }
 
-  const svg = await satori(element, {
-    width: 236,
-    height: 112,
-    fonts: [{ name: 'Roboto', data: font, weight: 400, style: 'normal' }],
-  });
+  if (resultImage) body += iconSvg(resultImage, OUT_X, OUT_Y);
 
-  // Force nearest-neighbor sampling on every embedded texture so pixel-art
-  // stays crisp. resvg maps image-rendering="optimizeSpeed" to nearest-neighbor;
-  // relying on satori's CSS output alone still produced antialiased edges.
-  return svg.replace(/<image /g, '<image image-rendering="optimizeSpeed" ');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}"`
+    + ` viewBox="0 0 ${CANVAS_W} ${CANVAS_H}" shape-rendering="crispEdges">${body}</svg>`;
 }
 
 // Render at an integer zoom to avoid fractional resampling of the whole canvas
@@ -156,14 +152,14 @@ export function normalizeScale(value: unknown): number {
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
   return resvg.render().asPng();
 }
 
 export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;
 
@@ -183,8 +179,8 @@ export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: numb
 }
 
 // Base recipe canvas dimensions (before scaling).
-export const TILE_BASE_WIDTH = 236;
-export const TILE_BASE_HEIGHT = 112;
+export const TILE_BASE_WIDTH = CANVAS_W;
+export const TILE_BASE_HEIGHT = CANVAS_H;
 
 function bytesToBase64Local(bytes: Uint8Array): string {
   let binary = '';
@@ -258,7 +254,7 @@ export async function renderRecipeSpriteSheet(
     tiles.filter(Boolean).join('') +
     `</svg>`;
 
-  const resvg = new Resvg(svg, { fitTo: { mode: 'original' } });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'original' }, shapeRendering: 0, imageRendering: 1 });
   const png = resvg.render().asPng();
 
   return { png, tileWidth, tileHeight, columns: cols, rows, count, order, missing };
@@ -270,7 +266,7 @@ export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: numb
 
   for (let i = 0; i < maxFrames; i++) {
     const svg = await generateRecipeSvg(recipeData, env, i);
-    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
+    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
     const rendered = resvg.render();
     frames.push({
       width: rendered.width,
