@@ -1,3 +1,6 @@
+import { renderBlockIconPng } from './block-icon';
+import { bytesToBase64 } from './http';
+
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
