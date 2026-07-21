@@ -1,17 +1,12 @@
-import satori, { init as initSatori } from 'satori/standalone';
-import { Resvg, initWasm } from '@resvg/resvg-wasm';
+import satori from 'satori/standalone';
+import { Resvg } from '@resvg/resvg-wasm';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { getItemImageBase64, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
+import { ensureWasm } from './wasm';
 
-// @ts-ignore
-import resvgWasmModule from '@resvg/resvg-wasm/index_bg.wasm';
-// @ts-ignore
-import yogaWasmModule from 'satori/yoga.wasm';
-
-// Cache font and wasm
+// Cache font
 let fontBuffer: ArrayBuffer | null = null;
-let wasmInitialized = false;
 
 async function getFont() {
   if (!fontBuffer) {
@@ -19,18 +14,6 @@ async function getFont() {
     fontBuffer = await res.arrayBuffer();
   }
   return fontBuffer;
-}
-
-async function initResvg() {
-  if (!wasmInitialized) {
-    try {
-      await initWasm(resvgWasmModule);
-      await initSatori(yogaWasmModule);
-      wasmInitialized = true;
-    } catch(e) {
-      console.error("WASM init error:", e);
-    }
-  }
 }
 
 async function resolveIngredient(ingredient: any, env: Env, tagOffset: number): Promise<string | null> {
@@ -142,14 +125,14 @@ export function normalizeScale(value: unknown): number {
 }
 
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
-  await initResvg();
+  await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
   return resvg.render().asPng();
 }
 
 export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
-  await initResvg();
+  await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } });
   const rendered = resvg.render();
@@ -209,7 +192,7 @@ export async function renderRecipeSpriteSheet(
   columns: number = 8,
   scale: number = DEFAULT_SCALE
 ): Promise<SpriteSheet> {
-  await initResvg();
+  await ensureWasm();
 
   const tileWidth = TILE_BASE_WIDTH * scale;
   const tileHeight = TILE_BASE_HEIGHT * scale;
@@ -253,7 +236,7 @@ export async function renderRecipeSpriteSheet(
 }
 
 export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
-  await initResvg();
+  await ensureWasm();
   const frames = [];
 
   for (let i = 0; i < maxFrames; i++) {
