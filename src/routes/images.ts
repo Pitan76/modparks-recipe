@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
 import { bytesToBase64 } from '../utils/http';
+import { getAssetVersion } from '../utils/cache-version';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
 
@@ -145,9 +146,14 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
 
   // Rendering a recipe costs several R2 round trips plus rasterization, and the
   // output only changes when the recipe or its textures are re-uploaded. Serve
-  // repeats straight from the edge cache instead of rebuilding the image.
+  // repeats straight from the edge cache instead of rebuilding the image. The
+  // namespace's asset version is part of the key, so an upload makes the old
+  // entries unreachable rather than leaving stale images up for a day.
   const cache = caches.default;
-  const cacheKey = new Request(c.req.url, { method: 'GET' });
+  const version = await getAssetVersion(c.env, namespace);
+  const keyUrl = new URL(c.req.url);
+  keyUrl.searchParams.set('__v', version);
+  const cacheKey = new Request(keyUrl.toString(), { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
   const [, id, ext] = match;

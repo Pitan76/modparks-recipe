@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
 import { storeRecipe, putRecipeBody, updateIndexMany } from '../utils/recipe-store';
+import { bumpAssetVersion } from '../utils/cache-version';
 
 // ---- Write API (authenticated) ----------------------------------------------
 // Lets mods push their own recipes/textures instead of relying on the vanilla
@@ -31,6 +32,7 @@ writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
   let data: any;
   try { data = JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
   await storeRecipe(c.env, namespace, id, body, data);
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
 
@@ -42,6 +44,7 @@ writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
   const key = `assets/${namespace}/textures/${path}`;
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: contentTypeForKey(key) } });
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, key });
 });
 
@@ -57,6 +60,7 @@ writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
   await c.env.BUCKET.put(`assets/${namespace}/models/${id}.json`, body, {
     httpMetadata: { contentType: 'application/json' },
   });
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, key: `assets/${namespace}/models/${id}.json` });
 });
 
@@ -71,6 +75,7 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
     httpMetadata: { contentType: 'application/json' },
   });
   await c.env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
 
@@ -113,6 +118,7 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
     modelCount++;
   }
 
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
 });
 
@@ -172,5 +178,6 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     models++;
   });
 
+  await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, namespace, recipes, tags, textures, models });
 });
