@@ -200,6 +200,10 @@ function shadeId(brightness: number): string {
 /** Shading multiplies RGB and leaves alpha alone, so cut-out textures don't
  *  gain a black quad the way a flat overlay would. */
 function shadeFilter(b: number): string {
-    return `<filter id="${shadeId(b)}" color-interpolation-filters="sRGB">`
+    // An explicit, generous region: the default (-10%..120% of the object
+    // bounding box) is computed before the face's UV matrix is applied, and can
+    // clip a face away entirely once that matrix scales it.
+    return `<filter id="${shadeId(b)}" color-interpolation-filters="sRGB"`
+        + ` x="-50%" y="-50%" width="200%" height="200%">`
         + `<feColorMatrix type="matrix" values="${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0"/></filter>\n`;
 }

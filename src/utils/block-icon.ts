@@ -4,6 +4,7 @@ import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
+import { getAssetVersion } from './cache-version';
 
 // Renders a block's model to a 3D isometric icon at request time, so blocks
 // pushed through the write API (which never runs the offline render-blocks
