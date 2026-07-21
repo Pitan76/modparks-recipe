@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng } from '../utils/block-icon';
+import { bumpAssetVersion } from '../utils/cache-version';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -64,6 +65,40 @@ adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
   const png = await renderBlockIconPng(c.env, namespace, path);
   if (!png) return c.text(`No renderable model for ${namespace}:${path}`, 404);
   return new Response(png, { headers: { 'Content-Type': 'image/png' } });
+});
+
+// Drop everything cached for a namespace: the generated 3D block icons in R2 and
+// every rendered image sitting in the edge cache. Use after a renderer change,
+// or when icons look stale/wrong. Both rebuild automatically on next request.
+// GET /admin/purge/:namespace?secret=...
+adminRoutes.get('/admin/purge/:namespace', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const { namespace } = c.req.param();
+
+  // Generated icons only — a pre-rendered PNG uploaded through the write API
+  // lives here too, so this is deliberately scoped to one namespace.
+  const prefix = `assets/${namespace}/textures/render3d/`;
+  let icons = 0;
+  let cursor: string | undefined = undefined;
+  do {
+    const listed = await c.env.BUCKET.list({ prefix, cursor });
+    const keys = listed.objects.map((o) => o.key);
+    if (keys.length > 0) {
+      await c.env.BUCKET.delete(keys);
+      icons += keys.length;
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  // Bumping the version makes every cached image URL for this namespace
+  // unreachable, whatever query variants they were stored under.
+  await bumpAssetVersion(c.env, namespace);
+
+  return c.json({ ok: true, namespace, iconsDeleted: icons, imageCacheInvalidated: true });
 });
 
 // Admin endpoint to (re)build the recipe index from the recipe JSON already in
