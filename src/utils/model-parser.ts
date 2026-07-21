@@ -176,9 +176,12 @@ export async function renderModelToSvg(
             // GUI display transform: center at (8,8,8), rotate, scale, translate
             const center = { x: 8, y: 8, z: 8 };
             pts = pts.map(p => {
+                // Y then X then Z, matching the GUI transform order the offline
+                // renderer (scripts/render-blocks/render.ts) uses. Rotations do
+                // not commute, so the vanilla-parity order matters.
                 let np = { x: p!.x - center.x, y: p!.y - center.y, z: p!.z - center.z };
-                np = rotateX(np, rotXAngle);
                 np = rotateY(np, rotYAngle);
+                np = rotateX(np, rotXAngle);
                 np = rotateZ(np, rotZAngle);
                 return { 
                     x: (np.x * scale[0]) + trans[0], 
@@ -187,14 +190,14 @@ export async function renderModelToSvg(
                 };
             });
 
-            // Minecraft face shading: these are brightness multipliers, not black overlay amounts!
-            // up=1.0 (fully lit), north/south=0.8, east/west=0.6, down=0.5
-            // We use a black overlay with opacity = 1 - brightness
+            // Minecraft face brightness (up=1.0, n/s=0.4, e/w=0.6, down=0.2),
+            // expressed as a black overlay with opacity = 1 - brightness. Same
+            // values as the offline renderer, so both produce the same shading.
             let shade = 0;
-            if (dir === 'up') shade = 0;          // fully lit, no darkening
-            else if (dir === 'north' || dir === 'south') shade = 0.2;  // slight shadow
-            else if (dir === 'east' || dir === 'west') shade = 0.35;   // moderate shadow
-            else if (dir === 'down') shade = 0.5;  // darkest
+            if (dir === 'up') shade = 0;
+            else if (dir === 'north' || dir === 'south') shade = 0.6;
+            else if (dir === 'east' || dir === 'west') shade = 0.4;
+            else if (dir === 'down') shade = 0.8;
             
             const centroidZ = (pts[0].z + pts[1].z + pts[2].z + pts[3].z) / 4;
 
@@ -229,8 +232,11 @@ export async function renderModelToSvg(
     const vbW = w + margin * 2;
     const vbH = h + margin * 2;
 
-    let svg = `<svg viewBox="${vbX} ${vbY} ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">\n`;
-    
+    let svg = `<svg viewBox="${vbX} ${vbY} ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">\n@@DEFS@@\n`;
+    let defs = '';
+    let clipSeq = 0;
+    const shades = new Set<number>();
+
     for (const f of facesToRender) {
         const p = f.pts.map((pt: any) => ({ x: pt.x, y: -pt.y })) as {x: number, y: number}[];
         if (p.length < 4) continue;
@@ -250,24 +256,28 @@ export async function renderModelToSvg(
         const originY = p[0]!.y - vy * u1 - uy * v1;
 
         const matrix = `matrix(${vx}, ${vy}, ${ux}, ${uy}, ${originX}, ${originY})`;
-        const clipId = `clip_${Math.random().toString(36).substring(7)}`;
+        const clipId = `clip_${clipSeq++}`;
+        const points = p.map((pt) => `${pt.x},${pt.y}`).join(' ');
 
-        svg += `<g>
-            <clipPath id="${clipId}">
-                <polygon points="${p[0]!.x},${p[0]!.y} ${p[1]!.x},${p[1]!.y} ${p[2]!.x},${p[2]!.y} ${p[3]!.x},${p[3]!.y}"/>
-            </clipPath>
-            <image href="${f.b64}" width="16" height="16" transform="${matrix}" image-rendering="pixelated" clip-path="url(#${clipId})"/>`;
-        
-        // Only add shadow overlay if shade > 0
-        if (f.shade > 0) {
-            svg += `
-            <polygon points="${p[0]!.x},${p[0]!.y} ${p[1]!.x},${p[1]!.y} ${p[2]!.x},${p[2]!.y} ${p[3]!.x},${p[3]!.y}" fill="black" opacity="${f.shade}" />`;
-        }
-        
-        svg += `
-        </g>\n`;
+        // The clip path must be applied in the face's own (untransformed) space,
+        // so it lives on the wrapping <g> while the UV matrix stays on the
+        // <image>. Putting both on one element would run the polygon through the
+        // matrix as well and clip away most of the texture.
+        //
+        // Face shading multiplies RGB and leaves alpha alone, so cut-out
+        // textures don't gain a black quad the way a flat overlay would.
+        defs += `<clipPath id="${clipId}"><polygon points="${points}"/></clipPath>\n`;
+        const b = 1 - f.shade;
+        const filter = f.shade > 0 ? ` filter="url(#shade${Math.round(b * 100)})"` : '';
+        svg += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="16" height="16" transform="${matrix}" image-rendering="pixelated"${filter}/></g>\n`;
+        shades.add(b);
     }
 
-    svg += `</svg>`;
-    return svg;
+    let defsBlock = defs;
+    for (const b of shades) {
+        defsBlock += `<filter id="shade${Math.round(b * 100)}" color-interpolation-filters="sRGB">` +
+            `<feColorMatrix type="matrix" values="${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0"/></filter>\n`;
+    }
+
+    return svg.replace('@@DEFS@@', `<defs>\n${defsBlock}</defs>`) + `</svg>`;
 }

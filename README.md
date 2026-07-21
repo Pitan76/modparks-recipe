@@ -79,8 +79,8 @@ CI パイプラインが生成した索引（R2上の静的ファイル）をそ
 
 Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPIです。バニラのjarパイプラインに依存せず、**本体側のCIから叩く**ことも想定しています。
 
-- **認証**: `Authorization: Bearer <secret>` ヘッダ、または `?secret=<secret>`。環境変数 `UPLOAD_SECRET`（未設定時は `ADMIN_SECRET`）と一致しない場合は `401`。
-- **注意**: Worker上ではNode-canvasが使えないため**3Dブロックのオンザフライ生成は不可**。Mod側は item/block のフラットテクスチャを渡せば2Dアイコンでレシピ描画されます。3Dアイコンが必要な場合は事前レンダリング済みPNGを `render3d/<id>.png` として上げてください。
+- **認証**: `Authorization: Bearer <secret>` ヘッダ、または `?secret=<secret>`。`UPLOAD_SECRET` と `ADMIN_SECRET` の**いずれか**に一致すれば通ります。どちらも一致しない場合は `401`。
+- **3Dアイコン**: ブロックは、モデルJSONを上げておけば**Worker側が自動で3Dアイソメトリック画像を生成**します。事前レンダリングは不要です（詳細は「アイテムアイコンの解決仕様」）。
 
 - **`PUT /api/:namespace/recipe/:id`**
   レシピJSON（ボディ）を `data/:namespace/recipe/:id.json` に保存し、D1キャッシュ破棄・索引更新まで行います。
@@ -115,6 +115,29 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
   ```
   レスポンス: `{ "ok": true, "id": "mymod:gadget", "recipeStored": true, "textureCount": 2 }`
 
+## アイテムアイコンの解決仕様
+
+レシピ画像の各スロットに描くアイコンは、`getItemImageBase64()`（[src/utils/minecraft.ts](src/utils/minecraft.ts)）が名前空間付きID `ns:path` から次の順で解決します。**最初に成功した段階を採用**します。
+
+| # | 参照先 | 内容 |
+| --- | --- | --- |
+| 1 | `assets/<ns>/textures/render3d/<path>.png` | 事前レンダリング済み3D PNG。バニラは `render-blocks.ts` が生成。段階3のキャッシュ書き戻し先でもあります。 |
+| 2 | `assets/<ns>/textures/item/<path>.png` | アイテムのフラットテクスチャ。アイテムは2Dで描くのが正なので、ここで確定します。 |
+| 3 | モデルJSONから3D生成 | ブロック。下記「3Dブロックアイコンの生成」。 |
+| 4 | `assets/<ns>/textures/block/<path>.png` | 3D生成できなかったブロックのフラットテクスチャ。 |
+| 5 | モデルJSON経由のテクスチャ解決 | ファイル名がIDと異なる場合に、モデルの `textures` / `parent` を辿って実テクスチャを特定。 |
+| 6 | 透明16x16 PNG | 何も見つからなかった場合。 |
+
+### 3Dブロックアイコンの生成
+
+段階3では、Worker上で `ns:item/<path>` → `ns:block/<path>` の順にモデルを読み、`parent` チェーンを解決してから等角投影のSVGを組み立て（[src/utils/model-parser.ts](src/utils/model-parser.ts)）、`@resvg/resvg-wasm` で64px PNGにします。オフラインの `render-blocks.ts` と同じ投影・UV・面ごとの明度計算を使うため、**バニラの事前レンダリング結果と同じ見た目**になります。
+
+生成できた場合は `assets/<ns>/textures/render3d/<path>.png` に保存するので、2回目以降のリクエストは段階1で即ヒットします（生成コストは1ブロックにつき初回のみ）。
+
+**必須の前提**: MODのブロックモデルはバニラの親モデルを継承します（例: `"parent": "minecraft:block/cube"`）。したがって `assets/minecraft/models/**.json` がR2に存在しないと**MODブロックの形状を解決できず、3D化は行われません**。バニラのモデルJSONは `npm run fetch-mc-data`、または後述の `upload-vanilla-models.ts` で投入します。
+
+**設計上の約束**: 親モデルが解決できず `elements`（実形状）が得られなかった場合は、**必ず null を返して段階4のフラットテクスチャへフォールバック**します。テクスチャ一覧から代替の立方体を組み立てるような処理は行いません。実物と異なる形が描かれてしまい、2D表示より悪化するためです。
+
 ### 管理者API
 
 いずれもクエリパラメータ `secret` が環境変数 `ADMIN_SECRET` と一致しない場合は `401 Unauthorized` を返します。
@@ -127,6 +150,13 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
   `assets/:namespace/textures/:folder/` 配下の古いオブジェクトをR2から削除します。
   レスポンス: `Deleted <件数> old objects from <prefix>`
 
+- **`GET /admin/ls?secret=...&prefix=...&limit=...&cursor=...`**
+  R2の中身を一覧します（読み取り専用のデバッグ用）。「アップロードしたはずのアセットが使われない」といった調査に使います。`limit` は既定200・最大1000、`cursor` でページングします。
+  レスポンス: `{ "prefix": "...", "count": 10, "truncated": false, "cursor": null, "objects": [{ "key": "...", "size": 123, "uploaded": "..." }] }`
+  ```bash
+  curl "https://recipe.modparks.pitan76.net/admin/ls?secret=$ADMIN_SECRET&prefix=assets/mymod/"
+  ```
+
 ## システムアーキテクチャ概要
 
 本システムはCloudflareのEdgeネットワーク上で稼働し、以下の技術要素を組み合わせています：
@@ -134,10 +164,10 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
 1. **Cloudflare R2**:
    - `minecraft.jar` などから抽出したアセット（テクスチャPNG）やJSONデータ（レシピ・タグ）のマスター保存領域。
    - GitHub Actions（[.github/workflows/fetch-mc-data.yml](.github/workflows/fetch-mc-data.yml)）が週次で以下を実行します:
-     1. `npm run fetch-mc-data` — 最新版クライアントjarをDLし、レシピ/タグJSONとitem/blockテクスチャをR2へアップロード（in-jarパスを保持）。同時に crafting レシピの索引 `index/recipes.json` も生成。
+     1. `npm run fetch-mc-data` — 最新版クライアントjarをDLし、レシピ/タグJSON、item/blockテクスチャ、**モデルJSON（`assets/minecraft/models/**.json`）**をR2へアップロード（in-jarパスを保持）。同時に crafting レシピの索引 `index/recipes.json` も生成。モデルJSONはMODブロックの親モデル解決に必須です。
      2. `render-blocks.ts` — jarから3DブロックPNGを等角投影でレンダリングし、`assets/<ns>/textures/render3d/` へ直接アップロード（S3クライアントで並列）。
    - CIに必要なSecrets: `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`（R2のS3互換キー）。
-   - **Modのアセット/レシピ**はこのバニラパイプラインには含まれません。書き込みAPI（上記）で投入します。
+   - **Modのアセット/レシピ**はこのバニラパイプラインには含まれません。書き込みAPI（上記）で投入します。Modブロックの3Dアイコンは事前レンダリング不要で、Worker側が初回リクエスト時に生成します。
    - Workerのデプロイ（`npm run deploy`）はコード変更時に手動で行います（データ更新では不要）。
 
 2. **Cloudflare D1**:
@@ -157,12 +187,43 @@ npm install
 # R2にMinecraft公式アセットを抽出・アップロード（要 .env 設定）
 npm run fetch-mc-data
 
-# ローカルサーバー起動
+# ローカルサーバー起動（D1/R2はローカルのエミュレータ＝空）
 npm run dev
+
+# ローカルサーバー起動（D1/R2は本番に直結。実データの調査・再現用）
+npm run dev:remote
 
 # Cloudflareへデプロイ
 npm run deploy
 ```
+
+### 本番データを見ながらデバッグする
+
+`npm run dev:remote` は `wrangler dev --remote` で、`wrangler.toml` の `preview_bucket_name` が本番バケットを指しているため**本番のR2/D1をそのまま読みます**。「アップロードしたアセットが表示されない」類の調査はこれで再現できます。書き込みも本番に飛ぶので、参照系での利用を前提としてください。
+
+シークレットはローカルには降りてこないため、`.dev.vars`（gitignore済み）に置きます:
+
+```
+ADMIN_SECRET="localdebug"
+UPLOAD_SECRET="localdebug"
+```
+
+```bash
+npm run dev:remote                                            # → http://localhost:8787
+curl "http://localhost:8787/admin/ls?secret=localdebug&prefix=assets/mymod/"
+```
+
+### バニラのモデルJSONを投入する
+
+MODブロックの3D化には `assets/minecraft/models/**.json` が必要です（前述）。R2のS3認証情報が無くても、書き込みAPI経由で投入できます:
+
+```bash
+npx tsx src/scripts/upload-vanilla-models.ts http://localhost:8787
+# 本番へ直接入れる場合:
+#   UPLOAD_SECRET=... npx tsx src/scripts/upload-vanilla-models.ts https://recipe.modparks.pitan76.net
+```
+
+client.jar がなければ自動でダウンロードします。約3900件を150件ずつバルクAPIへ送るため、完了まで数分〜十数分かかります。
 
 ## その他設計上の注意点
 - Minecraft公式データそのものの直接公開は避け、あくまで「レシピ画像として合成された画像」をCDN経由で配信する設計としています。

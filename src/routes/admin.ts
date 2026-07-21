@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
+import { renderBlockIconPng } from '../utils/block-icon';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -47,6 +48,22 @@ adminRoutes.get('/admin/ls', async (c) => {
     count: listed.objects.length,
     objects: listed.objects.map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded })),
   });
+});
+
+// Render a single block icon through the Worker's 3D path, bypassing the
+// render3d/ cache. For checking a block's icon (or comparing against the
+// offline pipeline's output) without touching stored objects.
+// GET /admin/render3d/:namespace/:path?secret=...
+adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const { namespace, path } = c.req.param();
+  const png = await renderBlockIconPng(c.env, namespace, path);
+  if (!png) return c.text(`No renderable model for ${namespace}:${path}`, 404);
+  return new Response(png, { headers: { 'Content-Type': 'image/png' } });
 });
 
 // Admin endpoint to (re)build the recipe index from the recipe JSON already in
