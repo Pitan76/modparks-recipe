@@ -20,7 +20,6 @@
     "jpeg-js": "^0.4.4",
     "jszip": "^3.10.1",
     "omggif": "^1.0.10",
-    "puppeteer": "^25.3.0",
     "satori": "^0.26.0",
     "ts-node": "^10.9.2",
     "unzipper": "^0.12.5"
