@@ -155,13 +155,13 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     tags++;
   }
 
-  for (const [path, b64] of Object.entries(p.textures || {})) {
+  await runPool(Object.entries(p.textures || {}), 20, async ([path, b64]) => {
     const key = `assets/${namespace}/textures/${path}`;
     await c.env.BUCKET.put(key, decodeBase64(b64 as string), {
       httpMetadata: { contentType: contentTypeForKey(key) },
     });
     textures++;
-  }
+  });
 
   await runPool(Object.entries(p.models || {}), 20, async ([path, val]) => {
     const rel = (path as string).replace(/\.json$/, '');
