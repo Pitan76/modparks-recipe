@@ -2,6 +2,7 @@ import type { Env } from './minecraft';
 import { loadModel, renderModelToSvg } from './model-parser';
 import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
+import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 
 // Renders a block's model to a 3D isometric icon at request time, so blocks
 // pushed through the write API (which never runs the offline render-blocks
@@ -49,17 +50,9 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
   return null;
 }
 
-/** Vanilla parents that mean "draw the texture flat, in 2D". */
-const FLAT_PARENTS = new Set([
-  'minecraft:item/generated',
-  'item/generated',
-  'minecraft:item/handheld',
-  'item/handheld',
-]);
-
 /** True when the item is meant to be drawn as a flat sprite rather than in 3D. */
 function isFlatItemModel(model: any): boolean {
-  return !!model && FLAT_PARENTS.has(model.parent);
+  return !!model && FLAT_ITEM_PARENTS.has(model.parent);
 }
 
 /** True only when the resolved model chain yielded real, renderable geometry. */
