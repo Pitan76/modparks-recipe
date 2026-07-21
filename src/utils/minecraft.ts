@@ -1,6 +1,3 @@
-import { renderBlockIconPng } from './block-icon';
-import { bytesToBase64 } from './http';
-
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
@@ -182,35 +179,22 @@ const TRANSPARENT_PNG =
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
-  // 1. Pre-rendered 3D/specialized PNG (from the offline pipeline or the cache
-  //    written in step 3).
+  // 1. Pre-rendered PNG from the offline render-blocks pipeline.
   let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 2. Flat item texture — items are drawn 2D, so return it as-is.
+  // 2. Flat PNG whose filename matches the item id.
   obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 3. Block: render its model to a 3D isometric icon on the fly and cache the
-  //    result under render3d/ so later requests hit step 1. Falls through
-  //    cleanly when no usable block model/textures exist.
-  const icon = await renderBlockIconPng(env, namespace, path).catch(() => null);
-  if (icon) {
-    env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
-      httpMetadata: { contentType: 'image/png' },
-    }).catch(() => {});
-    return `data:image/png;base64,${bytesToBase64(icon)}`;
-  }
-
-  // 4. Flat block texture (block with a texture but no renderable model).
   obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 5. Filename != id: resolve the item/block model JSON to its texture.
+  // 3. Filename != id: resolve the item/block model JSON to its texture.
   const viaModel = await resolveViaModel(namespace, path, env);
   if (viaModel) return viaModel;
 
-  // 6. No texture available. Block entities needing special handling (chests, …)
+  // 4. No texture available. Block entities needing special handling (chests, …)
   //    are covered by the offline render-blocks pipeline.
   return TRANSPARENT_PNG;
 }
