@@ -8,19 +8,21 @@ import { loadModel, resolveTexture } from './model';
 import {
     applyElementRotation,
     applyGuiTransform,
-    boundsOf,
-    centroidZ,
     defaultUv,
     faceBrightness,
     faceVertices,
     guiTransform,
-    project,
-    uvMatrix,
     REF_SIZE,
     FRAME_MARGIN,
     FLAT_ITEM_PARENTS,
-    type Vec2,
 } from '../../core/block-geometry';
+import {
+    boundsOf,
+    centroidZ,
+    project,
+    uvMatrix,
+    type Vec2,
+} from '../../core/math';
 
 /** 出力画像のサイズ。 */
 export const SIZE = 128;

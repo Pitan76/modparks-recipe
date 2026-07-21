@@ -5,19 +5,21 @@
 import {
     applyElementRotation,
     applyGuiTransform,
-    boundsOf,
-    centroidZ,
     defaultUv,
     faceBrightness,
     faceVertices,
     guiTransform,
-    project,
-    uvMatrix,
     REF_SIZE,
     FRAME_MARGIN,
     FLAT_ITEM_PARENTS,
-    type Vec2,
 } from './block-geometry';
+import {
+    boundsOf,
+    centroidZ,
+    project,
+    uvMatrix,
+    type Vec2,
+} from './math';
 
 interface SvgFace {
     pts2d: Vec2[];
