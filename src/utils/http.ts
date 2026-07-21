@@ -1,11 +1,17 @@
 // HTTP / encoding helpers shared across the write and image APIs.
 
-/** Bearer token (Authorization header) or ?secret= must match UPLOAD_SECRET (or ADMIN_SECRET). */
+/**
+ * Bearer token (Authorization header) or ?secret= must match UPLOAD_SECRET or
+ * ADMIN_SECRET. Either is accepted: ADMIN_SECRET already grants the destructive
+ * admin routes, so honouring it here widens nothing, and it keeps maintenance
+ * scripts working against a `wrangler dev --remote` session, where .dev.vars can
+ * override one secret but not the other.
+ */
 export function authorized(c: any): boolean {
   const header = c.req.header('Authorization') || '';
   const token = header.replace(/^Bearer\s+/i, '') || c.req.query('secret') || '';
-  const expected = c.env.UPLOAD_SECRET || c.env.ADMIN_SECRET;
-  return !!expected && token === expected;
+  if (!token) return false;
+  return token === c.env.UPLOAD_SECRET || token === c.env.ADMIN_SECRET;
 }
 
 export function decodeBase64(b64: string): Uint8Array {
