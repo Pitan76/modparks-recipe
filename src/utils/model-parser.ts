@@ -1,3 +1,7 @@
+/**
+ * @fileoverview モデルJSONから3DのSVGデータを構築するモデルパーサー。
+ */
+
 import {
     applyElementRotation,
     applyGuiTransform,
@@ -19,7 +23,7 @@ interface SvgFace {
     pts2d: Vec2[];
     uv: number[];
     b64: string;
-    /** Natural pixel size of the texture; UVs are expressed in this space. */
+    /** テクスチャのピクセルサイズ。UVはこのサイズを基準として定義されます。 */
     texW: number;
     texH: number;
     brightness: number;
@@ -27,14 +31,15 @@ interface SvgFace {
 }
 
 /**
- * Width/height from a PNG data URL's IHDR chunk. Face UVs are in texture pixels
- * (0..16 for a block texture, but 0..64 for an entity atlas such as a chest's),
- * so the <image> has to be placed at the texture's real size — hardcoding 16
- * squashes anything larger onto a 16x16 square.
+ * PNGデータURLのIHDRチャンクから縦横のピクセルサイズを取得します。
+ * 面のUVはテクスチャのピクセル単位（ブロックテクスチャの場合は 0..16、チェストなどのエンティティアトラスの場合は 0..64）で表現されるため、
+ * `<image>` はテクスチャの実際のサイズで配置する必要があります。
+ * 16pxとして固定値（ハードコード）にしてしまうと、それより大きいアセットが 16x16 の正方形に押しつぶされてしまいます。
+ * @param dataUrl PNGのデータURL
  */
 function pngSize(dataUrl: string): { w: number; h: number } {
     const comma = dataUrl.indexOf(',');
-    // 33 bytes covers the 8-byte signature, the chunk header and IHDR's w/h.
+    // 33バイトには、8バイトのシグネチャ、チャンクヘッダー、およびIHDRの幅/高さが含まれます。
     const header = atob(dataUrl.slice(comma + 1, comma + 1 + 64)).slice(0, 33);
     const be32 = (o: number) =>
         (header.charCodeAt(o) << 24 | header.charCodeAt(o + 1) << 16 |
@@ -43,7 +48,12 @@ function pngSize(dataUrl: string): { w: number; h: number } {
     return w > 0 && h > 0 ? { w, h } : { w: 16, h: 16 };
 }
 
-/** Load a model and merge it with its parent chain, recursively. */
+/**
+ * 指定されたモデルIDからモデルデータを読み込み、親モデルのチェーンと再帰的にマージします。
+ * @param modelId 対象モデルのID
+ * @param getModelJson モデルのJSONを取得する非同期関数
+ * @returns マージされたモデルデータ
+ */
 export async function loadModel(
     modelId: string,
     getModelJson: (id: string) => Promise<any>
@@ -66,7 +76,12 @@ export async function loadModel(
     };
 }
 
-/** Follow `#ref` texture indirections down to a real texture path. */
+/**
+ * `#ref` 形式のテクスチャ参照（インダイレクション）をたどり、実際のテクスチャパスを解決します。
+ * @param texName テクスチャの参照名（例: "#all" や "#texture"）
+ * @param textures モデルのテクスチャ定義マップ
+ * @returns 解決されたテクスチャパス、解決できない場合は null
+ */
 export function resolveTexture(texName: string, textures: any): string | null {
     if (!texName) return null;
     let current = texName.startsWith('#') ? texName.substring(1) : texName;
@@ -83,7 +98,13 @@ export function resolveTexture(texName: string, textures: any): string | null {
     return null;
 }
 
-/** Render a model to an isometric SVG icon, or null if it has no geometry. */
+/**
+ * モデルを等角投影（isometric）のSVGアイコンとしてレンダリングします。ジオメトリが存在しない場合は null を返します。
+ * @param modelId 対象モデルのID
+ * @param getModelJson モデルのJSONを取得する非同期関数
+ * @param getTextureBase64 テクスチャ画像をbase64データURLとして取得する非同期関数
+ * @returns 生成されたSVG文字列、または null
+ */
 export async function renderModelToSvg(
     modelId: string,
     getModelJson: (id: string) => Promise<any>,
@@ -102,6 +123,11 @@ export async function renderModelToSvg(
     return buildSvg(faces);
 }
 
+/**
+ * 平面的なスプライトアイテム（2D）のSVGを生成します。
+ * @param model モデルデータ
+ * @param getTextureBase64 テクスチャ画像データを取得する関数
+ */
 async function flatItemSvg(
     model: any,
     getTextureBase64: (path: string) => Promise<string | null>
@@ -110,13 +136,18 @@ async function flatItemSvg(
     if (!texPath) return null;
     const b64 = await getTextureBase64(texPath);
     if (!b64) return null;
-    // Animated textures are a vertical strip of frames; show only the first.
+    // アニメーションテクスチャは縦長のフレーム群（帯状）です。最初のフレームのみを表示します。
     const { w } = pngSize(b64);
     return `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
         + `<image href="${b64}" width="${w}" height="${w}" preserveAspectRatio="xMinYMin slice"`
         + ` image-rendering="optimizeSpeed"/></svg>`;
 }
 
+/**
+ * モデル要素のすべての描画対象面を収集します。
+ * @param model モデルデータ
+ * @param getTextureBase64 テクスチャ画像データを取得する関数
+ */
 async function collectFaces(
     model: any,
     getTextureBase64: (path: string) => Promise<string | null>
@@ -151,11 +182,11 @@ async function collectFaces(
 }
 
 /**
- * Frame against a FIXED reference (the projected size of a full 16³ block), not
- * against the model's own bounds: fitting each model to its bounding box would
- * blow a button or a slab up to the size of a full block, and would not match
- * the offline renderer either. A model larger than the reference is clamped
- * down so it can't overflow the frame.
+ * 固定の基準（フルサイズ 16³ ブロックの投影サイズ）に基づいてフレーム位置を算出します。
+ * モデル独自のバウンディングボックスを基準にはしません。バウンディングボックスに合わせると、
+ * ボタンやハーフブロックがフルサイズブロックと同じ大きさに引き伸ばされてしまい、オフラインレンダラーとも一致しなくなります。
+ * 基準よりも大きいモデルは、フレームからはみ出さないように縮小されます。
+ * @param faces 収集されたSVG面の配列
  */
 function viewBox(faces: SvgFace[]): string {
     const { minX, minY, maxX, maxY } = boundsOf(faces.map(f => f.pts2d));
@@ -163,6 +194,10 @@ function viewBox(faces: SvgFace[]): string {
     return `${(minX + maxX) / 2 - extent / 2} ${(minY + maxY) / 2 - extent / 2} ${extent} ${extent}`;
 }
 
+/**
+ * 収集されたSVG面リストを結合して、最終的なSVGドキュメント文字列を組み立てます。
+ * @param faces 収集された面の配列
+ */
 function buildSvg(faces: SvgFace[]): string {
     let defs = '';
     let body = '';
@@ -176,15 +211,14 @@ function buildSvg(faces: SvgFace[]): string {
         const clipId = `clip_${clipSeq++}`;
         const points = f.pts2d.map(pt => `${pt.x},${pt.y}`).join(' ');
 
-        // The clip path must be applied in the face's own (untransformed) space,
-        // so it lives on the wrapping <g> while the UV matrix stays on the
-        // <image>. Putting both on one element would run the polygon through the
-        // matrix as well and clip away most of the texture.
+        // クリッピングパス（clipPath）は、変換されていない面自体のローカル空間に適用される必要があります。
+        // そのため、クリップ設定は外側の `<g>` 要素に適用し、UVの変換行列は内側の `<image>` 要素に設定します。
+        // 両方を同じ要素に設定すると、ポリゴン頂点も変換行列にかけられてしまい、テクスチャの大部分がクリップされて非表示になります。
         defs += `<clipPath id="${clipId}"><polygon points="${points}"/></clipPath>\n`;
         const filter = f.brightness < 1 ? ` filter="url(#${shadeId(f.brightness)})"` : '';
-        // Shading goes on the <g>, not the <image>: a filter on the image is
-        // resolved against its own pre-transform box, which the UV matrix then
-        // shrinks, and resvg drops faces whose filter region collapses.
+        // シェーディング（影）は `<image>` ではなく `<g>` に適用します。
+        // 画像にフィルターをかけると変換前の矩形サイズに対して計算されますが、その後にUV行列によって縮小されるため、
+        // フィルター領域が潰れた際に resvg が面を描画対象からドロップしてしまいます。
         body += `<g clip-path="url(#${clipId})"${filter}><image href="${f.b64}" width="${f.texW}" height="${f.texH}"`
             + ` transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"/></g>\n`;
         if (f.brightness < 1) brightnesses.add(f.brightness);
@@ -196,12 +230,19 @@ function buildSvg(faces: SvgFace[]): string {
         + `<defs>\n${defs}</defs>\n${body}</svg>`;
 }
 
+/**
+ * 明るさの倍率から、ユニークなフィルターIDを取得します。
+ * @param brightness 明るさの倍率
+ */
 function shadeId(brightness: number): string {
     return `shade${Math.round(brightness * 100)}`;
 }
 
-/** Shading multiplies RGB and leaves alpha alone, so cut-out textures don't
- *  gain a black quad the way a flat overlay would. */
+/**
+ * シェーディング用のフィルター。RGB乗算を行いつつ、アルファ（透過）はそのまま維持します。
+ * これにより、切り抜き透過テクスチャに平坦なオーバーレイを重ねた時のように、周囲に黒い四角形が表示されるのを防ぎます。
+ * @param b 明るさの倍率
+ */
 function shadeFilter(b: number): string {
     return `<filter id="${shadeId(b)}" color-interpolation-filters="sRGB">`
         + `<feColorMatrix type="matrix" values="${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0"/></filter>\n`;

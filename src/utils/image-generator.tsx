@@ -1,46 +1,60 @@
+/**
+ * @fileoverview レシピ画像ジェネレーター。
+ * クラフトUIレイアウト：参照レンダラーの出力から外側の余白を切り取った値を基準とし、236x112のキャンバスを作成します。
+ * 座標はベースピクセル単位であり、`scale` がキャンバス全体をスケーリングします。
+ */
+
 import { Resvg } from '@resvg/resvg-wasm';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { getItemImageBase64, getTag, Env } from './minecraft';
 import { encodeGif } from './gif-encoder';
 import { ensureWasm } from './wasm';
 
-// ---- Crafting UI layout -----------------------------------------------------
-// Icon positions measured off the reference renderer's output with its outer
-// margin clipped away, giving a 236x112 canvas. Coordinates are in base pixels;
-// `scale` multiplies the whole canvas.
-
 const CANVAS_W = 236;
 const CANVAS_H = 112;
 
-// public/crafting_3x3.png: the crafting UI (slots and arrow) at its native
-// 118x56, drawn at 2x here. Slot borders and the arrow's stepped edge come from
-// the image, so nothing about the frame is redrawn in code.
-const BACKGROUND = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==';
+// public/crafting_3x3.png: ネイティブ解像度 118x56 のクラフトUI（スロットと矢印）をここでは2倍で描画します。
+// スロットの境界や矢印のギザギザした輪郭は背景画像由来なので、コード内で枠線を再描画する処理は行いません。
+const BACKGROUND = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttoned1pnt9sVn4QKFhaCfJ7/ob+CVzkcDq21n0VznlP9PNM0lZ6DGhYWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgggWgiy++R+2YC3PinrU+bOULCwEsbBsWvWzkB51/iwlCwtBBAtBBAtB5mvY/l6/v2eu5jywZGEhyLyw/Qnj/WeVvmTOc9n5fTnei4WFIIv7sNX3rfo1Yl8y5zl1fl9u7YZhaK15R/AsFhaCCJaXGIZhXlvuJ1gIIlheytI+RrAQRLCUsLT3ESwEESylLO1tBAtBBMsqWNrrCBaC+E6nN7P2FfPZ499ZWAgiWFbJNe1lgoUgrmFZJdewl1lYCGJh38yrl+vW61DL+jsLC0EsLKtgWa9jYSGIhaWUZb2NhYUgFpYSlvU+FhaCWFheyrI+xsJCEAvLS1jW57CwEMTC8l9Z1ueysBBkXtj+3NP+/NFqzgNLFhaCzAvbnzDef1bpS+Y8l/XzuDZ8TxYWgiz+S9xfwav0a8S+ZM5zqp9nmqbSc1DDwkIQwUIQwUIQn3Rik7Z639zCQhALyyb1+9Rb+2+6hYUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUggoUg8zf/r+1ZJM4DSxYWgnyM4/hdfQjgOhYWgvwFEw2nBIrT/sIAAAAASUVORK5CYII==';
 
 const ICON = 32;
 
-/** Top-left of the first slot's interior, and the pitch between slots. */
+/** 最初のスロットの内部の左上座標、およびスロット間のピッチ（間隔）。 */
 const GRID_X = 4;
 const GRID_Y = 4;
 const SLOT = 36;
 
-/** Top-left of the result icon, centred in the wider output slot. */
+/** 完成品アイコンの左上座標（広い出力スロットの中央に配置されます）。 */
 const OUT_X = 192;
 const OUT_Y = 40;
 
+/**
+ * 指定された座標にアイコンを配置するためのSVGイメージ要素を生成します。
+ * @param href アイコン画像のデータURLまたはURL
+ * @param x X座標
+ * @param y Y座標
+ * @returns SVGイメージ要素文字列
+ */
 function iconSvg(href: string, x: number, y: number): string {
   return `<image href="${href}" x="${x}" y="${y}" width="${ICON}" height="${ICON}"`
     + ` image-rendering="optimizeSpeed" preserveAspectRatio="xMidYMid meet"/>`;
 }
 
 /**
- * Per-request memo of item id -> icon data URL. A crafting grid usually repeats
- * the same ingredient across several slots (and 3D block icons are expensive to
- * build), so every distinct item is resolved exactly once per image. Promises,
- * not values, are stored so concurrent slots share one in-flight lookup.
+ * リクエストごとの「アイテムID -> アイコンデータURL」のメモ（キャッシュ）型。
+ * クラフトグリッド内では通常、同じ素材が複数のスロットで繰り返されます（また、3Dブロックアイコンの構築コストは高いため）、
+ * 画像ごとに各固有アイテムの解決を1回のみ実行します。
+ * 解決された値ではなく Promise を保存することで、並行するスロット間で進行中の同じ検索処理を共有します。
  */
 type IconCache = Map<string, Promise<string | null>>;
 
+/**
+ * キャッシュを活用して、特定のアイテムIDに対応するアイコンデータURLを取得します。
+ * @param id アイテムID
+ * @param env 環境変数
+ * @param cache アイコンデータキャッシュ
+ * @returns アイコンのbase64データURL、または null
+ */
 function itemIcon(id: string, env: Env, cache: IconCache): Promise<string | null> {
   let pending = cache.get(id);
   if (!pending) {
@@ -50,6 +64,14 @@ function itemIcon(id: string, env: Env, cache: IconCache): Promise<string | null
   return pending;
 }
 
+/**
+ * レシピの素材オブジェクト（item, tag, 配列など）を解決し、対応するアイテムのアイコンデータURLを返します。
+ * @param ingredient レシピの素材情報
+ * @param env 環境変数
+ * @param tagOffset タグ選択時に使用するインデックスオフセット（アニメーション等用）
+ * @param cache アイコンデータキャッシュ
+ * @returns アイコンのbase64データURL、または null
+ */
 async function resolveIngredient(ingredient: any, env: Env, tagOffset: number, cache: IconCache): Promise<string | null> {
   if (!ingredient) return null;
   if (typeof ingredient === 'string') {
@@ -75,15 +97,22 @@ async function resolveIngredient(ingredient: any, env: Env, tagOffset: number, c
   return null;
 }
 
+/**
+ * レシピデータから3x3クラフトグリッドに対応する9スロットのアイコン画像データURLの配列を作成します。
+ * @param recipeData レシピJSONオブジェクト
+ * @param env 環境変数
+ * @param tagOffset タグ選択のインデックスオフセット
+ * @param cache アイコンデータキャッシュ
+ * @returns 9スロット分のアイコンデータURL（または null）の配列
+ */
 export async function createRecipeGrid(
   recipeData: any,
   env: Env,
   tagOffset: number,
   cache: IconCache = new Map()
 ): Promise<Array<string | null>> {
-  // Collect the slots first, then resolve them all at once: the lookups are
-  // independent network round trips, and running them serially made a nine-slot
-  // recipe nine times slower than it needs to be.
+  // 最初にスロット情報を収集し、それらを一度に並行して解決します：
+  // 検索処理は独立したネットワーク往復を伴うため、順次実行すると9スロットのレシピ処理速度が不必要に9倍遅くなってしまいます。
   const slots: { index: number; ingredient: any }[] = [];
 
   if (recipeData.type === 'minecraft:crafting_shaped' || recipeData.type === 'crafting_shaped') {
@@ -110,6 +139,13 @@ export async function createRecipeGrid(
   return grid;
 }
 
+/**
+ * レシピ全体のUIを表現するSVG文字列を生成します。
+ * @param recipeData レシピJSONオブジェクト
+ * @param env 環境変数
+ * @param tagOffset タグ選択のインデックスオフセット
+ * @returns 生成されたSVG文字列
+ */
 export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: number = 0) {
   const cache: IconCache = new Map();
 
@@ -136,19 +172,31 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
     + ` viewBox="0 0 ${CANVAS_W} ${CANVAS_H}" shape-rendering="crispEdges">${body}</svg>`;
 }
 
-// Render at an integer zoom to avoid fractional resampling of the whole canvas
-// (which reintroduces antialiasing). Integer scaling keeps pixel art crisp.
-// Base canvas is 236x112, so scale N -> (236*N)x(112*N). Default 1x = 236x112.
+// キャンバス全体において、アンチエイリアシングが発生してしまう原因となる小数倍のリサンプリングを避けるため、整数倍のズームでレンダリングします。
+// 整数スケーリングにより、ピクセルアートの鮮明さが維持されます。
+// ベースのキャンバスサイズは 236x112 なので、スケール N の場合は (236*N)x(112*N) になります。デフォルトの1倍は 236x112 です。
 export const DEFAULT_SCALE = 1;
 export const MAX_SCALE = 8;
 
-/** Clamp a caller-supplied scale to a safe integer range. */
+/**
+ * 指定されたスケール値を安全な整数範囲（1〜8）に丸めて返します。
+ * @param value 判定対象のスケール値
+ * @returns 正規化されたスケール整数
+ */
 export function normalizeScale(value: unknown): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n < 1) return DEFAULT_SCALE;
   return Math.min(n, MAX_SCALE);
 }
 
+/**
+ * レシピJSONデータをPNG画像（バイナリ）としてレンダリングします。
+ * @param recipeData レシピJSON
+ * @param env 環境変数
+ * @param tagOffset タグ選択のインデックスオフセット
+ * @param scale スケール倍率
+ * @returns PNG画像のバイナリ
+ */
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
@@ -156,6 +204,14 @@ export async function renderRecipePng(recipeData: any, env: Env, tagOffset: numb
   return resvg.render().asPng();
 }
 
+/**
+ * レシピJSONデータをJPEG画像（バイナリ）としてレンダリングします。
+ * @param recipeData レシピJSON
+ * @param env 環境変数
+ * @param tagOffset タグ選択のインデックスオフセット
+ * @param scale スケール倍率
+ * @returns JPEG画像のバイナリ
+ */
 export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
@@ -163,8 +219,8 @@ export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: numb
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;
 
-  // JPEG has no alpha channel, so flatten the transparent recipe image onto
-  // a solid white background to avoid black fringing on transparent pixels.
+  // JPEGはアルファ（透過）チャンネルを持たないため、透過ピクセルの周囲に黒い縁取り（フリンジ）が発生するのを防ぐために、
+  // 透過レシピ画像を不透明な白い背景に合成します。
   const rgba = new Uint8Array(pixels);
   for (let i = 0; i < rgba.length; i += 4) {
     const a = rgba[i + 3] / 255;
@@ -178,10 +234,14 @@ export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: numb
   return new Uint8Array(jpg.data);
 }
 
-// Base recipe canvas dimensions (before scaling).
 export const TILE_BASE_WIDTH = CANVAS_W;
 export const TILE_BASE_HEIGHT = CANVAS_H;
 
+/**
+ * ローカル用の簡易Bytes to base64ヘルパー。
+ * @param bytes バイナリデータ
+ * @returns base64文字列
+ */
 function bytesToBase64Local(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;
@@ -191,25 +251,38 @@ function bytesToBase64Local(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/** スプライトシートの情報を表すインターフェース。 */
 export interface SpriteSheet {
+  /** スプライトシートのPNGバイナリ */
   png: Uint8Array;
+  /** 各タイルの幅 */
   tileWidth: number;
+  /** 各タイルの高さ */
   tileHeight: number;
+  /** 列数 */
   columns: number;
+  /** 行数 */
   rows: number;
+  /** 総タイル（レシピ）数 */
   count: number;
-  /** ids in tile order (row-major); a null means that slot rendered blank. */
+  /** タイル順のレシピIDリスト（行優先）。レンダリングに失敗したスロットは null になります */
   order: Array<string | null>;
+  /** レンダリングに失敗した、またはレシピデータが見つからなかったIDのリスト */
   missing: string[];
 }
 
 /**
- * Render many recipes into a single PNG sprite sheet, tiled row-major. Each tile
- * is TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale. Callers slice tiles by index:
+ * 複数のレシピを行優先（row-major）で並べた1つのPNGスプライトシート画像にレンダリングします。
+ * 各タイルのサイズは TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale です。
+ * コールバックや利用側は、インデックスに基づいてタイルをスライスします：
  *   col = i % columns, row = floor(i / columns)
  *   x = col * tileWidth, y = row * tileHeight
- * Recipes are rendered once each to PNG, then composited via one outer SVG so
- * the sheet is produced in a single resvg pass.
+ * 各レシピは一度PNGにレンダリングされた後、1つの大きなSVGを介して合成され、1回のresvg処理でシートが生成されます。
+ * @param entries レシピIDとデータの配列
+ * @param env 環境変数
+ * @param columns スプライトシートの列数（デフォルトは8）
+ * @param scale スケール倍率
+ * @returns スプライトシートオブジェクト
  */
 export async function renderRecipeSpriteSheet(
   entries: Array<{ id: string; recipe: any | null }>,
@@ -260,6 +333,14 @@ export async function renderRecipeSpriteSheet(
   return { png, tileWidth, tileHeight, columns: cols, rows, count, order, missing };
 }
 
+/**
+ * レシピのタグローテーション（素材切り替え）などを考慮し、アニメーションGIF画像を生成します。
+ * @param recipeData レシピJSON
+ * @param env 環境変数
+ * @param maxFrames 最大フレーム数（デフォルトは5フレーム）
+ * @param scale スケール倍率
+ * @returns GIF画像のバイナリ
+ */
 export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const frames = [];
@@ -272,7 +353,7 @@ export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: numb
       width: rendered.width,
       height: rendered.height,
       pixels: rendered.pixels,
-      delayMs: 1000 // 1 second per frame
+      delayMs: 1000 // 1フレームあたり1秒
     });
   }
   

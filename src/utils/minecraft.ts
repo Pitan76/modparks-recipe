@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Minecraftのデータやテクスチャの解決、キャッシュDBへの保存、3Dレンダリングアイコンの生成などを行うユーティリティ。
+ */
+
 import { renderBlockIconPng } from './block-icon';
 import { bytesToBase64 } from './http';
 
@@ -5,10 +9,15 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ADMIN_SECRET: string;
-  // Secret required for the write/upload API. Falls back to ADMIN_SECRET.
+  // 書き込み/アップロードAPIに必要なシークレット。設定されていない場合は ADMIN_SECRET が使用されます。
   UPLOAD_SECRET?: string;
 }
 
+/**
+ * レシピデータから完成品アイテムのIDを抽出します。
+ * @param data レシピJSONオブジェクト
+ * @returns 完全修飾されたアイテムID（例: "minecraft:apple"）、取得できない場合は null
+ */
 export function resultItemOf(data: any): string | null {
   const r = data?.result;
   if (!r) return null;
@@ -17,15 +26,24 @@ export function resultItemOf(data: any): string | null {
   return id.includes(':') ? id : `minecraft:${id}`;
 }
 
+/**
+ * レシピタイプがクラフト関連（shaped または shapeless）であるかどうかを判定します。
+ * @param type レシピのタイプ
+ */
 export function isCraftingType(type: unknown): boolean {
   if (typeof type !== 'string') return false;
   const t = type.replace(/^minecraft:/, '');
   return t === 'crafting_shaped' || t === 'crafting_shapeless';
 }
 
+/**
+ * ネームスペース付きID（例: "minecraft:stone"）を分割して、ネームスペースとパスのオブジェクトを返します。
+ * ネームスペースが省略されている場合はデフォルトで "minecraft" になります。
+ * @param id アイテムID文字列
+ */
 export function parseNamespacedId(id: string): { namespace: string; path: string } {
-  // e.g. "minecraft:wooden_sword" -> { namespace: "minecraft", path: "wooden_sword" }
-  // e.g. "stone" -> { namespace: "minecraft", path: "stone" }
+  // 例: "minecraft:wooden_sword" -> { namespace: "minecraft", path: "wooden_sword" }
+  // 例: "stone" -> { namespace: "minecraft", path: "stone" }
   if (id.includes(':')) {
     const [namespace, ...rest] = id.split(':');
     return { namespace, path: rest.join(':') };
@@ -33,6 +51,10 @@ export function parseNamespacedId(id: string): { namespace: string; path: string
   return { namespace: 'minecraft', path: id };
 }
 
+/**
+ * ArrayBufferをbase64文字列に変換します。
+ * @param buffer 変換対象 of ArrayBuffer
+ */
 function bufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -44,9 +66,16 @@ function bufferToBase64(buffer: ArrayBuffer): string {
 }
 
 // ----------------------------------------------------
-// Recipes
+// レシピ (Recipes)
 // ----------------------------------------------------
 
+/**
+ * データベース（D1）またはオブジェクトストレージ（R2）からレシピJSONを取得します。
+ * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
+ * @param id 完全修飾レシピID (例: "minecraft:stone")
+ * @param env 環境変数
+ * @returns レシピJSON、存在しない場合は null
+ */
 export async function getRecipe(id: string, env: Env): Promise<any | null> {
   const { results } = await env.DB.prepare('SELECT data FROM recipes WHERE id = ?').bind(id).all();
   if (results && results.length > 0) {
@@ -69,7 +98,7 @@ export async function getRecipe(id: string, env: Env): Promise<any | null> {
   if (data.result && data.result.id) resultItem = data.result.id;
   else if (data.result && typeof data.result === 'string') resultItem = data.result;
 
-  // Fire and forget caching
+  // バックグラウンドで非同期にキャッシュ保存を実行（例外はログ出力のみ）
   env.DB.prepare('INSERT OR REPLACE INTO recipes (id, result_item, data) VALUES (?, ?, ?)')
     .bind(id, resultItem, dataStr)
     .run().catch(console.error);
@@ -78,9 +107,16 @@ export async function getRecipe(id: string, env: Env): Promise<any | null> {
 }
 
 // ----------------------------------------------------
-// Tags
+// タグ (Tags)
 // ----------------------------------------------------
 
+/**
+ * 指定されたIDに対応するタグ（アイテムグループ等）の構成アイテムリストを取得します。
+ * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
+ * @param id タグID (先頭の#は省略可能)
+ * @param env 環境変数
+ * @returns タグに含まれるアイテムIDの配列
+ */
 export async function getTag(id: string, env: Env): Promise<string[]> {
   if (id.startsWith('#')) id = id.substring(1);
   
@@ -91,7 +127,7 @@ export async function getTag(id: string, env: Env): Promise<string[]> {
 
   const { namespace, path } = parseNamespacedId(id);
   
-  // Tag paths can be under items, item, blocks, or block
+  // タグのパスは items, item, blocks, block のいずれかの配下に存在する可能性があります
   let obj = await env.BUCKET.get(`data/${namespace}/tags/item/${path}.json`);
   if (!obj) obj = await env.BUCKET.get(`data/${namespace}/tags/items/${path}.json`);
   if (!obj) obj = await env.BUCKET.get(`data/${namespace}/tags/block/${path}.json`);
@@ -110,21 +146,33 @@ export async function getTag(id: string, env: Env): Promise<string[]> {
 }
 
 // ----------------------------------------------------
-// Images
+// 画像 (Images)
 // ----------------------------------------------------
 
-/** Fetch a texture PNG from R2 by its resource id (e.g. "ns:item/foo") as a data URL. */
+/**
+ * リソースID（例: "ns:item/foo"）に対応するテクスチャPNGをR2から取得し、データURLとして返します。
+ * @param texId テクスチャのリソースID
+ * @param defaultNs デフォルトのネームスペース
+ * @param env 環境変数
+ * @returns テクスチャ画像のbase64データURL、取得できない場合は null
+ */
 async function textureDataUrl(texId: string, defaultNs: string, env: Env): Promise<string | null> {
   const tns = texId.includes(':') ? texId.split(':')[0] : defaultNs;
   const tpath = texId.includes(':') ? texId.split(':').slice(1).join(':') : texId;
   let obj = await env.BUCKET.get(`assets/${tns}/textures/${tpath}.png`);
-  // Unprefixed refs default to minecraft; if the mod ns had no match, try minecraft too.
+  // プレフィックスのない参照はデフォルトで minecraft になります。Modのネームスペースで見つからない場合は minecraft も試します。
   if (!obj && tns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${tpath}.png`);
   if (!obj) return null;
   return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 }
 
-/** Walk a model's parent chain, merging texture maps (child overrides parent). */
+/**
+ * モデルの親チェーンを走査し、テクスチャマップをマージします（子が親の設定を上書きします）。
+ * @param ns ネームスペース
+ * @param modelPath モデルファイルへの相対パス
+ * @param env 環境変数
+ * @param seen 循環参照を防ぐための訪問済みモデルキーのセット
+ */
 async function mergedModelTextures(
   ns: string,
   modelPath: string,
@@ -150,7 +198,11 @@ async function mergedModelTextures(
   return { ...base, ...(model.textures || {}) };
 }
 
-/** Pick a concrete (non-#reference) texture from a merged model texture map. */
+/**
+ * マージされたモデルのテクスチャマップから、具体的な（#参照ではない）実際のテクスチャパスを選択します。
+ * @param textures テクスチャマップオブジェクト
+ * @returns テクスチャパス、見つからない場合は null
+ */
 function pickModelTexture(textures: Record<string, string>): string | null {
   const prefer = ['layer0', 'all', 'texture', 'side', 'front', 'particle', 'end', 'top'];
   for (const k of prefer) {
@@ -163,7 +215,13 @@ function pickModelTexture(textures: Record<string, string>): string | null {
   return null;
 }
 
-/** Resolve an item's texture via its model JSON (for items whose id != texture filename). */
+/**
+ * アイテム/ブロックのモデルJSONを介して、そのテクスチャパスを解決します（IDとテクスチャのファイル名が異なるアイテム用）。
+ * @param namespace ネームスペース
+ * @param path リソースパス
+ * @param env 環境変数
+ * @returns テクスチャ画像のデータURL、解決できない場合は null
+ */
 async function resolveViaModel(namespace: string, path: string, env: Env): Promise<string | null> {
   for (const kind of ['item', 'block']) {
     const textures = await mergedModelTextures(namespace, `${kind}/${path}`, env, new Set());
@@ -179,21 +237,26 @@ async function resolveViaModel(namespace: string, path: string, env: Env): Promi
 const TRANSPARENT_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAcSURBVDhPY3hAIP+PgYGBkIGxAaNgFIwCFAYGBgA9Vww1u0dD/wAAAABJRU5ErkJggg==";
 
+/**
+ * 指定されたアイテムIDに対応するテクスチャ/アイコン画像を解決し、base64データURLとして返します。
+ * @param id アイテムID
+ * @param env 環境変数
+ * @returns アイコンのbase64データURL、見つからない場合は透明なPNGデータ
+ */
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
-  // 1. Pre-rendered PNG from the offline render-blocks pipeline.
+  // 1. オフラインのブロックレンダリングパイプラインから生成された、事前レンダリング済みのPNG。
   let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 2. Flat PNG whose filename matches the item id.
+  // 2. ファイル名がアイテムIDと一致する平面のPNG。
   obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 3. Block: render its model to a 3D isometric icon, matching how the offline
-  //    pipeline renders vanilla blocks, and cache it under render3d/ so later
-  //    requests hit step 1. Returns null unless the model chain resolved to real
-  //    geometry, so blocks it can't render still get their flat texture below.
+  // 3. ブロック: そのモデルを3Dの等角投影（isometric）アイコンにレンダリングします（オフラインパイプラインがバニラのブロックをレンダリングする方法に相当）。
+  //    レンダリング結果は render3d/ 配下にキャッシュされるため、次回以降のリクエストはステップ1で取得されます。
+  //    モデルチェーンが実際のジオメトリに解決されない場合は null を返します。その場合、以下の手順4で平面的なテクスチャが試行されます。
   const icon = await renderBlockIconPng(env, namespace, path).catch(() => null);
   if (icon) {
     await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
@@ -202,15 +265,14 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
     return `data:image/png;base64,${bytesToBase64(icon)}`;
   }
 
-  // 4. Flat block texture (block with no renderable model).
+  // 4. 平面的なブロックテクスチャ（レンダリング可能なモデルがないブロック用）。
   obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
   if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
 
-  // 5. Filename != id: resolve the item/block model JSON to its texture.
+  // 5. ファイル名がIDと異なる場合: item/block のモデルJSONを解析し、テクスチャを特定します。
   const viaModel = await resolveViaModel(namespace, path, env);
   if (viaModel) return viaModel;
 
-  // 6. No texture available. Block entities needing special handling (chests, …)
-  //    are covered by the offline render-blocks pipeline.
+  // 6. 利用可能なテクスチャがない場合。特別な処理が必要なブロックエンティティ（チェストなど）は、オフラインのブロックレンダリングパイプラインによってカバーされています。
   return TRANSPARENT_PNG;
 }

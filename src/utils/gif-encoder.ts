@@ -1,12 +1,27 @@
+/**
+ * @fileoverview ピクセルアート画像（マイクラのテクスチャなど）向けの簡易カラーパレット型アニメーションGIFエンコーダー。
+ */
+
 import { GifWriter } from 'omggif';
 
+/** GIFの各フレームを表すインターフェース。 */
 export interface GifFrame {
+  /** フレームの横幅 */
   width: number;
+  /** フレームの縦幅 */
   height: number;
-  pixels: Uint8ClampedArray | Uint8Array; // RGBA pixels
-  delayMs?: number; // Delay in milliseconds
+  /** RGBAピクセルデータの配列 */
+  pixels: Uint8ClampedArray | Uint8Array;
+  /** フレームの表示時間（ミリ秒単位。オプション） */
+  delayMs?: number;
 }
 
+/**
+ * 複数のフレーム画像から、アニメーションGIFをエンコードして生成します。
+ * @param frames GIFの各フレームデータの配列
+ * @param globalDelayMs 各フレームの標準的な表示時間（ミリ秒単位。デフォルトは1000ms）
+ * @returns エンコードされたGIFファイルのバイナリデータ
+ */
 export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uint8Array {
   if (frames.length === 0) {
     throw new Error("No frames provided");
@@ -15,7 +30,7 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
   const width = frames[0].width;
   const height = frames[0].height;
 
-  // Pre-calculate total buffer size (rough estimate)
+  // 大まかなバッファ全体のサイズを事前に計算します。
   const buffer = new Uint8Array(width * height * frames.length + 1024);
   
   const gifWriter = new GifWriter(buffer, width, height, { loop: 0 });
@@ -25,11 +40,11 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
       throw new Error("All frames must have the same dimensions");
     }
 
-    // Convert RGBA to indexed color using a simple palette strategy
-    // Since this is pixel art (Minecraft), unique colors are limited.
-    // However, omggif requires palette (RGB) and index buffer.
+    // シンプルなパレット戦略を使用して、RGBAをインデックス付きカラーに変換します。
+    // マインクラフトのピクセルアートであるため、使用される色の数は限定されています。
+    // ただし、omggifはパレット（RGB）とインデックスバッファを必要とします。
     
-    // Simple 256 color median cut or just unique colors mapper
+    // シンプルな256色のメディアンカット、または一意の色のマッパー。
     const palette: number[] = [];
     const colorMap = new Map<number, number>();
     const indexedPixels = new Uint8Array(width * height);
@@ -42,7 +57,7 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
       const a = frame.pixels[i + 3];
 
       if (a < 128) {
-        // Transparent
+        // 透過色
         if (transparentIndex === -1) {
           if (palette.length < 256) {
             transparentIndex = palette.length;
@@ -61,7 +76,7 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
             palette.push(rgb);
             colorMap.set(rgb, index);
           } else {
-            // Find closest color (fallback, slow but safe)
+            // 最も近い色を検索（フォールバック用：処理は遅いが安全）。
             index = 0;
             let minDist = Infinity;
             for (let j = 0; j < palette.length; j++) {
@@ -81,20 +96,20 @@ export function encodeGif(frames: GifFrame[], globalDelayMs: number = 1000): Uin
       }
     }
 
-    // omggif requires the palette length to be a power of two (2..256).
-    // Pad with black entries so encoding never throws "Invalid color table size".
+    // omggifはパレットの長さが2のべき乗（2から256の間）であることを要求します。
+    // エンコード時に "Invalid color table size" エラーが発生するのを防ぐため、黒でパディングします。
     let palSize = 2;
     while (palSize < palette.length) palSize <<= 1;
     while (palette.length < palSize) palette.push(0x000000);
 
-    // omggif's types declare number[], but it accepts any indexable byte buffer.
+    // omggifの型定義では number[] が宣言されていますが、インデックスアクセス可能な任意のバイトバッファを受け入れます。
     gifWriter.addFrame(0, 0, width, height, indexedPixels as unknown as number[], {
       palette: palette,
-      delay: Math.round((frame.delayMs || globalDelayMs) / 10), // omggif delay is in hundredths of a second
+      delay: Math.round((frame.delayMs || globalDelayMs) / 10), // omggifのディレイは「10ミリ秒（100分の1秒）」単位です
       transparent: transparentIndex >= 0 ? transparentIndex : undefined,
     });
   }
 
-  // Return the sliced buffer to exact length
+  // 正確な長さにスライスしたバッファを返します。
   return buffer.slice(0, gifWriter.end());
 }
