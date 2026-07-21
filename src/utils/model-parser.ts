@@ -19,8 +19,28 @@ interface SvgFace {
     pts2d: Vec2[];
     uv: number[];
     b64: string;
+    /** Natural pixel size of the texture; UVs are expressed in this space. */
+    texW: number;
+    texH: number;
     brightness: number;
     centroidZ: number;
+}
+
+/**
+ * Width/height from a PNG data URL's IHDR chunk. Face UVs are in texture pixels
+ * (0..16 for a block texture, but 0..64 for an entity atlas such as a chest's),
+ * so the <image> has to be placed at the texture's real size — hardcoding 16
+ * squashes anything larger onto a 16x16 square.
+ */
+function pngSize(dataUrl: string): { w: number; h: number } {
+    const comma = dataUrl.indexOf(',');
+    // 33 bytes covers the 8-byte signature, the chunk header and IHDR's w/h.
+    const header = atob(dataUrl.slice(comma + 1, comma + 1 + 64)).slice(0, 33);
+    const be32 = (o: number) =>
+        (header.charCodeAt(o) << 24 | header.charCodeAt(o + 1) << 16 |
+         header.charCodeAt(o + 2) << 8 | header.charCodeAt(o + 3)) >>> 0;
+    const w = be32(16), h = be32(20);
+    return w > 0 && h > 0 ? { w, h } : { w: 16, h: 16 };
 }
 
 /** Load a model and merge it with its parent chain, recursively. */
@@ -90,8 +110,11 @@ async function flatItemSvg(
     if (!texPath) return null;
     const b64 = await getTextureBase64(texPath);
     if (!b64) return null;
-    return `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">`
-        + `<image href="${b64}" width="16" height="16" image-rendering="optimizeSpeed"/></svg>`;
+    // Animated textures are a vertical strip of frames; show only the first.
+    const { w } = pngSize(b64);
+    return `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
+        + `<image href="${b64}" width="${w}" height="${w}" preserveAspectRatio="xMinYMin slice"`
+        + ` image-rendering="optimizeSpeed"/></svg>`;
 }
 
 async function collectFaces(
@@ -111,11 +134,14 @@ async function collectFaces(
             const b64 = await getTextureBase64(texPath);
             if (!b64) continue;
 
+            const { w: texW, h: texH } = pngSize(b64);
             const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
             faces.push({
                 pts2d: project(pts),
                 uv: face.uv || defaultUv(dir, el.from, el.to),
                 b64,
+                texW,
+                texH,
                 brightness: faceBrightness(dir),
                 centroidZ: centroidZ(pts),
             });
@@ -156,7 +182,7 @@ function buildSvg(faces: SvgFace[]): string {
         // matrix as well and clip away most of the texture.
         defs += `<clipPath id="${clipId}"><polygon points="${points}"/></clipPath>\n`;
         const filter = f.brightness < 1 ? ` filter="url(#${shadeId(f.brightness)})"` : '';
-        body += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="16" height="16"`
+        body += `<g clip-path="url(#${clipId})"><image href="${f.b64}" width="${f.texW}" height="${f.texH}"`
             + ` transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"${filter}/></g>\n`;
         if (f.brightness < 1) brightnesses.add(f.brightness);
     }

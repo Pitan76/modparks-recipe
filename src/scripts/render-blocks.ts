@@ -10,7 +10,7 @@ import path from 'path';
 import { uploadAll, describeTarget } from './upload-target';
 import { JAR_PATH, readJarJson } from './render-blocks/jar';
 import { renderBlock, renderModel } from './render-blocks/render';
-import { chestModel, CHEST_VARIANTS } from './render-blocks/chest';
+import { chestModel, CHEST_VARIANTS } from '../core/chest';
 
 const R2_PREFIX = 'assets/minecraft/textures/render3d/';
 
