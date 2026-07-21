@@ -9,6 +9,20 @@ import { storeRecipe, putRecipeBody, updateIndexMany } from '../utils/recipe-sto
 
 export const writeRoutes = new Hono<{ Bindings: Env }>();
 
+/**
+ * Run tasks with bounded concurrency. Bulk ingests put hundreds of objects in
+ * one request; doing that sequentially spends the whole request budget waiting
+ * on round trips and times the Worker out.
+ */
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (i < items.length) await worker(items[i++]);
+    })
+  );
+}
+
 // Upload a single recipe JSON. Body = the recipe JSON.
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
@@ -149,14 +163,14 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     textures++;
   }
 
-  for (const [path, val] of Object.entries(p.models || {})) {
+  await runPool(Object.entries(p.models || {}), 20, async ([path, val]) => {
     const rel = (path as string).replace(/\.json$/, '');
     const json = typeof val === 'string' ? val : JSON.stringify(val);
     await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
       httpMetadata: { contentType: 'application/json' },
     });
     models++;
-  }
+  });
 
   return c.json({ ok: true, namespace, recipes, tags, textures, models });
 });
