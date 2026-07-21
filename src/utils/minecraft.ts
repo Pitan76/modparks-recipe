@@ -5,35 +5,16 @@
 import { renderBlockIconPng } from './block-icon';
 import { bytesToBase64 } from './http';
 
+// レシピJSONの純粋な読み取り関数は core/ にあります（Nodeスクリプトからも import
+// できるようにするため）。既存の呼び出し元のためにここから再エクスポートします。
+export { resultItemOf, isCraftingType } from '../core/recipe';
+
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ADMIN_SECRET: string;
   // 書き込み/アップロードAPIに必要なシークレット。設定されていない場合は ADMIN_SECRET が使用されます。
   UPLOAD_SECRET?: string;
-}
-
-/**
- * レシピデータから完成品アイテムのIDを抽出します。
- * @param data レシピJSONオブジェクト
- * @returns 完全修飾されたアイテムID（例: "minecraft:apple"）、取得できない場合は null
- */
-export function resultItemOf(data: any): string | null {
-  const r = data?.result;
-  if (!r) return null;
-  const id = typeof r === 'string' ? r : (r.id || r.item || null);
-  if (!id || typeof id !== 'string') return null;
-  return id.includes(':') ? id : `minecraft:${id}`;
-}
-
-/**
- * レシピタイプがクラフト関連（shaped または shapeless）であるかどうかを判定します。
- * @param type レシピのタイプ
- */
-export function isCraftingType(type: unknown): boolean {
-  if (typeof type !== 'string') return false;
-  const t = type.replace(/^minecraft:/, '');
-  return t === 'crafting_shaped' || t === 'crafting_shapeless';
 }
 
 /**

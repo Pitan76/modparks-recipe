@@ -7,7 +7,7 @@ import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
 import { uploadToR2, runPool, BUCKET_NAME } from './r2';
-import { resultItemOf, isCraftingType } from '../utils/minecraft';
+import { resultItemOf, isCraftingType } from '../core/recipe';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
 
