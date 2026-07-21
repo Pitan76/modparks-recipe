@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
-import { renderBlockIconPng } from '../utils/block-icon';
+import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion } from '../utils/cache-version';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
@@ -62,6 +62,14 @@ adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
   }
 
   const { namespace, path } = c.req.param();
+
+  // ?format=svg returns the pre-rasterization SVG, for inspecting the geometry.
+  if (c.req.query('format') === 'svg') {
+    const svg = await renderBlockIconSvg(c.env, namespace, path);
+    if (!svg) return c.text(`No renderable model for ${namespace}:${path}`, 404);
+    return new Response(svg, { headers: { 'Content-Type': 'image/svg+xml' } });
+  }
+
   const png = await renderBlockIconPng(c.env, namespace, path);
   if (!png) return c.text(`No renderable model for ${namespace}:${path}`, 404);
   return new Response(png, { headers: { 'Content-Type': 'image/png' } });

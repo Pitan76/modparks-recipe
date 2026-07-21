@@ -3,6 +3,7 @@ import { loadModel, renderModelToSvg } from './model-parser';
 import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
+import { chestModel, CHEST_VARIANTS } from '../core/chest';
 
 // Renders a block's model to a 3D isometric icon at request time, so blocks
 // pushed through the write API (which never runs the offline render-blocks
@@ -19,6 +20,21 @@ const ICON_SIZE = 128;
 
 /** Render the block behind `ns:path` to a 3D icon PNG, or null if not possible. */
 export async function renderBlockIconPng(env: Env, ns: string, path: string): Promise<Uint8Array | null> {
+  const svg = await renderBlockIconSvg(env, ns, path);
+  if (!svg) return null;
+  await ensureWasm();
+  // Pixel art: no antialiasing anywhere. shapeRendering 0 (optimizeSpeed) stops
+  // the face clip paths from feathering their edges, imageRendering 1
+  // (optimizeSpeed) samples the textures nearest-neighbour.
+  return svgToPng(svg, {
+    fitTo: { mode: 'width', value: ICON_SIZE },
+    shapeRendering: 0,
+    imageRendering: 1,
+  });
+}
+
+/** The icon as SVG, before rasterization. Exposed for debugging the geometry. */
+export async function renderBlockIconSvg(env: Env, ns: string, path: string): Promise<string | null> {
   const getModel = (id: string) => modelJson(env, id);
   const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
 
@@ -31,21 +47,26 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
   const itemModel = await loadModel(`${ns}:item/${path}`, getModel);
   if (isFlatItemModel(itemModel)) return null;
 
-  for (const modelId of [`${ns}:item/${path}`, `${ns}:block/${path}`]) {
-    const model = await loadModel(modelId, getModel);
+  // Block entities (chests, ...) resolve to `builtin/entity` with no elements;
+  // their geometry has to be synthesized from the entity atlas instead.
+  const synthetic = ns === 'minecraft' && CHEST_VARIANTS[path]
+    ? chestModel(CHEST_VARIANTS[path])
+    : null;
+
+  const candidates = synthetic
+    ? [{ id: `${ns}:block/${path}`, model: synthetic }]
+    : [`${ns}:item/${path}`, `${ns}:block/${path}`].map((id) => ({ id, model: null as any }));
+
+  for (const candidate of candidates) {
+    const model = candidate.model ?? (await loadModel(candidate.id, getModel));
     if (!hasGeometry(model)) continue;
 
-    await ensureWasm();
-    const svg = await renderModelToSvg(modelId, getModel, getTexture);
-    if (!svg) continue;
-    // Pixel art: no antialiasing anywhere. shapeRendering 0 (optimizeSpeed)
-    // stops the face clip paths from feathering their edges, imageRendering 1
-    // (optimizeSpeed) samples the textures nearest-neighbour.
-    return svgToPng(svg, {
-      fitTo: { mode: 'width', value: ICON_SIZE },
-      shapeRendering: 0,
-      imageRendering: 1,
-    });
+    // A synthesized model is passed straight through rather than re-read by id.
+    const resolve = candidate.model
+      ? async (id: string) => (id === candidate.id ? candidate.model : await getModel(id))
+      : getModel;
+    const svg = await renderModelToSvg(candidate.id, resolve, getTexture);
+    if (svg) return svg;
   }
   return null;
 }
