@@ -23,3 +23,7 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "mp-recipe-images"
+# `wrangler dev --remote` (npm run dev:remote) points at the production bucket on
+# purpose, so local debugging sees the real uploaded assets. Writes from local dev
+# therefore hit production too — read-only inspection only.
+preview_bucket_name = "mp-recipe-images"
