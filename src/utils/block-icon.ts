@@ -1,3 +1,14 @@
+/**
+ * @fileoverview リクエスト時にブロックモデルを3Dの等角投影（isometric）アイコンにレンダリングするユーティリティ。
+ * これにより、書き込みAPI経由でプッシュされたブロック（オフラインのブロックレンダリングパイプラインを通過しないもの）が、
+ * 事前レンダリングされたバニラのブロックと同じ見た目になります。
+ *
+ * ジオメトリは実際のモデルJSON（モデル自身、または継承元の親モデル。バニラの親モデルも含みます）からのみ取得されます。
+ * チェーンが実際の `elements` に解決できない場合、この処理は null を返し、呼び出し側は平面的な2Dテクスチャにフォールバックします。
+ * テクスチャリストから代わりの立方体を合成するようなことはしないでください。
+ * 実際と異なる結果になり、2Dフォールバックよりも見た目が悪くなります。
+ */
+
 import type { Env } from './minecraft';
 import { loadModel, renderModelToSvg } from './model-parser';
 import { ensureWasm, svgToPng } from './wasm';
@@ -5,27 +16,23 @@ import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
 import { getAssetVersion } from './cache-version';
 
-// Renders a block's model to a 3D isometric icon at request time, so blocks
-// pushed through the write API (which never runs the offline render-blocks
-// pipeline) look the same as the pre-rendered vanilla ones.
-//
-// Geometry is only ever taken from real model JSON — the model itself or a
-// parent it inherits from, vanilla parents included. If the chain can't be
-// resolved to actual `elements`, this returns null and the caller falls back to
-// the flat texture. Never synthesize a stand-in cube from the texture list: the
-// result does not match the real block and is worse than the 2D fallback.
-
-/** Matches SIZE in scripts/render-blocks/render.ts, so both paths agree. */
+/** scripts/render-blocks/render.ts の SIZE と一致させ、両方のパスで表示サイズが揃うようにします。 */
 const ICON_SIZE = 128;
 
-/** Render the block behind `ns:path` to a 3D icon PNG, or null if not possible. */
+/**
+ * `ns:path` に対応するブロックを3DアイコンPNGとしてレンダリングします。レンダリングできない場合は null を返します。
+ * @param env 環境変数
+ * @param ns ネームスペース（Mod ID など）
+ * @param path ブロックのパス
+ * @returns PNGのバイナリ、または null
+ */
 export async function renderBlockIconPng(env: Env, ns: string, path: string): Promise<Uint8Array | null> {
   const svg = await renderBlockIconSvg(env, ns, path);
   if (!svg) return null;
   await ensureWasm();
-  // Pixel art: no antialiasing anywhere. shapeRendering 0 (optimizeSpeed) stops
-  // the face clip paths from feathering their edges, imageRendering 1
-  // (optimizeSpeed) samples the textures nearest-neighbour.
+  // ピクセルアート：アンチエイリアシングは一切適用しません。
+  // shapeRendering を 0 (optimizeSpeed) に設定することで、面のクリップパスの境界がぼやける（フェザリング）のを防ぎます。
+  // imageRendering を 1 (optimizeSpeed) に設定することで、テクスチャをニアレストネイバー法でサンプリングします。
   return svgToPng(svg, {
     fitTo: { mode: 'width', value: ICON_SIZE },
     shapeRendering: 0,
@@ -33,19 +40,23 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
   });
 }
 
-/** The icon as SVG, before rasterization. Exposed for debugging the geometry. */
+/**
+ * ラスタライズ前のSVG形式のアイコン。ジオメトリのデバッグ用に公開されています。
+ * @param env 環境変数
+ * @param ns ネームスペース
+ * @param path ブロックのパス
+ * @returns SVG文字列、または null
+ */
 export async function renderBlockIconSvg(env: Env, ns: string, path: string): Promise<string | null> {
   const getModel = (id: string) => modelJson(env, id);
   const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
 
-  // Prefer 3D for anything with a block model, even when the item model says
-  // draw it flat. Vanilla shows a torch as a 2D sprite in the inventory, but a
-  // recipe image reads better with every block drawn the same way, so the flat
-  // `item/generated` model is skipped in favour of `block/<path>` below.
-  // Genuine items (a stick, a sword) have no block model and still fall back to
-  // their flat texture.
-  // Block entities (chests, ...) resolve to `builtin/entity` with no elements;
-  // their geometry has to be synthesized from the entity atlas instead.
+  // アイテムモデルが「平面で描画する」と指定している場合でも、ブロックモデルが存在するものは3D表示を優先します。
+  // バニラではインベントリ内の松明は2Dスプライトとして表示されますが、レシピ画像ではすべてのブロックが同じ方法で描画される方が見やすいため、
+  // 平面的な `item/generated` モデルをスキップし、後続 of `block/<path>` を採用します。
+  // 純粋なアイテム（棒や剣など）はブロックモデルを持たないため、引き続き2Dテクスチャにフォールバックします。
+  // ブロックエンティティ（チェストなど）はエレメントのない `builtin/entity` に解決されるため、
+  // 代わりにエンティティのアトラスからジオメトリを合成する必要があります。
   const synthetic = ns === 'minecraft' && CHEST_VARIANTS[path]
     ? chestModel(CHEST_VARIANTS[path])
     : null;
@@ -58,7 +69,7 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
     const model = candidate.model ?? (await loadModel(candidate.id, getModel));
     if (!hasGeometry(model)) continue;
 
-    // A synthesized model is passed straight through rather than re-read by id.
+    // 合成モデルは、IDで再読み込みされることなく直接渡されます。
     const resolve = candidate.model
       ? async (id: string) => (id === candidate.id ? candidate.model : await getModel(id))
       : getModel;
@@ -68,34 +79,33 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
   return null;
 }
 
-/** True only when the resolved model chain yielded real, renderable geometry. */
+/**
+ * 解決されたモデルチェーンが、実際にレンダリング可能なジオメトリを返したかどうかを判定します。
+ * @param model モデルデータ
+ */
 function hasGeometry(model: any): boolean {
   return !!model && Array.isArray(model.elements) && model.elements.length > 0;
 }
 
-// Rendering one icon re-reads the same objects several times over: the parent
-// chain is walked once for `item/<path>`, again for `block/<path>`, and a third
-// time inside renderModelToSvg, and a nine-slot recipe repeats all of it per
-// slot. Shared vanilla parents like `block/cube_all` are the worst of it. Every
-// one of those reads is sequential, so they add up: measured over
-// `wrangler dev --remote`, a single warm `minecraft:stone` icon went from
-// ~4.6s to ~250ms once these two reads were memoized.
+// 1つのアイコンをレンダリングする際、同じオブジェクトが何度も再読み込みされます：
+// 親チェーンは `item/<path>` のために1回、`block/<path>` のためにもう1回、そして renderModelToSvg 内で3回目として走査され、
+// 9スロットのレシピではスロットごとにこれが繰り返されます。特に `block/cube_all` のような共有されるバニラの親モデルでこれが顕著になります。
+// これらの読み込みは順次実行されるため、累積して大きな遅延になります。
+// `wrangler dev --remote` で測定したところ、これら2つの読み込みをメモ化することで、キャッシュされた `minecraft:stone` アイコンの処理時間が約4.6秒から約250ミリ秒に短縮されました。
 //
-// Promises are stored rather than resolved values, so the concurrent lookups
-// that parallel slots fire for the same parent collapse into one read too.
+// 解決済みの値ではなく Promise を保存することで、並行するスロットが同じ親に対して実行する同時ルックアップも、1回の読み込みに統合されます。
 const memo = new Map<string, Promise<any>>();
 
 /**
- * Cap on retained entries. An isolate that has churned through this many is
- * mostly holding superseded versions, so drop everything rather than track LRU:
- * the cost of a miss is one R2 get.
+ * 保持するエントリ数の上限。この数を超えて実行されたアイソレートは、ほとんどが古いバージョンを保持しているため、
+ * LRUの追跡は行わずにすべてを破棄します。キャッシュミスが発生したときのコストはR2のGETアクセス1回分です。
  */
 const MEMO_MAX = 2000;
 
 /**
- * Read an asset once per isolate per asset version. Keying on the version is
- * what makes this safe against the write API: an upload bumps it and every
- * entry for the old version becomes unreachable, exactly as for rendered images.
+ * アセットのバージョンごとに、アイソレートあたり1回だけアセットを読み込みます。
+ * バージョンをキーにすることで、書き込みAPIに対して安全になります。アセットがアップロードされるとバージョンが上がり、
+ * レンダリング済みの画像と同様に、古いバージョンのすべてのエントリがアクセス不能（無効化）になります。
  */
 async function memoized<T>(env: Env, ns: string, key: string, load: () => Promise<T>): Promise<T> {
   const version = await getAssetVersion(env, ns);
@@ -115,6 +125,12 @@ async function memoized<T>(env: Env, ns: string, key: string, load: () => Promis
   return pending as Promise<T>;
 }
 
+/**
+ * モデルIDに対応するモデルのJSONオブジェクトを取得します。
+ * @param env 環境変数
+ * @param id モデルID
+ * @returns モデルJSONデータ、または null
+ */
 function modelJson(env: Env, id: string): Promise<any | null> {
   const { ns, path } = split(id);
   return memoized(env, ns, `models/${path}`, async () => {
@@ -128,12 +144,18 @@ function modelJson(env: Env, id: string): Promise<any | null> {
   });
 }
 
+/**
+ * テクスチャ参照からデータURLを取得します。
+ * @param env 環境変数
+ * @param defaultNs デフォルトのネームスペース
+ * @param ref テクスチャ参照（#から始まるキー、またはファイルパス）
+ * @returns テクスチャ画像のbase64データURL、または null
+ */
 function textureDataUrl(env: Env, defaultNs: string, ref: string): Promise<string | null> {
   const { ns, path } = split(ref, defaultNs);
-  // Keyed on the requesting namespace's version even when the read falls back to
-  // vanilla, so a `minecraft` upload alone won't invalidate a mod's entry. That
-  // only matters for re-uploaded vanilla textures, which the offline pipeline
-  // writes once per version anyway.
+  // 読み取りがバニラにフォールバックする場合でも、要求元のネームスペースのバージョンをキーにします。
+  // これにより、`minecraft` だけのアップロードでModのエントリが無効化されるのを防ぎます。
+  // これは再アップロードされたバニラテクスチャにおいてのみ意味を持ち、オフラインパイプラインはいずれにせよバージョンごとに1回だけ書き込みを行います。
   return memoized(env, ns, `textures/${path}`, async () => {
     let obj = await env.BUCKET.get(`assets/${ns}/textures/${path}.png`);
     if (!obj && ns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${path}.png`);
@@ -142,6 +164,12 @@ function textureDataUrl(env: Env, defaultNs: string, ref: string): Promise<strin
   });
 }
 
+/**
+ * リソースIDをネームスペースとパスに分割します。
+ * @param id リソースID（例: namespace:path または path）
+ * @param fallbackNs ネームスペースが省略されている場合のフォールバック値
+ * @returns 分割されたネームスペースとパスのオブジェクト
+ */
 function split(id: string, fallbackNs = 'minecraft'): { ns: string; path: string } {
   const idx = id.indexOf(':');
   if (idx < 0) return { ns: fallbackNs, path: id };

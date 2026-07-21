@@ -1,3 +1,7 @@
+/**
+ * @fileoverview レシピ画像配信ルート定義。バッチレンダリング、スプライトシート生成、および個別レシピ画像のキャッシュ配信を行います。
+ */
+
 import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
@@ -6,8 +10,17 @@ import { getAssetVersion } from '../utils/cache-version';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
 
-// Shared batch renderer for the POST/GET batch endpoints below. Renders each id
-// to a base64 data URL, running all ids in parallel. Missing ids -> null.
+/**
+ * 下記の POST/GET バッチエンドポイント用で共有される一括レンダラー。
+ * 各IDを並行処理で base64 データURLにレンダリングします。存在しないIDは null になります。
+ * @param env 環境変数
+ * @param namespace ネームスペース（Mod ID など）
+ * @param ids レシピIDのリスト
+ * @param ext 拡張子（png, gif, jpg）
+ * @param scale スケール倍率
+ * @param tagOffset タグオフセット
+ * @returns レンダリングされた画像データのマップと不足しているIDのリスト
+ */
 async function renderBatch(
   env: Env,
   namespace: string,
@@ -47,13 +60,15 @@ async function renderBatch(
   return { images, missing };
 }
 
-// Batch image endpoint: fetch many recipe images in one request so the web UI
-// doesn't fire one HTTP request per recipe. Body JSON:
-//   { "ids": ["stone_pickaxe", "furnace", ...],
-//     "ext": "png" | "jpg" | "gif",   // optional, default "png"
-//     "scale": 2, "tagOffset": 0 }    // optional
-// Response: { images: { "<id>": "data:image/png;base64,..." | null }, missing: [...] }
-// ids may be bare (use the URL :namespace) or fully-qualified "ns:id".
+/**
+ * 一括画像エンドポイント：Web UIがレシピごとに個別のHTTPリクエストを送信するのを防ぐため、1回のリクエストで複数のレシピ画像を取得します。
+ * リクエストボディのJSON例:
+ *   { "ids": ["stone_pickaxe", "furnace", ...],
+ *     "ext": "png" | "jpg" | "gif",   // オプション、デフォルトは "png"
+ *     "scale": 2, "tagOffset": 0 }    // オプション
+ * レスポンス例: { images: { "<id>": "data:image/png;base64,..." | null }, missing: [...] }
+ * IDsは単純な名前（URLの:namespaceを使用）または完全修飾名 "ns:id" のどちらでも指定可能です。
+ */
 imageRoutes.post('/api/:namespace/batch', async (c) => {
   const { namespace } = c.req.param();
   let payload: any;
@@ -71,9 +86,11 @@ imageRoutes.post('/api/:namespace/batch', async (c) => {
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
-// Cacheable GET variant of the batch endpoint. ids are comma-separated in the
-// query so the whole response can sit in the CDN/browser cache.
-//   GET /api/:namespace/batch?ids=stone_pickaxe,furnace&ext=png&scale=2
+/**
+ * バッチエンドポイントのキャッシュ可能なGET版。
+ * レスポンス全体をCDNやブラウザのキャッシュに保存できるように、クエリパラメータ内でIDをカンマ区切りで指定します。
+ * 例: GET /api/:namespace/batch?ids=stone_pickaxe,furnace&ext=png&scale=2
+ */
 imageRoutes.get('/api/:namespace/batch', async (c) => {
   const { namespace } = c.req.param();
   const ids = (c.req.query('ids') || '')
@@ -91,15 +108,16 @@ imageRoutes.get('/api/:namespace/batch', async (c) => {
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
-// Cacheable GET variant: returns ONE PNG sprite sheet with all requested
-// recipes tiled row-major, so the browser fetches a single cacheable image.
-//   GET /api/:namespace/sprite?ids=stone_pickaxe,furnace&cols=8&scale=2
-// Tiles are TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale. Slice tile i by:
-//   col = i % cols, row = floor(i / cols); x = col*tileW, y = row*tileH.
-// Layout metadata is returned in response headers so the client can map ids
-// (given in the same order) to tile positions:
-//   X-Sprite-Columns, X-Sprite-Rows, X-Sprite-Count,
-//   X-Sprite-Tile-Width, X-Sprite-Tile-Height, X-Sprite-Missing (comma list)
+/**
+ * キャッシュ可能なGET版（スプライトシート）：
+ * 要求されたすべてのレシピを行優先（row-major）で並べた1つのPNGスプライトシートを返し、ブラウザが単一のキャッシュ可能な画像のみを取得するようにします。
+ * 例: GET /api/:namespace/sprite?ids=stone_pickaxe,furnace&cols=8&scale=2
+ * 各タイルのサイズは TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale です。タイル i の切り出し位置は以下の通りです：
+ *   col = i % cols, row = Math.floor(i / cols); x = col * tileW, y = row * tileH.
+ * レイアウトのメタデータはレスポンスヘッダーで返されるため、クライアントは要求した順序でIDをタイルの位置にマッピングできます：
+ *   X-Sprite-Columns, X-Sprite-Rows, X-Sprite-Count,
+ *   X-Sprite-Tile-Width, X-Sprite-Tile-Height, X-Sprite-Missing (カンマ区切りリスト)
+ */
 imageRoutes.get('/api/:namespace/sprite', async (c) => {
   const { namespace } = c.req.param();
   const ids = (c.req.query('ids') || '')
@@ -135,7 +153,9 @@ imageRoutes.get('/api/:namespace/sprite', async (c) => {
   });
 });
 
-// Single recipe image endpoint: /api/:namespace/:id.(png|gif|jpg)
+/**
+ * 個別レシピ画像エンドポイント: /api/:namespace/:id.(png|gif|jpg)
+ */
 imageRoutes.get('/api/:namespace/:filename', async (c) => {
   const { namespace, filename } = c.req.param();
 
@@ -144,11 +164,9 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
     return c.text('Not found', 404);
   }
 
-  // Rendering a recipe costs several R2 round trips plus rasterization, and the
-  // output only changes when the recipe or its textures are re-uploaded. Serve
-  // repeats straight from the edge cache instead of rebuilding the image. The
-  // namespace's asset version is part of the key, so an upload makes the old
-  // entries unreachable rather than leaving stale images up for a day.
+  // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
+  // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。
+  // ネームスペースのアセットバージョンがキャッシュキーの一部に含まれているため、アップロードが行われると古いキャッシュエントリは自動的にアクセス不能（無効化）になり、古い画像が残り続けるのを防ぎます。
   const cache = caches.default;
   const version = await getAssetVersion(c.env, namespace);
   const keyUrl = new URL(c.req.url);
@@ -168,7 +186,7 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
   let body: Uint8Array;
   let contentType: string;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, 5, scale); // 5 frames
+    body = await renderRecipeGif(recipeData, c.env, 5, scale); // 5フレーム
     contentType = 'image/gif';
   } else if (ext === 'jpg' || ext === 'jpeg') {
     body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale);

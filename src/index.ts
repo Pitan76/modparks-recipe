@@ -7,13 +7,16 @@ import { adminRoutes } from './routes/admin';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Recipe lookup page
+/** レシピ検索ページ。 */
 app.get('/', (c) => {
   return c.html(RECIPE_PAGE_HTML);
 });
 
-// Browsable recipe index (generated once by the CI pipeline; just streamed
-// back from R2 with a long cache, so it adds no per-request scanning load).
+/**
+ * 閲覧可能なレシピインデックスを取得します。
+ * CIパイプラインによって一度だけ生成され、R2から長いキャッシュを伴ってストリーミングされるため、
+ * リクエストごとのスキャン負荷は発生しません。
+ */
 app.get('/api/list.json', async (c) => {
   const obj = await c.env.BUCKET.get('index/recipes.json');
   if (!obj) {
@@ -27,11 +30,11 @@ app.get('/api/list.json', async (c) => {
   });
 });
 
-// Write API (PUT recipe/texture/model/tag, POST bundle) — authenticated.
+// 書き込みAPI（レシピ/テクスチャ/モデル/タグのPUT、バンドルのPOST）— 認証が必要。
 app.route('/', writeRoutes);
-// Image API (batch, sprite sheet, single recipe image).
+// 画像API（一括処理、スプライトシート、個別レシピ画像）。
 app.route('/', imageRoutes);
-// Admin utilities (R2 cleanup, index rebuild).
+// 管理用ユーティリティ（R2のクリーンアップ、インデックスの再構築）。
 app.route('/', adminRoutes);
 
 export default app;

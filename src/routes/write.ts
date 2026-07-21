@@ -1,19 +1,26 @@
+/**
+ * @fileoverview Modがレシピやテクスチャ、モデルなどを登録するための書き込み・一括登録APIのルート定義。
+ */
+
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
 import { storeRecipe, putRecipeBody, updateIndexMany } from '../utils/recipe-store';
 import { bumpAssetVersion } from '../utils/cache-version';
 
-// ---- Write API (authenticated) ----------------------------------------------
-// Lets mods push their own recipes/textures instead of relying on the vanilla
-// jar pipeline. Auth: Authorization: Bearer <secret> or ?secret=.
+// ---- 書き込みAPI (認証付き) ----------------------------------------------
+// ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
+// 認証: Authorization: Bearer <secret> または ?secret=。
 
 export const writeRoutes = new Hono<{ Bindings: Env }>();
 
 /**
- * Run tasks with bounded concurrency. Bulk ingests put hundreds of objects in
- * one request; doing that sequentially spends the whole request budget waiting
- * on round trips and times the Worker out.
+ * 指定された同時実行数制限内でタスクを実行します。
+ * 大量取り込み（Bulk Ingest）では、1回のリクエストで数百個のオブジェクトを配置します。
+ * それらを順番に処理すると、通信の往復待ち時間でリクエスト制限時間が全て消費され、Workerがタイムアウトしてしまいます。
+ * @param items 処理するアイテムの配列
+ * @param limit 同時実行数の上限
+ * @param worker 各アイテムを処理する非同期関数
  */
 async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let i = 0;
@@ -24,7 +31,7 @@ async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promis
   );
 }
 
-// Upload a single recipe JSON. Body = the recipe JSON.
+// 単一のレシピJSONをアップロードします。リクエストボディ = レシピのJSONデータ。
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
@@ -36,8 +43,8 @@ writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
 
-// Upload a texture (or any asset) under assets/<ns>/textures/<path>.
-// e.g. PUT /api/mymod/texture/item/gadget.png  (body = PNG bytes)
+// assets/<ns>/textures/<path> 配下にテクスチャ（または任意のアセット）をアップロードします。
+// 例: PUT /api/mymod/texture/item/gadget.png (リクエストボディ = PNGのバイナリデータ)
 writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
@@ -48,9 +55,8 @@ writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
   return c.json({ ok: true, key });
 });
 
-// Upload a model JSON under assets/<ns>/models/<path>.json (path e.g. "item/gadget"
-// or "block/machine"). Lets the renderer resolve items whose texture filename
-// differs from their id by following the model's textures/parent chain.
+// assets/<ns>/models/<path>.json 配下にモデルJSONをアップロードします（例: "item/gadget" や "block/machine"）。
+// レンダラーはモデルの textures/parent チェーンをたどることで、テクスチャのファイル名がIDと異なるアイテムを解決できます。
 writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
@@ -64,7 +70,7 @@ writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
   return c.json({ ok: true, key: `assets/${namespace}/models/${id}.json` });
 });
 
-// Upload a tag JSON under data/<ns>/tags/<path>.json (path e.g. "item/planks").
+// data/<ns>/tags/<path>.json 配下にタグJSONをアップロードします（例: "item/planks"）。
 writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
@@ -79,11 +85,10 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
 
-// Recipe-level bundle: one call with the recipe plus its textures (and optional
-// pre-rendered 3D PNGs). Body JSON:
+// レシプレベルのバンドル：レシピと、そのテクスチャ（およびオプションで事前レンダリング済みの3D PNG）を1回で送信します。
+// リクエストボディのJSON例:
 // { "recipe": {...}, "textures": { "item/foo.png": "<base64>", ... } }
-// Texture keys are paths under assets/<ns>/textures/ (e.g. "item/foo.png",
-// "block/bar.png", or "render3d/baz.png" for a pre-rendered 3D icon).
+// テクスチャのキーは assets/<ns>/textures/ 配下のパスです（例: "item/foo.png", "block/bar.png"、あるいは事前レンダリングされた3Dアイコンの場合は "render3d/baz.png"）。
 writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
@@ -105,9 +110,8 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
     textureCount++;
   }
 
-  // Optional model JSONs so items whose texture filename != id can be resolved.
-  // Keys are paths under assets/<ns>/models/ (e.g. "item/gadget.json"); values
-  // are the model JSON as a string or object.
+  // テクスチャのファイル名がIDと異なるアイテムを解決できるようにするための、オプションのモデルJSON。
+  // キーは assets/<ns>/models/ 配下のパスです（例: "item/gadget.json"）。値はモデルJSON（文字列またはオブジェクト）です。
   let modelCount = 0;
   for (const [modelPath, val] of Object.entries(payload.models || {})) {
     const rel = modelPath.replace(/\.json$/, '');
@@ -122,15 +126,14 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
 });
 
-// Bulk ingest: one request carrying many recipes/tags/textures/models for a
-// namespace. Lets the extractor push a whole mod in a handful of calls instead
-// of ~1 subrequest per file, which otherwise blows the caller's subrequest
-// limit (recipes upload first, so all assets end up in the dropped tail).
-// Body JSON (all optional):
-//   { "recipes": { "<id>": <json|string>, ... },   // id may contain slashes
-//     "tags":    { "<path>": <json|string>, ... },  // e.g. "item/planks"
-//     "textures":{ "<path>": "<base64>", ... },     // e.g. "item/foo.png"
-//     "models":  { "<path>": <json|string>, ... } } // e.g. "item/foo"
+// 大量取り込み（Bulk Ingest）：特定のネームスペースについて、多くのレシピ/タグ/テクスチャ/モデルを1回のリクエストで送信します。
+// これにより、ファイルごとに約1回のサブリクエストを送信することなく、抽出スクリプトは数回のリクエストでMod全体をプッシュできます。
+// そうしないと、呼び出し側のサブリクエスト制限を超えてしまいます（レシピが最初にアップロードされるため、すべてのアセットが途中でドロップされる原因になります）。
+// リクエストボディのJSON例（すべてオプション）:
+//   { "recipes": { "<id>": <json|string>, ... },   // id にはスラッシュが含まれる場合があります
+//     "tags":    { "<path>": <json|string>, ... },  // 例: "item/planks"
+//     "textures":{ "<path>": "<base64>", ... },     // 例: "item/foo.png"
+//     "models":  { "<path>": <json|string>, ... } } // 例: "item/foo"
 writeRoutes.post('/api/:namespace/bulk', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();

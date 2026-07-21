@@ -33,6 +33,10 @@ fileInput.addEventListener('change', async (e) => {
   }
 })
 
+/**
+ * 選択されたJARファイルを読み込み、レシピを解析・描画して結果を表示します。
+ * @param file 読み込むファイルオブジェクト
+ */
 async function handleFile(file: File) {
   resultsDiv.innerHTML = '<p>解析中...</p>'
   try {

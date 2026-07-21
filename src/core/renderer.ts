@@ -1,8 +1,17 @@
+/**
+ * @fileoverview レシピのデータからSVGを生成し、それをResvg (Wasm) を用いてPNGへレンダリングする共通機能。
+ */
+
 import satori from 'satori'
 import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import { CRAFTING_3X3_SCALE2_B64 } from './assets'
 
 let wasmInitialized = false
+
+/**
+ * ResvgのWebAssemblyモジュールを初期化します。
+ * すでに初期化されている場合は何もしません。
+ */
 export async function initResvgWasm() {
   if (wasmInitialized) return
   try {
@@ -16,6 +25,11 @@ export async function initResvgWasm() {
 }
 
 let robotoFont: ArrayBuffer | null = null
+
+/**
+ * レンダリングに使用するRobotoフォントのバイナリを取得します。
+ * @returns フォントデータのArrayBuffer
+ */
 async function getFont() {
   if (robotoFont) return robotoFont
   const res = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Me5Q.ttf')
@@ -24,7 +38,9 @@ async function getFont() {
 }
 
 /**
- * アイテム名（例: minecraft:apple）を短くフォーマットする
+ * アイテム名（例: minecraft:apple）を短縮してフォーマットします。
+ * @param itemId アイテムID文字列
+ * @returns フォーマットされた短いアイテム名
  */
 function formatItemName(itemId: string): string {
   if (!itemId) return ''
@@ -35,7 +51,9 @@ function formatItemName(itemId: string): string {
 }
 
 /**
- * レシピJSONから3x3のグリッド配列（長さ9）を作成する
+ * レシピJSONから3x3のグリッド配列（長さ9）を作成します。
+ * @param recipe レシピJSONオブジェクト
+ * @returns 9個のアイテムID（または空文字）の配列
  */
 function parseCraftingGrid(recipe: any): string[] {
   const grid = Array(9).fill('')
@@ -68,8 +86,10 @@ function parseCraftingGrid(recipe: any): string[] {
 }
 
 /**
- * レシピJSONデータからPNG画像(Uint8Array)を生成する共通関数
- * ブラウザでもWorkerでも動作します
+ * レシピJSONデータからPNG画像(Uint8Array)を生成する共通関数。
+ * ブラウザでもWorkerでも動作します。
+ * @param recipe レシピJSONオブジェクト
+ * @returns PNG画像のバイナリデータ
  */
 export async function renderRecipeToPng(recipe: any): Promise<Uint8Array> {
   await initResvgWasm()

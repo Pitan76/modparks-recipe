@@ -1,14 +1,25 @@
+/**
+ * @fileoverview JARファイル（またはZIPアーカイブ）からマイクラのレシピJSONファイルを解析・抽出するユーティリティ。
+ */
+
 import JSZip from 'jszip'
 
+/** 解析されたレシピ情報の型定義。 */
 export interface ParsedRecipe {
+  /** レシピファイルの相対パス */
   path: string
+  /** レシピのネームスペース（Mod ID など） */
   namespace: string
+  /** レシピのJSONデータ */
   recipe: any
 }
 
 /**
- * JAR(ZIP)ファイルのArrayBufferから、レシピJSONを抽出する純粋な関数
+ * JAR(ZIP)ファイルのArrayBufferから、レシピJSONを抽出する関数。
  * ブラウザ(フロントエンド)でも、サーバー(Worker)でも全く同じように動作します。
+ * @param arrayBuffer JARファイルのバイナリデータ
+ * @param targetModid 特定のMod IDでのみ抽出をフィルタリングしたい場合に指定するオプションのMod ID
+ * @returns 解析されたレシピ一覧の配列
  */
 export async function parseJarForRecipes(
   arrayBuffer: ArrayBuffer,

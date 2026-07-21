@@ -1,3 +1,7 @@
+/**
+ * @fileoverview 管理者用のR2クリーンアップ、デバッグ用ファイルリスト、キャッシュ破棄、インデックス再構築などの管理ルート定義。
+ */
+
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
@@ -5,7 +9,9 @@ import { bumpAssetVersion } from '../utils/cache-version';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
-// Admin endpoint to clean up old garbage files in R2 (e.g. before re-uploading)
+/**
+ * R2内の古いゴミファイルをクリーンアップするための管理者用エンドポイント（再アップロード前などに使用）。
+ */
 adminRoutes.get('/admin/clean/:namespace/:folder', async (c) => {
   const secret = c.req.query('secret');
   if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
@@ -30,8 +36,10 @@ adminRoutes.get('/admin/clean/:namespace/:folder', async (c) => {
   return c.text(`Deleted ${count} old objects from ${prefix}`);
 });
 
-// Read-only R2 listing, for debugging what was actually uploaded.
-// GET /admin/ls?secret=...&prefix=assets/itemalchemy/&limit=200
+/**
+ * 実際にアップロードされたものをデバッグするための、読み取り専用のR2リスト。
+ * 例: GET /admin/ls?secret=...&prefix=assets/itemalchemy/&limit=200
+ */
 adminRoutes.get('/admin/ls', async (c) => {
   const secret = c.req.query('secret');
   if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
@@ -51,10 +59,11 @@ adminRoutes.get('/admin/ls', async (c) => {
   });
 });
 
-// Render a single block icon through the Worker's 3D path, bypassing the
-// render3d/ cache. For checking a block's icon (or comparing against the
-// offline pipeline's output) without touching stored objects.
-// GET /admin/render3d/:namespace/:path?secret=...
+/**
+ * render3d/ キャッシュを経由せずに、Workerの3Dパスを通して単一のブロックアイコンをレンダリングします。
+ * 保存されたオブジェクトを変更せずに、ブロックのアイコンを確認（またはオフラインパイプラインの出力と比較）するためのものです。
+ * 例: GET /admin/render3d/:namespace/:path?secret=...
+ */
 adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
   const secret = c.req.query('secret');
   if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
@@ -63,7 +72,7 @@ adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
 
   const { namespace, path } = c.req.param();
 
-  // ?format=svg returns the pre-rasterization SVG, for inspecting the geometry.
+  // ?format=svg は、ジオメトリをインスペクトするためのラスタライズ前のSVGを返します。
   if (c.req.query('format') === 'svg') {
     const svg = await renderBlockIconSvg(c.env, namespace, path);
     if (!svg) return c.text(`No renderable model for ${namespace}:${path}`, 404);
@@ -75,10 +84,12 @@ adminRoutes.get('/admin/render3d/:namespace/:path{.+}', async (c) => {
   return new Response(png, { headers: { 'Content-Type': 'image/png' } });
 });
 
-// Drop everything cached for a namespace: the generated 3D block icons in R2 and
-// every rendered image sitting in the edge cache. Use after a renderer change,
-// or when icons look stale/wrong. Both rebuild automatically on next request.
-// GET /admin/purge/:namespace?secret=...
+/**
+ * ネームスペースにキャッシュされているすべてのデータを破棄します：R2内の生成された3Dブロックアイコンと、エッジキャッシュにあるすべてのレンダリング済み画像。
+ * レンダラーの変更後や、アイコンが古かったり間違っていたりする場合に使用します。
+ * どちらも次回リクエスト時に自動的に再構築されます。
+ * 例: GET /admin/purge/:namespace?secret=...
+ */
 adminRoutes.get('/admin/purge/:namespace', async (c) => {
   const secret = c.req.query('secret');
   if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
@@ -87,8 +98,7 @@ adminRoutes.get('/admin/purge/:namespace', async (c) => {
 
   const { namespace } = c.req.param();
 
-  // Generated icons only — a pre-rendered PNG uploaded through the write API
-  // lives here too, so this is deliberately scoped to one namespace.
+  // 生成されたアイコンのみを対象とします。書き込みAPI経由でアップロードされた事前レンダリング済みのPNGもここにあるため、意図的に1つのネームスペースにスコープを限定しています。
   const prefix = `assets/${namespace}/textures/render3d/`;
   let icons = 0;
   let cursor: string | undefined = undefined;
@@ -102,16 +112,17 @@ adminRoutes.get('/admin/purge/:namespace', async (c) => {
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
 
-  // Bumping the version makes every cached image URL for this namespace
-  // unreachable, whatever query variants they were stored under.
+  // バージョンを上げることで、このネームスペースに対するキャッシュされたすべての画像URLを（どのようなクエリバリアントで保存されていても）アクセス不能（無効化）にします。
   await bumpAssetVersion(c.env, namespace);
 
   return c.json({ ok: true, namespace, iconsDeleted: icons, imageCacheInvalidated: true });
 });
 
-// Admin endpoint to (re)build the recipe index from the recipe JSON already in
-// R2. Runs on demand (one bucket scan), so the public /api/list.json stays a
-// cheap static read. Use this to backfill the index without waiting for CI.
+/**
+ * R2にすでに存在するレシピJSONからレシピインデックスを（再）構築するための管理者用エンドポイント。
+ * オンデマンド（1回のバケットスキャン）で実行されるため、公開用の /api/list.json は低コストな静的読み取りのまま維持されます。
+ * CIを待たずにインデックスを補完するために使用します。
+ */
 adminRoutes.get('/admin/reindex', async (c) => {
   const secret = c.req.query('secret');
   if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
