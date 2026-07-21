@@ -19,6 +19,29 @@ export function rotateZ(v: Vector3, angle: number): Vector3 {
     return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos, z: v.z };
 }
 
+/**
+ * Projected size (in model units) of a canonical full 16³ block under the
+ * default GUI transform, used as the fixed framing denominator. Mirrors
+ * REF_SIZE in scripts/render-blocks/geometry.ts so both renderers agree on how
+ * large a full block appears in its slot.
+ */
+const REFERENCE_BLOCK_SIZE = (() => {
+    const rot = [30, 225, 0];
+    const s = 0.625;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const x of [0, 16]) for (const y of [0, 16]) for (const z of [0, 16]) {
+        let np: Vector3 = { x: x - 8, y: y - 8, z: z - 8 };
+        np = rotateY(np, rot[1]);
+        np = rotateX(np, rot[0]);
+        np = rotateZ(np, rot[2]);
+        const px = np.x * s;
+        const py = -(np.y * s);
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+    }
+    return Math.max(maxX - minX, maxY - minY);
+})();
+
 // Recursively load and merge models
 export async function loadModel(
     modelId: string, 
@@ -223,14 +246,19 @@ export async function renderModelToSvg(
         }
     }
 
-    // Add a small margin (10%)
+    // Frame against a FIXED reference (the projected size of a full 16³ block),
+    // not against this model's own bounds. Fitting each model to its bounding box
+    // would blow a button or a slab up to the same on-screen size as a full
+    // block, and would not match the offline renderer's framing for full blocks
+    // either. Same rule as scripts/render-blocks/render.ts: a model larger than
+    // the reference is clamped down so it can't overflow the frame.
     const w = maxX - minX;
     const h = maxY - minY;
-    const margin = Math.max(w, h) * 0.1;
-    const vbX = minX - margin;
-    const vbY = minY - margin;
-    const vbW = w + margin * 2;
-    const vbH = h + margin * 2;
+    const extent = Math.max(REFERENCE_BLOCK_SIZE / 0.9, w, h, 1);
+    const vbX = (minX + maxX) / 2 - extent / 2;
+    const vbY = (minY + maxY) / 2 - extent / 2;
+    const vbW = extent;
+    const vbH = extent;
 
     let svg = `<svg viewBox="${vbX} ${vbY} ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">\n@@DEFS@@\n`;
     let defs = '';

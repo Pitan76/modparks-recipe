@@ -13,7 +13,8 @@ import { bytesToBase64 } from './http';
 // the flat texture. Never synthesize a stand-in cube from the texture list: the
 // result does not match the real block and is worse than the 2D fallback.
 
-const ICON_SIZE = 64;
+/** Matches SIZE in scripts/render-blocks/render.ts, so both paths agree. */
+const ICON_SIZE = 128;
 
 /** Render the block behind `ns:path` to a 3D icon PNG, or null if not possible. */
 export async function renderBlockIconPng(env: Env, ns: string, path: string): Promise<Uint8Array | null> {
