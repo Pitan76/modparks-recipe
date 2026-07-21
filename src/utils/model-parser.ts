@@ -10,6 +10,7 @@ import {
     project,
     uvMatrix,
     REF_SIZE,
+    FRAME_MARGIN,
     type Vec2,
 } from '../core/block-geometry';
 

@@ -202,7 +202,7 @@ export function uvMatrix(p: Vec2[], uv: number[]): number[] | null {
  * small blocks (buttons, slabs, ...) render smaller than full blocks instead of
  * each being stretched to fill the frame.
  */
-const REF_SIZE_UNPADDED = (() => {
+export const REF_SIZE = (() => {
     const corners: Vec3[] = [];
     for (const x of [0, 16]) for (const y of [0, 16]) for (const z of [0, 16]) corners.push({ x, y, z });
     const { minX, minY, maxX, maxY } = boundsOf([project(applyGuiTransform(corners, DEFAULT_GUI))]);
