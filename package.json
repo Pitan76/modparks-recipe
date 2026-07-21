@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "wrangler dev src/index.ts",
+    "dev:remote": "wrangler dev --remote src/index.ts",
     "deploy": "wrangler deploy --minify src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",

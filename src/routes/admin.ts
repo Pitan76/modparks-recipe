@@ -28,6 +28,27 @@ adminRoutes.get('/admin/clean/:namespace/:folder', async (c) => {
   return c.text(`Deleted ${count} old objects from ${prefix}`);
 });
 
+// Read-only R2 listing, for debugging what was actually uploaded.
+// GET /admin/ls?secret=...&prefix=assets/itemalchemy/&limit=200
+adminRoutes.get('/admin/ls', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const prefix = c.req.query('prefix') || '';
+  const limit = Math.min(Number(c.req.query('limit')) || 200, 1000);
+  const listed = await c.env.BUCKET.list({ prefix, limit, cursor: c.req.query('cursor') });
+
+  return c.json({
+    prefix,
+    truncated: listed.truncated,
+    cursor: listed.truncated ? listed.cursor : null,
+    count: listed.objects.length,
+    objects: listed.objects.map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded })),
+  });
+});
+
 // Admin endpoint to (re)build the recipe index from the recipe JSON already in
 // R2. Runs on demand (one bucket scan), so the public /api/list.json stays a
 // cheap static read. Use this to backfill the index without waiting for CI.
