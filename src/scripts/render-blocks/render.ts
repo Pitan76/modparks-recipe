@@ -1,11 +1,35 @@
 // Isometric 3D block rendering with node-canvas.
 
-import { createCanvas, loadImage, type Image } from 'canvas';
+import { createCanvas, loadImage, type Image, type CanvasRenderingContext2D } from 'canvas';
 import { readJarBuffer } from './jar';
 import { loadModel, resolveTexture } from './model';
-import { rotateVec, REF_SIZE, type Vec2, type Vec3 } from './geometry';
+import {
+    applyElementRotation,
+    applyGuiTransform,
+    boundsOf,
+    centroidZ,
+    defaultUv,
+    faceBrightness,
+    faceVertices,
+    guiTransform,
+    project,
+    uvMatrix,
+    REF_SIZE,
+    type Vec2,
+} from '../../core/block-geometry';
 
 export const SIZE = 128; // Output image size
+
+// Padding around a full block, as a multiple of its projected size. 1.0 makes a
+// full cube span the whole frame, the way it does in the game's own slots.
+// Must stay in sync with FRAME_MARGIN in utils/model-parser.ts, or Worker-made
+// icons will not match the ones this pipeline produces.
+export const FRAME_MARGIN = 1.0;
+
+const FLAT_ITEM_PARENTS = new Set([
+    'minecraft:item/generated', 'item/generated',
+    'minecraft:item/handheld', 'item/handheld',
+]);
 
 interface FaceData {
     pts2d: Vec2[];
@@ -22,227 +46,125 @@ export async function renderBlock(modelId: string): Promise<Buffer | null> {
 }
 
 export async function renderModel(model: any): Promise<Buffer | null> {
-    // Skip 2D items
-    const p = model.parent || '';
-    if (p === 'minecraft:item/generated' || p === 'item/generated' ||
-        p === 'minecraft:item/handheld'  || p === 'item/handheld') return null;
-
+    if (FLAT_ITEM_PARENTS.has(model.parent || '')) return null;
     if (!model.elements) return null;
 
-    // GUI display
-    const gui = model.display?.gui || { rotation: [30, 225, 0], scale: [0.625, 0.625, 0.625], translation: [0, 0, 0] };
-    const rot   = gui.rotation    || [30, 225, 0];
-    const scale = gui.scale       || [0.625, 0.625, 0.625];
-    const trans = gui.translation || [0, 0, 0];
+    const faces = await collectFaces(model);
+    if (faces.length === 0) return null;
+    faces.sort((a, b) => a.centroidZ - b.centroidZ);
 
-    // Load textures
-    const texImages = new Map<string, Image>();
-    async function getTexImage(texPath: string): Promise<Image | null> {
-        if (texImages.has(texPath)) return texImages.get(texPath)!;
-        const pngPath = texPath.replace('minecraft:', '') + '.png';
-        const buf = readJarBuffer(`assets/minecraft/textures/${pngPath}`);
-        if (!buf) return null;
-        try {
-            const img = await loadImage(buf);
-            texImages.set(texPath, img);
-            return img;
-        } catch { return null; }
-    }
+    return drawFaces(faces);
+}
 
+async function collectFaces(model: any): Promise<FaceData[]> {
+    const gui = guiTransform(model);
+    const getTexImage = textureLoader();
     const faces: FaceData[] = [];
 
     for (const el of model.elements) {
-        const from = el.from as number[];
-        const to   = el.to   as number[];
-
         for (const [dir, face] of Object.entries(el.faces) as [string, any][]) {
+            const corners = faceVertices(dir, el.from, el.to);
+            if (!corners) continue;
+
             const texPath = resolveTexture(face.texture, model.textures);
             if (!texPath) continue;
             const img = await getTexImage(texPath);
             if (!img) continue;
 
-            let uv: number[] = face.uv;
-            if (!uv) {
-                switch (dir) {
-                    case 'north': uv = [16-to[0], 16-to[1], 16-from[0], 16-from[1]]; break;
-                    case 'south': uv = [from[0],  16-to[1], to[0],      16-from[1]]; break;
-                    case 'west':  uv = [from[2],  16-to[1], to[2],      16-from[1]]; break;
-                    case 'east':  uv = [16-to[2], 16-to[1], 16-from[2], 16-from[1]]; break;
-                    case 'up':    uv = [from[0],  from[2],  to[0],      to[2]];       break;
-                    case 'down':  uv = [from[0],  16-to[2], to[0],      16-from[2]]; break;
-                    default:      uv = [0, 0, 16, 16];
-                }
-            }
-
-            // 3D corner vertices
-            let pts: Vec3[];
-            switch (dir) {
-                case 'north':
-                    pts = [
-                        { x: to[0],   y: to[1],   z: from[2] },
-                        { x: from[0], y: to[1],   z: from[2] },
-                        { x: from[0], y: from[1], z: from[2] },
-                        { x: to[0],   y: from[1], z: from[2] },
-                    ]; break;
-                case 'south':
-                    pts = [
-                        { x: from[0], y: to[1],   z: to[2] },
-                        { x: to[0],   y: to[1],   z: to[2] },
-                        { x: to[0],   y: from[1], z: to[2] },
-                        { x: from[0], y: from[1], z: to[2] },
-                    ]; break;
-                case 'west':
-                    pts = [
-                        { x: from[0], y: to[1],   z: from[2] },
-                        { x: from[0], y: to[1],   z: to[2] },
-                        { x: from[0], y: from[1], z: to[2] },
-                        { x: from[0], y: from[1], z: from[2] },
-                    ]; break;
-                case 'east':
-                    pts = [
-                        { x: to[0], y: to[1],   z: to[2] },
-                        { x: to[0], y: to[1],   z: from[2] },
-                        { x: to[0], y: from[1], z: from[2] },
-                        { x: to[0], y: from[1], z: to[2] },
-                    ]; break;
-                case 'up':
-                    pts = [
-                        { x: from[0], y: to[1], z: from[2] },
-                        { x: to[0],   y: to[1], z: from[2] },
-                        { x: to[0],   y: to[1], z: to[2] },
-                        { x: from[0], y: to[1], z: to[2] },
-                    ]; break;
-                case 'down':
-                    pts = [
-                        { x: from[0], y: from[1], z: to[2] },
-                        { x: to[0],   y: from[1], z: to[2] },
-                        { x: to[0],   y: from[1], z: from[2] },
-                        { x: from[0], y: from[1], z: from[2] },
-                    ]; break;
-                default: continue;
-            }
-
-            // Element rotation
-            if (el.rotation) {
-                const o = { x: el.rotation.origin[0], y: el.rotation.origin[1], z: el.rotation.origin[2] };
-                pts = pts.map(p => {
-                    let np = { x: p.x - o.x, y: p.y - o.y, z: p.z - o.z };
-                    np = rotateVec(np, el.rotation.axis, el.rotation.angle);
-                    return { x: np.x + o.x, y: np.y + o.y, z: np.z + o.z };
-                });
-            }
-
-            // GUI transform: center, rotate, scale, translate
-            const center = { x: 8, y: 8, z: 8 };
-            pts = pts.map(p => {
-                let np = { x: p.x - center.x, y: p.y - center.y, z: p.z - center.z };
-                np = rotateVec(np, 'y', rot[1]);
-                np = rotateVec(np, 'x', rot[0]);
-                np = rotateVec(np, 'z', rot[2]);
-                return {
-                    x: np.x * scale[0] + trans[0],
-                    y: np.y * scale[1] + trans[1],
-                    z: np.z * scale[2] + trans[2],
-                };
+            const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
+            faces.push({
+                pts2d: project(pts),
+                uv: face.uv || defaultUv(dir, el.from, el.to),
+                img,
+                brightness: faceBrightness(dir),
+                centroidZ: centroidZ(pts),
             });
-
-            // Minecraft face brightness
-            let brightness = 1.0;
-            switch (dir) {
-                case 'up':    brightness = 1.0;  break;
-                case 'north': case 'south': brightness = 0.4; break;
-                case 'east':  case 'west':  brightness = 0.6; break;
-                case 'down':  brightness = 0.2; break;
-            }
-
-            const centroidZ = pts.reduce((s, p) => s + p.z, 0) / 4;
-
-            // Project: y-flip for screen coords
-            const pts2d = pts.map(p => ({ x: p.x, y: -p.y }));
-
-            faces.push({ pts2d, uv, img, brightness, centroidZ });
         }
     }
+    return faces;
+}
 
-    if (faces.length === 0) return null;
+function textureLoader(): (texPath: string) => Promise<Image | null> {
+    const cache = new Map<string, Image>();
+    return async (texPath: string) => {
+        const cached = cache.get(texPath);
+        if (cached) return cached;
 
-    // Sort back-to-front (painter's algorithm)
-    faces.sort((a, b) => a.centroidZ - b.centroidZ);
-
-    // Compute bounding box
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const f of faces) {
-        for (const p of f.pts2d) {
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
+        const buf = readJarBuffer(`assets/minecraft/textures/${texPath.replace('minecraft:', '')}.png`);
+        if (!buf) return null;
+        try {
+            const img = await loadImage(buf);
+            cache.set(texPath, img);
+            return img;
+        } catch {
+            return null;
         }
-    }
+    };
+}
 
-    // Fixed scale relative to a full block, so smaller blocks stay smaller
-    // (a button shouldn't fill the slot like a full cube). Center by the model's
-    // own bounding box. Clamp so an unusually large model can't overflow.
-    const bw = maxX - minX;
-    const bh = maxY - minY;
-    const fitScale = Math.min(SIZE / REF_SIZE * 0.9, SIZE / Math.max(bw, bh, 1));
-    const cx = SIZE / 2 - (minX + maxX) / 2 * fitScale;
-    const cy = SIZE / 2 - (minY + maxY) / 2 * fitScale;
+/**
+ * Scale relative to a full block, so smaller blocks stay smaller (a button
+ * shouldn't fill the slot like a full cube), centred on the model's own
+ * bounding box. Clamped so an unusually large model can't overflow.
+ */
+function framing(faces: FaceData[]): { scale: number; offsetX: number; offsetY: number } {
+    const { minX, minY, maxX, maxY } = boundsOf(faces.map(f => f.pts2d));
+    const scale = Math.min(SIZE / (REF_SIZE * FRAME_MARGIN), SIZE / Math.max(maxX - minX, maxY - minY, 1));
+    return {
+        scale,
+        offsetX: SIZE / 2 - (minX + maxX) / 2 * scale,
+        offsetY: SIZE / 2 - (minY + maxY) / 2 * scale,
+    };
+}
 
-    // Create main canvas
+function drawFaces(faces: FaceData[]): Buffer {
+    const { scale, offsetX, offsetY } = framing(faces);
+
     const canvas = createCanvas(SIZE, SIZE);
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    ctx.antialias = 'none';
+    const ctx = pixelContext(canvas.getContext('2d'));
 
-    // Create a temporary canvas for compositing faces correctly (to preserve transparency)
-    const tCanvas = createCanvas(SIZE, SIZE);
-    const tCtx = tCanvas.getContext('2d');
-    tCtx.imageSmoothingEnabled = false;
-    tCtx.antialias = 'none';
+    // Faces are composited one at a time on a scratch canvas so shading can be
+    // masked to the face's own opaque pixels (source-atop) instead of painting
+    // a black quad over cut-out textures.
+    const scratch = createCanvas(SIZE, SIZE);
+    const sctx = pixelContext(scratch.getContext('2d'));
 
     for (const face of faces) {
-        const p = face.pts2d.map(v => ({ x: v.x * fitScale + cx, y: v.y * fitScale + cy }));
-        const [u1, v1, u2, v2] = face.uv;
-        const sw = u2 - u1;
-        const sh = v2 - v1;
+        const p = face.pts2d.map(v => ({ x: v.x * scale + offsetX, y: v.y * scale + offsetY }));
+        const m = uvMatrix(p, face.uv);
+        if (!m) continue;
 
-        if (sw === 0 || sh === 0) continue;
+        sctx.clearRect(0, 0, SIZE, SIZE);
+        sctx.save();
+        clipPolygon(sctx, p);
 
-        tCtx.clearRect(0, 0, SIZE, SIZE);
-        tCtx.save();
+        sctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+        sctx.drawImage(face.img, 0, 0);
+        sctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        tCtx.beginPath();
-        tCtx.moveTo(p[0].x, p[0].y);
-        tCtx.lineTo(p[1].x, p[1].y);
-        tCtx.lineTo(p[2].x, p[2].y);
-        tCtx.lineTo(p[3].x, p[3].y);
-        tCtx.closePath();
-        tCtx.clip();
-
-        const ax = (p[1].x - p[0].x) / sw;
-        const ay = (p[1].y - p[0].y) / sw;
-        const bx = (p[3].x - p[0].x) / sh;
-        const by = (p[3].y - p[0].y) / sh;
-        const ex = p[0].x - ax * u1 - bx * v1;
-        const ey = p[0].y - ay * u1 - by * v1;
-
-        tCtx.setTransform(ax, ay, bx, by, ex, ey);
-        tCtx.drawImage(face.img, 0, 0);
-        tCtx.setTransform(1, 0, 0, 1, 0, 0);
-
-        // Apply Minecraft face shading ONLY to the opaque pixels of this face
         if (face.brightness < 1.0) {
-            tCtx.globalCompositeOperation = 'source-atop';
-            tCtx.fillStyle = `rgba(0,0,0,${1.0 - face.brightness})`;
-            tCtx.fillRect(0, 0, SIZE, SIZE);
+            sctx.globalCompositeOperation = 'source-atop';
+            sctx.fillStyle = `rgba(0,0,0,${1.0 - face.brightness})`;
+            sctx.fillRect(0, 0, SIZE, SIZE);
         }
 
-        tCtx.restore();
-
-        // Draw the composited face onto the main canvas
-        ctx.drawImage(tCanvas, 0, 0);
+        sctx.restore();
+        ctx.drawImage(scratch, 0, 0);
     }
 
     return canvas.toBuffer('image/png');
+}
+
+function pixelContext(ctx: CanvasRenderingContext2D): CanvasRenderingContext2D {
+    ctx.imageSmoothingEnabled = false;
+    ctx.antialias = 'none';
+    return ctx;
+}
+
+function clipPolygon(ctx: CanvasRenderingContext2D, p: Vec2[]): void {
+    ctx.beginPath();
+    ctx.moveTo(p[0].x, p[0].y);
+    for (const pt of p.slice(1)) ctx.lineTo(pt.x, pt.y);
+    ctx.closePath();
+    ctx.clip();
 }

@@ -21,9 +21,15 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
   const getModel = (id: string) => modelJson(env, id);
   const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
 
-  // Item models (`ns:item/<path>`) are what the game shows in a slot; for a
-  // block item they just point at the block model via `parent`. Fall back to
-  // the block model directly for blocks with no item model.
+  // The item model (`ns:item/<path>`) is what the game actually shows in a slot.
+  // For a block item it just points at the block model via `parent`, but some
+  // blocks are deliberately drawn flat there instead: a torch's item model is
+  // `item/generated` over the block/torch texture, so the game shows the 2D
+  // sprite, not the 3D torch. Honour that and stop — falling through to the
+  // block model would render a 3D shape the game never displays.
+  const itemModel = await loadModel(`${ns}:item/${path}`, getModel);
+  if (isFlatItemModel(itemModel)) return null;
+
   for (const modelId of [`${ns}:item/${path}`, `${ns}:block/${path}`]) {
     const model = await loadModel(modelId, getModel);
     if (!hasGeometry(model)) continue;
@@ -41,6 +47,19 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
     });
   }
   return null;
+}
+
+/** Vanilla parents that mean "draw the texture flat, in 2D". */
+const FLAT_PARENTS = new Set([
+  'minecraft:item/generated',
+  'item/generated',
+  'minecraft:item/handheld',
+  'item/handheld',
+]);
+
+/** True when the item is meant to be drawn as a flat sprite rather than in 3D. */
+function isFlatItemModel(model: any): boolean {
+  return !!model && FLAT_PARENTS.has(model.parent);
 }
 
 /** True only when the resolved model chain yielded real, renderable geometry. */
