@@ -11,13 +11,9 @@ import {
     uvMatrix,
     REF_SIZE,
     FRAME_MARGIN,
+    FLAT_ITEM_PARENTS,
     type Vec2,
 } from '../core/block-geometry';
-
-const FLAT_ITEM_PARENTS = new Set([
-    'minecraft:item/generated', 'item/generated',
-    'minecraft:item/handheld', 'item/handheld',
-]);
 
 interface SvgFace {
     pts2d: Vec2[];

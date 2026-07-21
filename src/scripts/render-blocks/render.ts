@@ -15,21 +15,12 @@ import {
     project,
     uvMatrix,
     REF_SIZE,
+    FRAME_MARGIN,
+    FLAT_ITEM_PARENTS,
     type Vec2,
 } from '../../core/block-geometry';
 
 export const SIZE = 128; // Output image size
-
-// Padding around a full block, as a multiple of its projected size. 1.0 makes a
-// full cube span the whole frame, the way it does in the game's own slots.
-// Must stay in sync with FRAME_MARGIN in utils/model-parser.ts, or Worker-made
-// icons will not match the ones this pipeline produces.
-export const FRAME_MARGIN = 1.0;
-
-const FLAT_ITEM_PARENTS = new Set([
-    'minecraft:item/generated', 'item/generated',
-    'minecraft:item/handheld', 'item/handheld',
-]);
 
 interface FaceData {
     pts2d: Vec2[];

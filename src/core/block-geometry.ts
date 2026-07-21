@@ -215,3 +215,14 @@ export const REF_SIZE = (() => {
  * Both renderers read this, so their output stays interchangeable.
  */
 export const FRAME_MARGIN = 1.0;
+
+/**
+ * Model parents that mean "draw this item as a flat 2D sprite". A torch's item
+ * model is `item/generated` over the block/torch texture, so the game shows the
+ * sprite rather than the 3D torch; renderers must honour that instead of
+ * reaching for the block model.
+ */
+export const FLAT_ITEM_PARENTS = new Set([
+    'minecraft:item/generated', 'item/generated',
+    'minecraft:item/handheld', 'item/handheld',
+]);
