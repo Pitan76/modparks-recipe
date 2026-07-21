@@ -7,7 +7,7 @@
 
 import { execSync } from 'child_process';
 import path from 'path';
-import { uploadToR2, runPool, BUCKET_NAME } from './r2';
+import { uploadAll, describeTarget } from './upload-target';
 import { JAR_PATH, readJarJson } from './render-blocks/jar';
 import { renderBlock, renderModel } from './render-blocks/render';
 import { chestModel, CHEST_VARIANTS } from './render-blocks/chest';
@@ -52,22 +52,13 @@ async function main() {
         }
     }
 
-    console.log(`\nRendered ${rendered.length} block PNGs. Uploading to R2 bucket "${BUCKET_NAME}"...`);
-    let uploaded = 0;
-    let failed = 0;
-    await runPool(rendered, 20, async ({ name, png }) => {
-        try {
-            await uploadToR2(`${R2_PREFIX}${name}.png`, png);
-            uploaded++;
-            if (uploaded % 100 === 0) console.log(`  Uploaded ${uploaded}/${rendered.length}...`);
-        } catch (e) {
-            failed++;
-            console.error(`  Failed to upload ${name}.png:`, (e as Error).message);
-        }
-    });
+    console.log(`\nRendered ${rendered.length} block PNGs. Uploading via ${describeTarget()}...`);
+    await uploadAll(
+        rendered.map(({ name, png }) => ({ key: `${R2_PREFIX}${name}.png`, body: png })),
+        (done) => { if (done % 100 === 0) console.log(`  Uploaded ${done}/${rendered.length}...`); }
+    );
 
-    console.log(`Done. Uploaded ${uploaded} block PNGs, ${failed} failures.`);
-    if (failed > 0) process.exitCode = 1;
+    console.log(`Done. Uploaded ${rendered.length} block PNGs.`);
 }
 
 main().catch(console.error);
