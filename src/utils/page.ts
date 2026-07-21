@@ -148,12 +148,12 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 
       e('form', { onSubmit: openTyped },
         e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, sx: { mb: 2 } },
-          e(TextField, { label: '検索', placeholder: 'iron_ingot', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true }),
-          e(TextField, { label: '形式', select: true, value: fmt, onChange: function (x) { setFmt(x.target.value); }, sx: { width: { sm: 130 } } },
+          e(TextField, { label: '検索', placeholder: 'iron_ingot', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true, size: 'small' }),
+          e(TextField, { label: '形式', select: true, value: fmt, onChange: function (x) { setFmt(x.target.value); }, sx: { width: { sm: 130 } }, size: 'small' },
             e(MenuItem, { value: 'png' }, 'PNG'),
             e(MenuItem, { value: 'gif' }, 'GIF'),
             e(MenuItem, { value: 'jpg' }, 'JPG')),
-          e(Button, { type: 'submit', variant: 'contained', size: 'large', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, '表示'))),
+          e(Button, { type: 'submit', variant: 'contained', size: 'small', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, '表示'))),
 
       // Preview: all recipes producing the selected item
       sel && e(Box, { sx: { mb: 3 } },
