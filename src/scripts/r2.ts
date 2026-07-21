@@ -16,20 +16,32 @@ const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'mp-recipe-images';
 
-if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
-  console.error('Missing R2 credentials in environment variables.');
-  console.error('Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY (.env for local runs).');
-  process.exit(1);
+export function hasR2Credentials(): boolean {
+  return !!(ACCOUNT_ID && ACCESS_KEY_ID && SECRET_ACCESS_KEY);
 }
 
-export const s3 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: { accessKeyId: ACCESS_KEY_ID, secretAccessKey: SECRET_ACCESS_KEY },
-  requestHandler: new NodeHttpHandler({
-    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 }),
-  }),
-});
+// Built on first use, not at import time: scripts that upload over the HTTP
+// write API instead of S3 can import this module without any R2 credentials.
+let client: S3Client | null = null;
+
+export function getS3(): S3Client {
+  if (!client) {
+    if (!hasR2Credentials()) {
+      console.error('Missing R2 credentials in environment variables.');
+      console.error('Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY (.env for local runs).');
+      process.exit(1);
+    }
+    client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId: ACCESS_KEY_ID!, secretAccessKey: SECRET_ACCESS_KEY! },
+      requestHandler: new NodeHttpHandler({
+        httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 }),
+      }),
+    });
+  }
+  return client;
+}
 
 function contentTypeFor(key: string): string {
   if (key.endsWith('.png')) return 'image/png';
@@ -39,7 +51,7 @@ function contentTypeFor(key: string): string {
 }
 
 export async function uploadToR2(key: string, body: Buffer): Promise<void> {
-  await s3.send(
+  await getS3().send(
     new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
