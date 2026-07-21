@@ -143,7 +143,7 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
 // Render at an integer zoom to avoid fractional resampling of the whole canvas
 // (which reintroduces antialiasing). Integer scaling keeps pixel art crisp.
 // Base canvas is 236x112, so scale N -> (236*N)x(112*N). Default 2x = 472x224.
-export const DEFAULT_SCALE = 2;
+export const DEFAULT_SCALE = 1;
 export const MAX_SCALE = 8;
 
 /** Clamp a caller-supplied scale to a safe integer range. */
