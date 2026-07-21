@@ -1,5 +1,5 @@
 /**
- * @fileoverview 両方のレンダラー（Worker側のSVGレンダラー `utils/model-parser.ts` と、オフラインのnode-canvasレンダラー `scripts/render-blocks/render.ts`）で共有されるMinecraft of ブロックモデルのジオメトリ。
+ * @fileoverview 両方のレンダラー（Worker側のSVGレンダラー `core/model-parser.ts` と、オフラインのnode-canvasレンダラー `scripts/render-blocks/render.ts`）で共有されるMinecraft of ブロックモデルのジオメトリ。
  * 両者は、面のワインディング、デフォルトのUV、シェーディング、およびフレーミングが一致している必要があります。
  * そうしないと、書き込みAPI経由で送信されたブロックが、オフラインでレンダリングされた同じブロックと異なって表示されてしまいます。
  */

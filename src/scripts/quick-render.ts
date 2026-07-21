@@ -5,7 +5,7 @@
 import * as unzipper from 'unzipper';
 import fs from 'fs';
 import path from 'path';
-import { renderModelToSvg } from '../utils/model-parser';
+import { renderModelToSvg } from '../core/model-parser';
 
 /**
  * クイック再レンダリング処理を実行します。

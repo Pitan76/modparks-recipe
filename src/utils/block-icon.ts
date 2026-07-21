@@ -10,7 +10,7 @@
  */
 
 import type { Env } from './minecraft';
-import { loadModel, renderModelToSvg } from './model-parser';
+import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';

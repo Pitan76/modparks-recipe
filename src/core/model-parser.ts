@@ -17,7 +17,7 @@ import {
     FRAME_MARGIN,
     FLAT_ITEM_PARENTS,
     type Vec2,
-} from '../core/block-geometry';
+} from './block-geometry';
 
 interface SvgFace {
     pts2d: Vec2[];
