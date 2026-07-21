@@ -142,6 +142,14 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
   if (!match) {
     return c.text('Not found', 404);
   }
+
+  // Rendering a recipe costs several R2 round trips plus rasterization, and the
+  // output only changes when the recipe or its textures are re-uploaded. Serve
+  // repeats straight from the edge cache instead of rebuilding the image.
+  const cache = caches.default;
+  const cacheKey = new Request(c.req.url, { method: 'GET' });
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   const scale = normalizeScale(c.req.query('scale'));
@@ -164,10 +172,12 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
     contentType = 'image/png';
   }
 
-  return new Response(body, {
+  const response = new Response(body, {
     headers: {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=86400',
     },
   });
+  c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
 });
