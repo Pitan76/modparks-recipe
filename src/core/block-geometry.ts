@@ -212,10 +212,13 @@ export const REF_SIZE = (() => {
 /**
  * Frame size as a multiple of REF_SIZE: a full cube occupies 1/FRAME_MARGIN of
  * the frame and the rest is padding. Both renderers read this, so their output
- * stays interchangeable — and this value keeps them matching the icons already
- * rendered and uploaded (a full block at 90% of the frame).
+ * stays interchangeable.
+ *
+ * Calibrated against the reference renderer (mcrecipe.pitan76.net): a full
+ * block's silhouette there measures 28x30 inside a 32px slot, where 1/0.9
+ * produced 26x28.
  */
-export const FRAME_MARGIN = 1 / 0.9;
+export const FRAME_MARGIN = 28 / 27;
 
 /**
  * Model parents that mean "draw this item as a flat 2D sprite". A torch's item
