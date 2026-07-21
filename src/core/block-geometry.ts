@@ -1,22 +1,26 @@
-// Minecraft block-model geometry shared by both renderers: the Worker-side SVG
-// renderer (utils/model-parser.ts) and the offline node-canvas renderer
-// (scripts/render-blocks/render.ts). Both must agree on face winding, default
-// UVs, shading and framing, otherwise a block pushed through the write API
-// looks different from the same block rendered offline.
+/**
+ * @fileoverview 両方のレンダラー（Worker側のSVGレンダラー `utils/model-parser.ts` と、オフラインのnode-canvasレンダラー `scripts/render-blocks/render.ts`）で共有されるMinecraft of ブロックモデルのジオメトリ。
+ * 両者は、面のワインディング、デフォルトのUV、シェーディング、およびフレーミングが一致している必要があります。
+ * そうしないと、書き込みAPI経由で送信されたブロックが、オフラインでレンダリングされた同じブロックと異なって表示されてしまいます。
+ */
 
+/** 3次元の座標を表すインターフェース。 */
 export interface Vec3 { x: number; y: number; z: number }
+
+/** 2次元の座標を表すインターフェース。 */
 export interface Vec2 { x: number; y: number }
 
+/** 回転の軸。 */
 export type Axis = 'x' | 'y' | 'z';
 
-/** GUI display transform, with vanilla defaults filled in. */
+/** バニラのデフォルト値が補完された、GUI表示のトランスフォーム。 */
 export interface GuiTransform {
     rotation: number[];
     scale: number[];
     translation: number[];
 }
 
-/** Element-level rotation as it appears in model JSON. */
+/** モデルJSONに定義されている、エレメントレベルの回転。 */
 export interface ElementRotation {
     origin: number[];
     axis: Axis;
@@ -32,13 +36,12 @@ const DEFAULT_GUI: GuiTransform = {
 const MODEL_CENTER: Vec3 = { x: 8, y: 8, z: 8 };
 
 /**
- * Face brightness multipliers (1.0 = unshaded).
+ * 面の明るさの倍率（1.0 = シェーディングなし）。
  *
- * Calibrated against the reference renderer (mcrecipe.pitan76.net): measuring
- * whole-face mean luminance on two different blocks, the top and east/west
- * faces matched exactly while north/south came out 0.922x too dark at 0.4,
- * giving 0.434. up/down are not visible in the GUI projection, so they are left
- * at their previous values.
+ * 参照レンダラー（mcrecipe.pitan76.net）を基準に調整されています。
+ * 2つの異なるブロックで面全体の平均輝度を測定したところ、上面と東/西面は正確に一致しましたが、
+ * 北/南面は 0.4 だと 0.922 倍暗すぎたため、0.434 に設定しました。
+ * 上面/下面はGUI投影では見えないため、以前の値のままにしています。
  */
 const BRIGHTNESS: Record<string, number> = {
     up: 1.0,
@@ -49,6 +52,13 @@ const BRIGHTNESS: Record<string, number> = {
     down: 0.2,
 };
 
+/**
+ * ベクトルを指定された軸を中心に指定された角度（度）だけ回転させます。
+ * @param v 回転対象のベクトル
+ * @param axis 回転軸（'x', 'y', 'z'）
+ * @param angleDeg 回転角度（度数法）
+ * @returns 回転後のベクトル
+ */
 export function rotateVec(v: Vec3, axis: string, angleDeg: number): Vec3 {
     const r = angleDeg * Math.PI / 180;
     const c = Math.cos(r), s = Math.sin(r);
@@ -58,7 +68,11 @@ export function rotateVec(v: Vec3, axis: string, angleDeg: number): Vec3 {
     return v;
 }
 
-/** GUI display block of a resolved model, with vanilla defaults for gaps. */
+/**
+ * 解決済みモデルのGUI表示用トランスフォームを取得します。未定義の部分はバニラのデフォルトで補完されます。
+ * @param model モデルデータ
+ * @returns GUIトランスフォーム
+ */
 export function guiTransform(model: any): GuiTransform {
     const gui = model?.display?.gui;
     if (!gui) return DEFAULT_GUI;
@@ -69,7 +83,13 @@ export function guiTransform(model: any): GuiTransform {
     };
 }
 
-/** UVs a face falls back to when the model omits them. */
+/**
+ * モデルでUVが省略されている場合に、面がフォールバックするデフォルトのUV。
+ * @param dir 方向（面）
+ * @param from 開始座標 [x, y, z]
+ * @param to 終了座標 [x, y, z]
+ * @returns デフォルトのUV座標配列 [u1, v1, u2, v2]
+ */
 export function defaultUv(dir: string, from: number[], to: number[]): number[] {
     switch (dir) {
         case 'north': return [16 - to[0], 16 - to[1], 16 - from[0], 16 - from[1]];
@@ -83,8 +103,13 @@ export function defaultUv(dir: string, from: number[], to: number[]): number[] {
 }
 
 /**
- * The four corners of a face in model space, wound so that index 0 is the UV
- * origin, 1 is the +u end and 3 is the +v end. Null for an unknown direction.
+ * モデル空間における面の4つの角の座標を取得します。
+ * インデックス0がUVの起点、1が+u端、3が+v端になるように巻かれています（時計回り/反時計回り）。
+ * 不明な方向の場合は null を返します。
+ * @param dir 方向（面）
+ * @param from 開始座標 [x, y, z]
+ * @param to 終了座標 [x, y, z]
+ * @returns 頂点座標の配列、または null
  */
 export function faceVertices(dir: string, from: number[], to: number[]): Vec3[] | null {
     switch (dir) {
@@ -128,11 +153,21 @@ export function faceVertices(dir: string, from: number[], to: number[]): Vec3[] 
     }
 }
 
+/**
+ * 指定された方向の面の明るさを取得します。
+ * @param dir 方向（面）
+ * @returns 明るさの倍率
+ */
 export function faceBrightness(dir: string): number {
     return BRIGHTNESS[dir] ?? 1.0;
 }
 
-/** Rotate a face about its element's rotation origin. */
+/**
+ * 面をそのエレメントの回転起点を中心に回転させます。
+ * @param pts 頂点座標の配列
+ * @param rotation エレメントの回転設定
+ * @returns 回転適用後の頂点座標の配列
+ */
 export function applyElementRotation(pts: Vec3[], rotation: ElementRotation | undefined): Vec3[] {
     if (!rotation) return pts;
     const [ox, oy, oz] = rotation.origin;
@@ -143,9 +178,12 @@ export function applyElementRotation(pts: Vec3[], rotation: ElementRotation | un
 }
 
 /**
- * Apply the GUI display transform: recenter on the model centre, rotate Y then
- * X then Z, scale, translate. Rotations do not commute, so the order is what
- * gives vanilla-looking icons — do not reorder.
+ * GUI表示用トランスフォームを適用します。
+ * 具体的には、モデルの中心への再配置、Y軸・X軸・Z軸の順での回転、スケーリング、平行移動を行います。
+ * 回転は交換法則が成り立たないため、この順序がバニラ風のアイコンを再現する鍵となります。順序を変更しないでください。
+ * @param pts 頂点座標の配列
+ * @param gui GUIトランスフォーム
+ * @returns 変換適用後の頂点座標の配列
  */
 export function applyGuiTransform(pts: Vec3[], gui: GuiTransform): Vec3[] {
     const { rotation, scale, translation } = gui;
@@ -162,17 +200,32 @@ export function applyGuiTransform(pts: Vec3[], gui: GuiTransform): Vec3[] {
     });
 }
 
+/**
+ * 頂点座標の配列から、Z軸の重心（中心座標）を計算します。
+ * @param pts 頂点座標の配列
+ * @returns Z軸の重心
+ */
 export function centroidZ(pts: Vec3[]): number {
     return pts.reduce((s, p) => s + p.z, 0) / pts.length;
 }
 
-/** Project to screen space (y grows downward). */
+/**
+ * スクリーン空間（y軸が下向きに増加）へ投影します。
+ * @param pts 3次元頂点座標の配列
+ * @returns 2次元頂点座標の配列
+ */
 export function project(pts: Vec3[]): Vec2[] {
     return pts.map(p => ({ x: p.x, y: -p.y }));
 }
 
+/** 2次元の境界ボックス（バウンディングボックス）。 */
 export interface Bounds { minX: number; minY: number; maxX: number; maxY: number }
 
+/**
+ * ポリゴン群の境界ボックス（最小・最大座標）を計算します。
+ * @param polygons 2次元ポリゴンの配列
+ * @returns 境界ボックス
+ */
 export function boundsOf(polygons: Vec2[][]): Bounds {
     const b: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     for (const poly of polygons) {
@@ -187,9 +240,12 @@ export function boundsOf(polygons: Vec2[][]): Bounds {
 }
 
 /**
- * Affine transform mapping UV space onto the face's screen quad, as the
- * six components of `matrix(a, b, c, d, e, f)` / `setTransform`. Null when the
- * UV rect is degenerate and nothing can be drawn.
+ * UV空間を面のスクリーン四角形にマッピングするアフィン変換行列を、
+ * `matrix(a, b, c, d, e, f)` / `setTransform` の6つの成分として取得します。
+ * UV矩形が退化していて何も描画できない場合は null を返します。
+ * @param p スクリーンの頂点座標の配列（2次元）
+ * @param uv UV座標 [u1, v1, u2, v2]
+ * @returns 6つの変換行列成分의 配列、または null
  */
 export function uvMatrix(p: Vec2[], uv: number[]): number[] | null {
     const [u1, v1, u2, v2] = uv;
@@ -205,10 +261,9 @@ export function uvMatrix(p: Vec2[], uv: number[]): number[] | null {
 }
 
 /**
- * Projected size (in model units) of a canonical full 16³ block under the
- * default GUI transform. Used as a FIXED normalization denominator so that
- * small blocks (buttons, slabs, ...) render smaller than full blocks instead of
- * each being stretched to fill the frame.
+ * デフォルトのGUIトランスフォーム下における、標準的なフルサイズ（16³）ブロックの投影サイズ（モデル単位）。
+ * 固定の正規化分母として使用され、小さいブロック（ボタン、ハーフブロックなど）がフレームいっぱいに引き伸ばされず、
+ * フルサイズのブロックよりも小さく描画されるようにします。
  */
 export const REF_SIZE = (() => {
     const corners: Vec3[] = [];
@@ -218,21 +273,19 @@ export const REF_SIZE = (() => {
 })();
 
 /**
- * Frame size as a multiple of REF_SIZE: a full cube occupies 1/FRAME_MARGIN of
- * the frame and the rest is padding. Both renderers read this, so their output
- * stays interchangeable.
+ * `REF_SIZE` の倍数としてのフレームサイズ。フルサイズの立方体はフレームの 1/FRAME_MARGIN を占め、残りは余白になります。
+ * 両方のレンダラーがこの値を参照するため、出力の互換性が維持されます。
  *
- * Calibrated against the reference renderer (mcrecipe.pitan76.net): a full
- * block's silhouette there measures 28x30 inside a 32px slot, where 1/0.9
- * produced 26x28.
+ * 参照レンダラー（mcrecipe.pitan76.net）を基準に調整されています。
+ * そちらのフルブロックのシルエットは 32px のスロット内で 28x30 であり、1/0.9 だと 26x28 になっていました。
  */
 export const FRAME_MARGIN = 28 / 27;
 
 /**
- * Model parents that mean "draw this item as a flat 2D sprite". A torch's item
- * model is `item/generated` over the block/torch texture, so the game shows the
- * sprite rather than the 3D torch; renderers must honour that instead of
- * reaching for the block model.
+ * 「このアイテムをフラットな2Dスプライトとして描画する」ことを意味するモデルの親（parent）。
+ * 例えば松明のアイテムモデルは `block/torch` テクスチャの上に `item/generated` を指定しているため、
+ * ゲーム内では3Dの松明ではなくスプライトが表示されます。
+ * レンダラーはブロックモデルを参照するのではなく、この挙動に従う必要があります。
  */
 export const FLAT_ITEM_PARENTS = new Set([
     'minecraft:item/generated', 'item/generated',
