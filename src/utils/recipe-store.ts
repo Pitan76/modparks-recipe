@@ -1,12 +1,29 @@
+/**
+ * @fileoverview レシピデータのR2保存、D1キャッシュ破棄、およびインデックス（recipes.json）の管理を行うユーティリティ。
+ */
+
 import { Env, resultItemOf, isCraftingType } from './minecraft';
 
-/** Store a recipe JSON in R2, drop its stale D1 cache row, and update the index. */
+/**
+ * レシピJSONをR2に保存し、D1の古いキャッシュ行を破棄した上で、インデックスを更新します。
+ * @param env 環境変数
+ * @param namespace ネームスペース
+ * @param id レシピID
+ * @param body レシピJSON文字列
+ * @param data レシピJSONデータ
+ */
 export async function storeRecipe(env: Env, namespace: string, id: string, body: string, data: any): Promise<void> {
   await putRecipeBody(env, namespace, id, body);
   await updateIndex(env, `${namespace}:${id}`, data);
 }
 
-/** Write a recipe body to R2 and drop its stale D1 cache row, without touching the index. */
+/**
+ * レシピの本体をR2に書き込み、D1の古いキャッシュ行を破棄します（インデックスは更新しません）。
+ * @param env 環境変数
+ * @param namespace ネームスペース
+ * @param id レシピID
+ * @param body レシピJSON文字列
+ */
 export async function putRecipeBody(env: Env, namespace: string, id: string, body: string): Promise<void> {
   await env.BUCKET.put(`data/${namespace}/recipe/${id}.json`, body, {
     httpMetadata: { contentType: 'application/json' },
@@ -14,7 +31,11 @@ export async function putRecipeBody(env: Env, namespace: string, id: string, bod
   await env.DB.prepare('DELETE FROM recipes WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
 }
 
-/** Upsert many recipes into index/recipes.json in a single read-modify-write. */
+/**
+ * 1回の「読み取り-変更-書き込み」で、複数のレシピを index/recipes.json にインサートまたはアップデート（Upsert）します。
+ * @param env 環境変数
+ * @param entries アップサートするレシピのエントリ情報（IDとデータのペアの配列）
+ */
 export async function updateIndexMany(env: Env, entries: { fullId: string; data: any }[]): Promise<void> {
   if (entries.length === 0) return;
   const obj = await env.BUCKET.get('index/recipes.json');
@@ -39,7 +60,12 @@ export async function updateIndexMany(env: Env, entries: { fullId: string; data:
   );
 }
 
-/** Upsert one recipe into index/recipes.json (kept crafting-only, like the CI build). */
+/**
+ * 単一のレシピを index/recipes.json にインサートまたはアップデート（Upsert）します（CIビルドと同様に、クラフト関連のレシピのみを対象とします）。
+ * @param env 環境変数
+ * @param fullId 完全修飾レシピID
+ * @param data レシピのJSONデータ
+ */
 export async function updateIndex(env: Env, fullId: string, data: any): Promise<void> {
   const obj = await env.BUCKET.get('index/recipes.json');
   const idx: any = obj ? await obj.json() : {};

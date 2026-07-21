@@ -1,12 +1,13 @@
+/**
+ * @fileoverview データ取得およびブロックレンダリングパイプラインのスクリプトで使用される、共有の Cloudflare R2 (S3互換) クライアントとヘルパー。
+ * ファイルごとに毎回 `wrangler` コマンドを実行する代わりに、同時実行数制限を設けた1つの長期稼働Nodeプロセス経由でアップロードを行う方が遥かに高速です。
+ * 必要なのは R2 S3 認証情報のみです（CLOUDFLARE_API_TOKEN は不要）。
+ */
+
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
 import dotenv from 'dotenv';
-
-// Shared Cloudflare R2 (S3-compatible) client + helpers used by the data-fetch
-// and block-render pipeline scripts. Uploading through one long-lived Node
-// process with bounded concurrency is far faster than spawning `wrangler` once
-// per file, and needs only the R2 S3 credentials (no CLOUDFLARE_API_TOKEN).
 
 dotenv.config();
 
@@ -16,14 +17,20 @@ const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'mp-recipe-images';
 
+/**
+ * 環境変数に R2 の認証情報が存在するかどうかを判定します。
+ */
 export function hasR2Credentials(): boolean {
   return !!(ACCOUNT_ID && ACCESS_KEY_ID && SECRET_ACCESS_KEY);
 }
 
-// Built on first use, not at import time: scripts that upload over the HTTP
-// write API instead of S3 can import this module without any R2 credentials.
+// インポート時ではなく、最初の使用時にビルドされます。これにより、S3の代わりにHTTP書き込みAPI経由でアップロードを行うスクリプトは、
+// R2の認証情報を持たなくてもこのモジュールをインポートできます。
 let client: S3Client | null = null;
 
+/**
+ * S3Client のインスタンスを取得（または作成）します。
+ */
 export function getS3(): S3Client {
   if (!client) {
     if (!hasR2Credentials()) {
@@ -43,6 +50,10 @@ export function getS3(): S3Client {
   return client;
 }
 
+/**
+ * キー名（ファイルパス）の拡張子から、Content-Typeヘッダーの値を返します。
+ * @param key ファイルパスまたはキー名
+ */
 function contentTypeFor(key: string): string {
   if (key.endsWith('.png')) return 'image/png';
   if (key.endsWith('.json')) return 'application/json';
@@ -50,6 +61,11 @@ function contentTypeFor(key: string): string {
   return 'application/octet-stream';
 }
 
+/**
+ * バイナリデータ（Buffer）を R2 バケットの指定したキーにアップロードします。
+ * @param key アップロード先のオブジェクトキー
+ * @param body アップロードするバイナリデータ
+ */
 export async function uploadToR2(key: string, body: Buffer): Promise<void> {
   await getS3().send(
     new PutObjectCommand({
@@ -61,7 +77,12 @@ export async function uploadToR2(key: string, body: Buffer): Promise<void> {
   );
 }
 
-/** Runs async tasks with a bounded concurrency to avoid R2 rate limits. */
+/**
+ * R2 のレート制限を避けるため、同時実行数を制限して非同期タスクを実行します。
+ * @param items 処理するアイテムの配列
+ * @param limit 同時実行制限数
+ * @param worker 各アイテムを処理する非同期関数
+ */
 export async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let index = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {

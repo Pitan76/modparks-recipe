@@ -1,11 +1,13 @@
-// Push a subset of client.jar's assets into R2 through the write API.
-//
-//   npx tsx src/scripts/upload-jar-assets.ts '<in-jar path regex>' [baseUrl]
-//   npx tsx src/scripts/upload-jar-assets.ts '^assets/minecraft/textures/entity/'
-//
-// Only needs the upload secret (UPLOAD_SECRET or ADMIN_SECRET), not the R2 S3
-// credentials, so it works from a machine that only has the Worker's secret.
-// Use it to backfill a path that fetch-mc-data.ts did not previously extract.
+/**
+ * @fileoverview 書き込みAPIを介して、client.jar のアセットの一部を R2 にアップロードするスクリプト。
+ * 使用例:
+ *   npx tsx src/scripts/upload-jar-assets.ts '<in-jar path regex>' [baseUrl]
+ *   npx tsx src/scripts/upload-jar-assets.ts '^assets/minecraft/textures/entity/'
+ *
+ * R2 S3 の認証情報は不要で、アップロード用シークレット（UPLOAD_SECRET または ADMIN_SECRET）のみが必要です。
+ * そのため、Workerのシークレットのみを持つマシンからでも動作します。
+ * `fetch-mc-data.ts` が以前抽出しなかったパスのアセットを後から補完するために使用します。
+ */
 
 import fs from 'fs';
 import path from 'path';
@@ -37,7 +39,7 @@ async function main() {
       entry.autodrain();
       continue;
     }
-    // In-jar paths are already the R2 keys.
+    // JAR内のパスがそのまま R2 のオブジェクトキーになります。
     items.push({ key: entry.path, body: await entry.buffer() });
   }
 

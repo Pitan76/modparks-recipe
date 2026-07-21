@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Minecraft のクライアントJARファイルをダウンロードし、必要なアセット（テクスチャ、モデルJSON、タグ、レシピ）を抽出して R2 バケットにアップロードするスクリプト。
+ */
+
 import * as unzipper from 'unzipper';
 import { Readable } from 'stream';
 import fs from 'fs';
@@ -7,27 +11,34 @@ import { resultItemOf, isCraftingType } from '../utils/minecraft';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
 
-// Files we extract from the jar and mirror into R2. Keys preserve the in-jar
-// path so the Worker can read them at data/... and assets/...textures/....
+// JARファイルから抽出して R2 にミラーリングするファイルリスト。
+// キーは JAR 内のパスを維持し、Worker が `data/...` や `assets/...textures/...` のパスで読み取れるようにします。
 const TARGET_PATHS: RegExp[] = [
   /^assets\/minecraft\/textures\/item\/.*\.png$/,
   /^assets\/minecraft\/textures\/block\/.*\.png$/,
-  // Block entities (chests, ...) have no flat block texture: their skin lives in
-  // the entity atlas, which core/chest.ts unwraps onto a synthesized box model.
+  // ブロックエンティティ（チェストなど）は平面的なブロックテクスチャを持ちません。
+  // それらのスキンはエンティティアトラスに存在し、`core/chest.ts` がそれを合成されたボックスモデル上に展開します。
   /^assets\/minecraft\/textures\/entity\/.*\.png$/,
-  // Vanilla model JSONs. Mod block models inherit from these
-  // (`"parent": "minecraft:block/cube"`), so the Worker cannot resolve a mod
-  // block's geometry unless the vanilla parents are in R2 too.
+  // バニラのモデルJSON。Modのブロックモデルはこれらを継承するため（`"parent": "minecraft:block/cube"`など）、
+  // バニラの親モデルがR2に存在しないと、WorkerはModブロックのジオメトリを解決できません。
   /^assets\/minecraft\/models\/.*\.json$/,
   /^data\/minecraft\/tags\/items?\/.*\.json$/,
   /^data\/minecraft\/tags\/blocks?\/.*\.json$/,
-  /^data\/minecraft\/recipe.*\.json$/, // matches recipe/ and recipes/
+  /^data\/minecraft\/recipe.*\.json$/, // recipe/ および recipes/ にマッチします
 ];
 
+/**
+ * パスが抽出対象のファイルに合致するかどうかを判定します。
+ * @param p 判定対象のファイルパス
+ */
 function shouldExtract(p: string): boolean {
   return TARGET_PATHS.some((regex) => regex.test(p));
 }
 
+/**
+ * Mojangのバージョンマニフェストから、最新のMinecraftリリースのクライアントJARのダウンロードURLを取得します。
+ * @returns クライアントJARのURL
+ */
 async function fetchLatestVersionUrl(): Promise<string> {
   console.log('Fetching version manifest...');
   const res = await fetch(MANIFEST_URL);
@@ -46,6 +57,9 @@ async function fetchLatestVersionUrl(): Promise<string> {
   return versionJson.downloads.client.url;
 }
 
+/**
+ * 実行メイン処理。JARのダウンロード、抽出、R2アップロード、およびレシピインデックスの構築を行います。
+ */
 async function run() {
   try {
     const clientJarUrl = await fetchLatestVersionUrl();
@@ -54,7 +68,7 @@ async function run() {
     const response = await fetch(clientJarUrl);
     if (!response.body) throw new Error('Failed to get response body');
 
-    // Save the jar to disk so downstream steps (render-blocks.ts) can reuse it.
+    // 後続のステップ（render-blocks.ts）で再利用できるように、JARファイルをディスクに保存します。
     const tempFilePath = path.join(process.cwd(), 'client.jar');
     const fileStream = fs.createWriteStream(tempFilePath);
     const nodeWebStream = Readable.fromWeb(response.body as any);
@@ -64,7 +78,7 @@ async function run() {
       nodeWebStream.pipe(fileStream).on('finish', () => resolve()).on('error', reject);
     });
 
-    // Collect the target entries first (buffered), then upload with a bounded pool.
+    // 最初に抽出対象のエントリを収集（バッファ）し、制限付きの並行プールでアップロードします。
     console.log('Extracting target entries from JAR...');
     const entries: { key: string; body: Buffer }[] = [];
 
@@ -100,16 +114,15 @@ async function run() {
 
     console.log(`Done. Uploaded ${uploaded} files, ${failed} failures.`);
 
-    // Build a static recipe index so the lookup page can show a browsable list
-    // (grouped by result item) without any per-request scanning. Both the recipe
-    // id and its result item are derived from data we already have in memory.
+    // 検索ページが、リクエストごとのスキャンなしで閲覧可能なリスト（完成品アイテムごとにグループ化）を表示できるように、静的なレシピインデックスを構築します。
+    // レシピIDと完成品アイテムは、すでにメモリ上にあるデータから取得されます。
     const recipes: { id: string; result: string | null; type: string }[] = [];
     for (const entry of entries) {
       const m = entry.key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/);
       if (!m) continue;
       try {
         const data = JSON.parse(entry.body.toString('utf-8'));
-        // Skip non-crafting recipes for now; the renderer only draws crafting.
+        // 現時点ではクラフト以外のレシピはスキップします。レンダラーはクラフトのみを描画するためです。
         if (!isCraftingType(data.type)) continue;
         recipes.push({
           id: `${m[1]}:${m[2]}`,
@@ -117,7 +130,7 @@ async function run() {
           type: String(data.type).replace(/^minecraft:/, ''),
         });
       } catch {
-        // ignore malformed recipe json
+        // 不正なレシピJSONは無視します
       }
     }
     recipes.sort((a, b) => a.id.localeCompare(b.id));

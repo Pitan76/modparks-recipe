@@ -1,9 +1,15 @@
-// Quick re-render: reads from existing client.jar, regenerates SVGs only
+/**
+ * @fileoverview クイック再レンダラー。既存の client.jar からデータを読み込み、SVGファイルのみを再生成します。
+ */
+
 import * as unzipper from 'unzipper';
 import fs from 'fs';
 import path from 'path';
 import { renderModelToSvg } from '../utils/model-parser';
 
+/**
+ * クイック再レンダリング処理を実行します。
+ */
 async function run() {
     const tempFilePath = path.join(process.cwd(), 'client.jar');
     if (!fs.existsSync(tempFilePath)) {
@@ -74,7 +80,7 @@ async function run() {
 
     let renderCount = 0;
 
-    // Render from legacy item models
+    // 従来のレガシーなアイテムモデルからレンダリングします。
     for (const [key] of modelsCache.entries()) {
         if (key.startsWith('item/')) {
             const modelId = 'minecraft:' + key.replace('.json', '');
@@ -91,7 +97,7 @@ async function run() {
         }
     }
 
-    // Render from modern 1.21+ item definitions
+    // モダンな 1.21 以降のアイテム定義からレンダリングします。
     for (const [key, itemData] of itemsCache.entries()) {
         const itemName = key.replace('.json', '');
         let modelId = itemData.model?.model;

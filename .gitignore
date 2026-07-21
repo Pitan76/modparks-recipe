@@ -54,3 +54,5 @@ render_out_png/
 client.jar
 server.jar
 tail.log
+
+/secret/

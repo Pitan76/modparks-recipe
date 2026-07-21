@@ -1,9 +1,16 @@
-// Model loading (with parent merging) and texture-reference resolution.
+/**
+ * @fileoverview モデルの読み込み（親モデルとのマージ）およびテクスチャ参照の解決を行うモジュール。
+ */
 
 import { readJarJson } from './jar';
 
 const modelCache = new Map<string, any>();
 
+/**
+ * 指定されたモデルIDからモデルデータを読み込み、親モデルのチェーンと再帰的にマージします。
+ * @param modelId 対象モデル of ID
+ * @returns マージされたモデルデータ、読み込めない場合は null
+ */
 export function loadModel(modelId: string): any {
     if (modelCache.has(modelId)) return modelCache.get(modelId);
 
@@ -18,7 +25,7 @@ export function loadModel(modelId: string): any {
         if (!parentId.startsWith('minecraft:') && !parentId.includes(':'))
             parentId = 'minecraft:' + parentId;
 
-        // Skip builtin parents
+        // 組み込み（builtin/）の親モデルはマージをスキップします
         if (parentId.includes('builtin/')) {
             modelCache.set(modelId, model);
             return model;
@@ -40,6 +47,12 @@ export function loadModel(modelId: string): any {
     return model;
 }
 
+/**
+ * `#ref` 形式のテクスチャ参照をたどり、実際のテクスチャパスを解決します。
+ * @param texName テクスチャの参照名（例: "#all" や "#texture"）
+ * @param textures モデルのテクスチャ定義マップ
+ * @returns 解決されたテクスチャパス、解決できない場合は null
+ */
 export function resolveTexture(texName: string, textures: any): string | null {
     if (!texName) return null;
     let current = texName.startsWith('#') ? texName.substring(1) : texName;

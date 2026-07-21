@@ -1,9 +1,10 @@
-// Where a pipeline script sends its output.
-//
-// By default it talks to R2 directly over S3, which needs the R2 access keys.
-// Setting MP_RECIPE_URL switches to the Worker's authenticated bulk write API
-// instead, which only needs the upload secret — useful for running a pipeline
-// from a machine that has no R2 credentials.
+/**
+ * @fileoverview パイプラインスクリプトの出力先を制御し、アップロード処理を抽象化するモジュール。
+ *
+ * デフォルトでは R2 に S3 経由で直接通信するため、R2 アクセスキーが必要です。
+ * 環境変数 `MP_RECIPE_URL` を設定すると、Worker の認証付き一括書き込み API に切り替わります。
+ * この場合はアップロード用シークレットのみが必要となり、R2 認証情報を持たないマシンからパイプラインを実行する際に便利です。
+ */
 
 import dotenv from 'dotenv';
 import { uploadToR2, runPool } from './r2';
@@ -13,21 +14,32 @@ dotenv.config();
 const API_URL = process.env.MP_RECIPE_URL?.replace(/\/$/, '');
 const SECRET = process.env.UPLOAD_SECRET || process.env.ADMIN_SECRET;
 
-/** How many objects go in one bulk request when uploading over HTTP. */
+/** HTTP経由でアップロードする際、1回の一括リクエストに含まれるオブジェクト数。 */
 const BATCH_SIZE = 50;
 
+/**
+ * 現在設定されているアップロード先の簡単な説明を取得します。
+ */
 export function describeTarget(): string {
   return API_URL ? `write API at ${API_URL}` : 'R2 (S3 credentials)';
 }
 
-/** `assets/<ns>/textures/<path>` -> the parts the bulk API expects. */
+/**
+ * `assets/<ns>/textures/<path>` 形式のキーから、一括APIが想定するネームスペースとパスのパーツに分割します。
+ * @param key R2オブジェクトキー
+ */
 function splitTextureKey(key: string): { ns: string; path: string } | null {
   const m = /^assets\/([^/]+)\/textures\/(.+)$/.exec(key);
   return m ? { ns: m[1], path: m[2] } : null;
 }
 
+/**
+ * HTTPの書き込みAPI（バルクエンドポイント）を介してアセットをアップロードします。
+ * @param items アップロードするアイテムの配列
+ * @param onProgress 進捗コールバック関数
+ */
 async function uploadViaApi(items: { key: string; body: Buffer }[], onProgress?: (done: number) => void): Promise<void> {
-  // The bulk endpoint is per namespace, so group first.
+  // 一括（バルク）エンドポイントはネームスペース単位であるため、最初にグループ化します。
   const byNs = new Map<string, Record<string, string>>();
   for (const { key, body } of items) {
     const parts = splitTextureKey(key);
@@ -55,7 +67,11 @@ async function uploadViaApi(items: { key: string; body: Buffer }[], onProgress?:
   }
 }
 
-/** Upload every item, using whichever target is configured. */
+/**
+ * 設定されたアップロード先（S3 または HTTP API）を使用して、すべてのアイテムをアップロードします。
+ * @param items アップロード対象アイテムの配列
+ * @param onProgress 進捗コールバック関数
+ */
 export async function uploadAll(
   items: { key: string; body: Buffer }[],
   onProgress?: (done: number) => void

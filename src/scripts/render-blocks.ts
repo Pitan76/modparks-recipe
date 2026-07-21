@@ -1,9 +1,11 @@
-// Pure Node.js block renderer using node-canvas.
-// No browser dependency - works in GitHub Actions.
-//
-// Reads models + textures from client.jar, renders isometric 3D block PNGs,
-// then uploads the results to R2. The rendering pipeline lives in
-// ./render-blocks/*; this file is just the CLI entry point.
+/**
+ * @fileoverview node-canvas を使用した純粋な Node.js ブロックレンダラーのCLIエントリーポイント。
+ * ブラウザなどのGUI環境に依存せず、GitHub Actions上でも動作します。
+ *
+ * client.jar からモデルとテクスチャを読み込み、3D等角投影のブロックPNG画像をレンダリングして、
+ * その結果を R2 にアップロードします。レンダリングパイプライン自体は `./render-blocks/*` 内にあり、
+ * このファイルはコマンドラインのエントリーポイントです。
+ */
 
 import { execSync } from 'child_process';
 import path from 'path';
@@ -15,7 +17,7 @@ import { chestModel, CHEST_VARIANTS } from '../core/chest';
 const R2_PREFIX = 'assets/minecraft/textures/render3d/';
 
 async function main() {
-    // Get all item definitions
+    // すべてのアイテム定義を取得します
     const listOutput = execSync(
         `unzip -l "${JAR_PATH}" "assets/minecraft/items/*.json" | grep "assets/minecraft/items/" | awk '{print $4}'`,
         { encoding: 'utf-8', maxBuffer: 4 * 1024 * 1024 }
@@ -23,8 +25,8 @@ async function main() {
     const itemPaths = listOutput.split('\n').filter(Boolean);
     console.log(`Found ${itemPaths.length} item definitions`);
 
-    // Render first (single-threaded canvas work), then upload the results to R2
-    // with bounded concurrency in one Node process.
+    // 最初にシングルスレッドのCanvas処理でレンダリングを完了させ、その後、
+    // 同時実行制限を設けた1つのNodeプロセス内で結果をR2にアップロードします。
     const rendered: { name: string; png: Buffer }[] = [];
     for (let i = 0; i < itemPaths.length; i++) {
         const itemPath = itemPaths[i];
@@ -38,8 +40,8 @@ async function main() {
             if (!modelId) modelId = `minecraft:item/${itemName}`;
             if (typeof modelId !== 'string') continue;
 
-            // Chests (and other block entities) have no renderable model; use a
-            // synthesized box model with the entity atlas texture instead.
+            // チェスト（および他のブロックエンティティ）はレンダリング可能なモデルを持ちません。
+            // 代わりに、エンティティアトラスのテクスチャを用いた合成ボックスモデルを使用します。
             const png = CHEST_VARIANTS[itemName]
                 ? await renderModel(chestModel(CHEST_VARIANTS[itemName]))
                 : await renderBlock(modelId);
@@ -48,7 +50,7 @@ async function main() {
             rendered.push({ name: itemName, png });
             if (rendered.length % 50 === 0) console.log(`  Rendered ${rendered.length} blocks... (${itemName})`);
         } catch (e: any) {
-            // Skip items that can't be rendered
+            // レンダリングできないアイテムはスキップします
         }
     }
 

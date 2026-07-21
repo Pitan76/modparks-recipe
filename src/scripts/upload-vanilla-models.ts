@@ -1,15 +1,16 @@
-// Push the vanilla model JSONs (assets/minecraft/models/**.json) into R2.
-//
-// Mod block models inherit vanilla parents ("parent": "minecraft:block/cube"),
-// so without these the Worker can't resolve a mod block's geometry and falls
-// back to a flat 2D texture. Uploads through the authenticated bulk write API,
-// so it needs only the upload secret — no R2 S3 credentials.
-//
-//   npx tsx src/scripts/upload-vanilla-models.ts [baseUrl]
-//
-// baseUrl defaults to http://localhost:8799 (the `npm run dev:remote` server,
-// which is bound to the production bucket). Secret comes from UPLOAD_SECRET or
-// ADMIN_SECRET in the environment / .env.
+/**
+ * @fileoverview バニラのモデルJSON（assets/minecraft/models/**.json）を R2 にアップロードするスクリプト。
+ *
+ * Modのブロックモデルはバニラの親モデルを継承するため（"parent": "minecraft:block/cube" など）、
+ * これらがないと Worker はModブロックのジオメトリを解決できず、平面的な2Dテクスチャにフォールバックしてしまいます。
+ * 認証付きの一括書き込み API を介してアップロードするため、アップロード用シークレットのみが必要で、R2 S3 の認証情報は不要です。
+ *
+ * 使用例:
+ *   npx tsx src/scripts/upload-vanilla-models.ts [baseUrl]
+ *
+ * baseUrl はデフォルトで http://localhost:8799（productionバケットに紐付いた `npm run dev:remote` サーバー）です。
+ * シークレットは環境変数または `.env` の UPLOAD_SECRET または ADMIN_SECRET から取得します。
+ */
 
 import * as unzipper from 'unzipper';
 import { Readable } from 'stream';
@@ -27,6 +28,9 @@ const BATCH_SIZE = 150;
 const BASE_URL = (process.argv[2] || 'http://localhost:8799').replace(/\/$/, '');
 const SECRET = process.env.UPLOAD_SECRET || process.env.ADMIN_SECRET;
 
+/**
+ * 実行ディレクトリに client.jar が存在することを確認し、なければ最新のものを自動でダウンロードします。
+ */
 async function ensureJar(): Promise<void> {
   if (fs.existsSync(JAR_PATH)) {
     console.log(`Using existing ${JAR_PATH}`);
@@ -48,7 +52,9 @@ async function ensureJar(): Promise<void> {
   });
 }
 
-/** Extract every vanilla model, keyed by its path under models/ (e.g. "block/cube"). */
+/**
+ * `models/` 配下のパス（例: "block/cube"）をキーとして、すべてのバニラモデルを抽出します。
+ */
 async function readModels(): Promise<Record<string, string>> {
   const models: Record<string, string> = {};
   const zip = fs.createReadStream(JAR_PATH).pipe(unzipper.Parse({ forceStream: true }));
@@ -63,6 +69,11 @@ async function readModels(): Promise<Record<string, string>> {
   return models;
 }
 
+/**
+ * 指定されたモデルバッチを一括API経由でアップロードします。
+ * @param batch モデル名とモデルJSON文字列のマップ
+ * @returns アップロード成功したモデル数
+ */
 async function uploadBatch(batch: Record<string, string>): Promise<number> {
   const res = await fetch(`${BASE_URL}/api/minecraft/bulk`, {
     method: 'POST',
