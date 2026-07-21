@@ -1,4 +1,6 @@
-// Isometric 3D block rendering with node-canvas.
+/**
+ * @fileoverview node-canvas を使用した 3D 等角投影（isometric）のブロックモデルレンダラー。
+ */
 
 import { createCanvas, loadImage, type Image, type CanvasRenderingContext2D } from 'canvas';
 import { readJarBuffer } from './jar';
@@ -20,7 +22,8 @@ import {
     type Vec2,
 } from '../../core/block-geometry';
 
-export const SIZE = 128; // Output image size
+/** 出力画像のサイズ。 */
+export const SIZE = 128;
 
 interface FaceData {
     pts2d: Vec2[];
@@ -30,12 +33,22 @@ interface FaceData {
     centroidZ: number;
 }
 
+/**
+ * 指定されたモデルIDのブロックをレンダリングし、PNG画像のバイナリデータ（Buffer）を返します。
+ * @param modelId モデルのID
+ * @returns PNG画像のBuffer、または null
+ */
 export async function renderBlock(modelId: string): Promise<Buffer | null> {
     const model = loadModel(modelId);
     if (!model) return null;
     return renderModel(model);
 }
 
+/**
+ * 与えられたモデルオブジェクトをレンダリングし、PNG画像のバイナリデータ（Buffer）を返します。
+ * @param model 解析済みのモデルデータ
+ * @returns PNG画像のBuffer、または null
+ */
 export async function renderModel(model: any): Promise<Buffer | null> {
     if (FLAT_ITEM_PARENTS.has(model.parent || '')) return null;
     if (!model.elements) return null;
@@ -47,6 +60,11 @@ export async function renderModel(model: any): Promise<Buffer | null> {
     return drawFaces(faces);
 }
 
+/**
+ * モデルデータ内のエレメントから、描画対象となるすべての面を収集します。
+ * @param model モデルデータ
+ * @returns 面データの配列
+ */
 async function collectFaces(model: any): Promise<FaceData[]> {
     const gui = guiTransform(model);
     const getTexImage = textureLoader();
@@ -75,6 +93,9 @@ async function collectFaces(model: any): Promise<FaceData[]> {
     return faces;
 }
 
+/**
+ * テクスチャ画像をJARからキャッシュ経由で読み込むローダー関数を作成します。
+ */
 function textureLoader(): (texPath: string) => Promise<Image | null> {
     const cache = new Map<string, Image>();
     return async (texPath: string) => {
@@ -94,9 +115,10 @@ function textureLoader(): (texPath: string) => Promise<Image | null> {
 }
 
 /**
- * Scale relative to a full block, so smaller blocks stay smaller (a button
- * shouldn't fill the slot like a full cube), centred on the model's own
- * bounding box. Clamped so an unusually large model can't overflow.
+ * フルサイズブロックに対する比率でスケーリングを行い、小さなブロック（ボタン等）が引き伸ばされて
+ * スロット全体に表示されるのを防ぎつつ、モデル自身のバウンディングボックスの中央に配置します。
+ * モデルが異常に大きい場合は、はみ出さないようにクリップされます。
+ * @param faces 面データの配列
  */
 function framing(faces: FaceData[]): { scale: number; offsetX: number; offsetY: number } {
     const { minX, minY, maxX, maxY } = boundsOf(faces.map(f => f.pts2d));
@@ -108,15 +130,20 @@ function framing(faces: FaceData[]): { scale: number; offsetX: number; offsetY: 
     };
 }
 
+/**
+ * 収集した面を描画し、PNGバイナリデータを返します。
+ * @param faces 面データの配列
+ * @returns PNG画像のBuffer
+ */
 function drawFaces(faces: FaceData[]): Buffer {
     const { scale, offsetX, offsetY } = framing(faces);
 
     const canvas = createCanvas(SIZE, SIZE);
     const ctx = pixelContext(canvas.getContext('2d'));
 
-    // Faces are composited one at a time on a scratch canvas so shading can be
-    // masked to the face's own opaque pixels (source-atop) instead of painting
-    // a black quad over cut-out textures.
+    // 各面は作業用（スクラッチ）Canvas上に1つずつ合成されます。これにより、
+    // 切り抜き透過テクスチャの周囲に黒い四角形を塗る代わりに、シェーディングを面の不透明ピクセルだけに
+    // マスク（source-atop）して描画できます。
     const scratch = createCanvas(SIZE, SIZE);
     const sctx = pixelContext(scratch.getContext('2d'));
 
@@ -146,12 +173,18 @@ function drawFaces(faces: FaceData[]): Buffer {
     return canvas.toBuffer('image/png');
 }
 
+/**
+ * キャンバスのレンダリングコンテキストに対し、ピクセルアート用の設定（補間無効、アンチエイリアスなし）を適用します。
+ */
 function pixelContext(ctx: CanvasRenderingContext2D): CanvasRenderingContext2D {
     ctx.imageSmoothingEnabled = false;
     ctx.antialias = 'none';
     return ctx;
 }
 
+/**
+ * 多角形（面）のパスに沿ってコンテキストをクリッピングします。
+ */
 function clipPolygon(ctx: CanvasRenderingContext2D, p: Vec2[]): void {
     ctx.beginPath();
     ctx.moveTo(p[0].x, p[0].y);
