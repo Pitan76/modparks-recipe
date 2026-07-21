@@ -31,11 +31,19 @@ const DEFAULT_GUI: GuiTransform = {
 
 const MODEL_CENTER: Vec3 = { x: 8, y: 8, z: 8 };
 
-/** Vanilla face brightness multipliers (1.0 = unshaded). */
+/**
+ * Face brightness multipliers (1.0 = unshaded).
+ *
+ * Calibrated against the reference renderer (mcrecipe.pitan76.net): measuring
+ * whole-face mean luminance on two different blocks, the top and east/west
+ * faces matched exactly while north/south came out 0.922x too dark at 0.4,
+ * giving 0.434. up/down are not visible in the GUI projection, so they are left
+ * at their previous values.
+ */
 const BRIGHTNESS: Record<string, number> = {
     up: 1.0,
-    north: 0.4,
-    south: 0.4,
+    north: 0.434,
+    south: 0.434,
     east: 0.6,
     west: 0.6,
     down: 0.2,
