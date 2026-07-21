@@ -16,68 +16,97 @@ async function getFont() {
   return fontBuffer;
 }
 
-async function resolveIngredient(ingredient: any, env: Env, tagOffset: number): Promise<string | null> {
+/**
+ * Per-request memo of item id -> icon data URL. A crafting grid usually repeats
+ * the same ingredient across several slots (and 3D block icons are expensive to
+ * build), so every distinct item is resolved exactly once per image. Promises,
+ * not values, are stored so concurrent slots share one in-flight lookup.
+ */
+type IconCache = Map<string, Promise<string | null>>;
+
+function itemIcon(id: string, env: Env, cache: IconCache): Promise<string | null> {
+  let pending = cache.get(id);
+  if (!pending) {
+    pending = getItemImageBase64(id, env);
+    cache.set(id, pending);
+  }
+  return pending;
+}
+
+async function resolveIngredient(ingredient: any, env: Env, tagOffset: number, cache: IconCache): Promise<string | null> {
   if (!ingredient) return null;
   if (typeof ingredient === 'string') {
     if (ingredient.startsWith('#')) {
-      return resolveIngredient({ tag: ingredient.substring(1) }, env, tagOffset);
+      return resolveIngredient({ tag: ingredient.substring(1) }, env, tagOffset, cache);
     } else {
-      return resolveIngredient({ item: ingredient }, env, tagOffset);
+      return resolveIngredient({ item: ingredient }, env, tagOffset, cache);
     }
   }
   if (Array.isArray(ingredient)) {
-    return resolveIngredient(ingredient[0], env, tagOffset);
+    return resolveIngredient(ingredient[0], env, tagOffset, cache);
   }
   if (ingredient.item) {
-    return await getItemImageBase64(ingredient.item, env);
+    return await itemIcon(ingredient.item, env, cache);
   }
   if (ingredient.tag) {
     const tagItems = await getTag(ingredient.tag, env);
     if (tagItems.length > 0) {
       const targetItem = tagItems[tagOffset % tagItems.length];
-      return resolveIngredient(targetItem, env, tagOffset);
+      return resolveIngredient(targetItem, env, tagOffset, cache);
     }
   }
   return null;
 }
 
-export async function createRecipeGrid(recipeData: any, env: Env, tagOffset: number): Promise<Array<string | null>> {
-  const grid: Array<string | null> = Array(9).fill(null);
-  
+export async function createRecipeGrid(
+  recipeData: any,
+  env: Env,
+  tagOffset: number,
+  cache: IconCache = new Map()
+): Promise<Array<string | null>> {
+  // Collect the slots first, then resolve them all at once: the lookups are
+  // independent network round trips, and running them serially made a nine-slot
+  // recipe nine times slower than it needs to be.
+  const slots: { index: number; ingredient: any }[] = [];
+
   if (recipeData.type === 'minecraft:crafting_shaped' || recipeData.type === 'crafting_shaped') {
     const pattern = recipeData.pattern;
     const key = recipeData.key;
-    
+
     for (let r = 0; r < pattern.length; r++) {
       for (let c = 0; c < pattern[r].length; c++) {
         const char = pattern[r][c];
-        if (char !== ' ') {
-          grid[r * 3 + c] = await resolveIngredient(key[char], env, tagOffset);
-        }
+        if (char !== ' ') slots.push({ index: r * 3 + c, ingredient: key[char] });
       }
     }
   } else if (recipeData.type === 'minecraft:crafting_shapeless' || recipeData.type === 'crafting_shapeless') {
     const ingredients = recipeData.ingredients;
-    for (let i = 0; i < ingredients.length; i++) {
-      grid[i] = await resolveIngredient(ingredients[i], env, tagOffset);
-    }
+    for (let i = 0; i < ingredients.length; i++) slots.push({ index: i, ingredient: ingredients[i] });
   }
-  
+
+  const grid: Array<string | null> = Array(9).fill(null);
+  await Promise.all(
+    slots.map(async ({ index, ingredient }) => {
+      grid[index] = await resolveIngredient(ingredient, env, tagOffset, cache);
+    })
+  );
   return grid;
 }
 
 export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: number = 0) {
-  const font = await getFont();
-  const grid = await createRecipeGrid(recipeData, env, tagOffset);
-  
-  let resultImage: string | null = null;
-  if (recipeData.result) {
-    const resId = typeof recipeData.result === 'string'
-      ? recipeData.result
-      : (recipeData.result.id || recipeData.result.item);
-    if (resId) resultImage = await getItemImageBase64(resId, env);
-  }
-  
+  const cache: IconCache = new Map();
+
+  const resultId = recipeData.result
+    ? (typeof recipeData.result === 'string' ? recipeData.result : recipeData.result.id || recipeData.result.item)
+    : null;
+
+  // Font, grid and result icon are independent; resolve them together.
+  const [font, grid, resultImage] = await Promise.all([
+    getFont(),
+    createRecipeGrid(recipeData, env, tagOffset, cache),
+    resultId ? itemIcon(resultId, env, cache) : Promise.resolve(null),
+  ]);
+
   // Base64 of public/crafting_3x3.png
   const bgBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==";
 
