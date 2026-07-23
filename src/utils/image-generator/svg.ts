@@ -28,7 +28,9 @@ import {
   SLOT,
   OUT_X,
   OUT_Y,
+  ICON,
   iconSvg,
+  countSvg,
 } from './layout';
 
 /**
@@ -117,9 +119,13 @@ export async function createRecipeGrid(
 export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: number = 0) {
   const cache: IconCache = new Map();
 
-  const resultId = recipeData.result
-    ? (typeof recipeData.result === 'string' ? recipeData.result : recipeData.result.id || recipeData.result.item)
+  const result = recipeData.result ?? recipeData.output;
+  const resultId = result
+    ? (typeof result === 'string' ? result : result.id || result.item)
     : null;
+  const resultCount = result && typeof result === 'object' && Number(result.count) > 1
+    ? Math.floor(Number(result.count))
+    : 0;
 
   const [grid, resultImage] = await Promise.all([
     createRecipeGrid(recipeData, env, tagOffset, cache),
@@ -134,7 +140,13 @@ export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: nu
     body += iconSvg(grid[i]!, GRID_X + (i % 3) * SLOT, GRID_Y + Math.floor(i / 3) * SLOT);
   }
 
-  if (resultImage) body += iconSvg(resultImage, OUT_X, OUT_Y);
+  if (resultImage) {
+    body += iconSvg(resultImage, OUT_X, OUT_Y);
+    // 出力が2個以上ならバニラ同様、右下にスタック数を表示（SVG座標はネイティブの2倍なので px=2）。
+    if (resultCount > 1) {
+      body += countSvg(String(resultCount), OUT_X + ICON, OUT_Y + ICON, 2);
+    }
+  }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}"`
     + ` viewBox="0 0 ${CANVAS_W} ${CANVAS_H}" shape-rendering="crispEdges">${body}</svg>`;

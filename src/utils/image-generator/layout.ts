@@ -39,3 +39,65 @@ export function iconSvg(href: string, x: number, y: number): string {
   return `<image href="${href}" x="${x}" y="${y}" width="${ICON}" height="${ICON}"`
     + ` image-rendering="optimizeSpeed" preserveAspectRatio="xMidYMid meet"/>`;
 }
+
+/**
+ * Minecraft デフォルトフォント（ascii.png）の数字 0-9 のビットマップ。
+ * 各グリフは 5px 幅 × 7px 高。'#' が塗りピクセル。バニラのスタック数表示に使われる書体そのもの。
+ */
+const GLYPH_W = 5;
+const GLYPH_H = 7;
+const DIGIT_GLYPHS: Record<string, string[]> = {
+  '0': ['.###.', '#...#', '#..##', '#.#.#', '##..#', '#...#', '.###.'],
+  '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+  '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
+  '3': ['#####', '...#.', '..#..', '...#.', '....#', '#...#', '.###.'],
+  '4': ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
+  '5': ['#####', '#....', '####.', '....#', '....#', '#...#', '.###.'],
+  '6': ['..##.', '.#...', '#....', '####.', '#...#', '#...#', '.###.'],
+  '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
+  '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
+  '9': ['.###.', '#...#', '#...#', '.####', '....#', '...#.', '.##..'],
+};
+
+/** バニラのドロップシャドウ色（白テキストの場合 = white * 0.25）。 */
+const SHADOW_COLOR = '#3f3f3f';
+const TEXT_COLOR = '#ffffff';
+
+/**
+ * スタック数をマインクラフト風にスロット右下へ描画する SVG を生成します。
+ * 公式フォントのビットマップを矩形パスで再現し、1pxオフセットのドロップシャドウ付き。
+ * @param text 表示する数値文字列（例: "16"）
+ * @param rightX 描画領域の右端 X 座標
+ * @param bottomY 描画領域の下端 Y 座標
+ * @param px 1フォントピクセルあたりの描画サイズ（ネイティブ→SVG座標の倍率）
+ */
+export function countSvg(text: string, rightX: number, bottomY: number, px: number): string {
+  const digits = text.split('');
+  const totalW = (digits.length * GLYPH_W + (digits.length - 1)) * px;
+  const startX = rightX - totalW;
+  const startY = bottomY - GLYPH_H * px;
+
+  const fill: string[] = [];
+  const shadow: string[] = [];
+  let cx = startX;
+  for (const ch of digits) {
+    const glyph = DIGIT_GLYPHS[ch];
+    if (glyph) {
+      for (let r = 0; r < GLYPH_H; r++) {
+        for (let c = 0; c < GLYPH_W; c++) {
+          if (glyph[r][c] === '#') {
+            const rx = cx + c * px;
+            const ry = startY + r * px;
+            fill.push(`M${rx} ${ry}h${px}v${px}h${-px}z`);
+            // シャドウは 1ネイティブpx（= px）右下へオフセット
+            shadow.push(`M${rx + px} ${ry + px}h${px}v${px}h${-px}z`);
+          }
+        }
+      }
+    }
+    cx += (GLYPH_W + 1) * px;
+  }
+
+  return `<path d="${shadow.join('')}" fill="${SHADOW_COLOR}"/>`
+    + `<path d="${fill.join('')}" fill="${TEXT_COLOR}"/>`;
+}
