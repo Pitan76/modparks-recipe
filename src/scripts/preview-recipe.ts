@@ -21,8 +21,10 @@
 import fs from 'fs';
 import path from 'path';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
-import { renderBlock } from './render-blocks/render';
+import { renderModel } from './render-blocks/render';
+import { loadModel } from './render-blocks/model';
 import { readJarBuffer, readJarJson } from './render-blocks/jar';
+import { chestModel, CHEST_VARIANTS } from '../core/chest';
 import {
   BACKGROUND,
   iconSvg,
@@ -53,19 +55,40 @@ function toDataUri(png: Buffer | Uint8Array): string {
   return `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
 }
 
-/** アイテムIDのアイコン data URI を jar から解決する（本番 getItemImageBase64 のローカル版）。 */
+/** 解決されたモデルチェーンが、実際にレンダリング可能なジオメトリを持つか判定する（block-icon.ts の hasGeometry と同じ）。 */
+function hasGeometry(model: any): boolean {
+  return !!model && Array.isArray(model.elements) && model.elements.length > 0;
+}
+
+/**
+ * アイテムIDのアイコン data URI を jar から解決する（本番 renderBlockIconSvg のローカル版）。
+ * 解決順は block-icon.ts と一致させる:
+ *   - チェスト等のブロックエンティティは builtin/entity でエレメントを持たないため、
+ *     エンティティアトラスから合成した chestModel を使う。
+ *   - それ以外は item モデル優先、無ければ block モデルの 3D ジオメトリを描画。
+ *     （松明の item/generated のようにジオメトリを持たないモデルはスキップして block/<path> を採用）
+ *   - どちらも解決できなければ平面アイテムテクスチャにフォールバック。
+ */
 const iconCache = new Map<string, Promise<string | null>>();
 function resolveIcon(itemId: string): Promise<string | null> {
   let pending = iconCache.get(itemId);
   if (!pending) {
     pending = (async () => {
       const p = bare(itemId);
-      // 1) 3Dブロック（item モデル優先、無ければ block モデル。フラットアイテムは renderBlock が null を返す）
-      for (const modelId of [`item/${p}`, `block/${p}`]) {
-        const png = await renderBlock(modelId).catch(() => null);
+      // 1) ブロックエンティティ（チェスト系）は合成モデルで描画
+      if (CHEST_VARIANTS[p]) {
+        const png = await renderModel(chestModel(CHEST_VARIANTS[p])).catch(() => null);
         if (png) return toDataUri(png);
+      } else {
+        // 2) 3Dブロック（item モデル優先、無ければ block モデル）
+        for (const modelId of [`item/${p}`, `block/${p}`]) {
+          const model = loadModel(modelId);
+          if (!hasGeometry(model)) continue;
+          const png = await renderModel(model).catch(() => null);
+          if (png) return toDataUri(png);
+        }
       }
-      // 2) 平面アイテムテクスチャにフォールバック
+      // 3) 平面アイテムテクスチャにフォールバック
       const tex = readJarBuffer(`assets/minecraft/textures/item/${p}.png`);
       if (tex) return toDataUri(tex);
       return null;
