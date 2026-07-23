@@ -52,7 +52,10 @@ export async function renderBlock(modelId: string): Promise<Buffer | null> {
  * @returns PNG画像のBuffer、または null
  */
 export async function renderModel(model: any): Promise<Buffer | null> {
-    if (FLAT_ITEM_PARENTS.has(model.parent || '')) return null;
+    // フラットアイテム（松明・棒・レール等の item/generated 系）は3Dブロックではなく、
+    // バニラのインベントリと同じくスロットいっぱいの2Dスプライトとして描画します。
+    // block/<path> の3Dモデルへフォールバックしてはいけません（極細スティックになり別物になります）。
+    if (FLAT_ITEM_PARENTS.has(model.parent || '')) return renderFlatItem(model);
     if (!model.elements) return null;
 
     const faces = await collectFaces(model);
@@ -60,6 +63,27 @@ export async function renderModel(model: any): Promise<Buffer | null> {
     faces.sort((a, b) => a.centroidZ - b.centroidZ);
 
     return drawFaces(faces);
+}
+
+/**
+ * フラットな2Dスプライトアイテム（item/generated 系）を、フレーム全体を埋める形でレンダリングします。
+ * model-parser.ts の flatItemSvg と対になる node-canvas 実装です（両レンダラーの見た目を揃えます）。
+ * @param model 解決済みのモデルデータ（layer0 テクスチャを持つ）
+ */
+async function renderFlatItem(model: any): Promise<Buffer | null> {
+    const texPath = resolveTexture('#layer0', model.textures);
+    if (!texPath) return null;
+    const buf = readJarBuffer(`assets/minecraft/textures/${texPath.replace('minecraft:', '')}.png`);
+    if (!buf) return null;
+    const img = await loadImage(buf).catch(() => null);
+    if (!img) return null;
+
+    const canvas = createCanvas(SIZE, SIZE);
+    const ctx = pixelContext(canvas.getContext('2d'));
+    // アニメーションテクスチャは縦長のフレーム帯なので、先頭の正方形フレーム（幅×幅）のみを使います。
+    const frame = img.width;
+    ctx.drawImage(img, 0, 0, frame, frame, 0, 0, SIZE, SIZE);
+    return canvas.toBuffer('image/png');
 }
 
 /**

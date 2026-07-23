@@ -11,6 +11,7 @@
 
 import type { Env } from './minecraft';
 import { loadModel, renderModelToSvg } from '../core/model-parser';
+import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
@@ -51,10 +52,13 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
   const getModel = (id: string) => modelJson(env, id);
   const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
 
-  // アイテムモデルが「平面で描画する」と指定している場合でも、ブロックモデルが存在するものは3D表示を優先します。
-  // バニラではインベントリ内の松明は2Dスプライトとして表示されますが、レシピ画像ではすべてのブロックが同じ方法で描画される方が見やすいため、
-  // 平面的な `item/generated` モデルをスキップし、後続 of `block/<path>` を採用します。
-  // 純粋なアイテム（棒や剣など）はブロックモデルを持たないため、引き続き2Dテクスチャにフォールバックします。
+  // アイテムモデルを唯一の判断基準にします。バニラの `items/<name>.json` が指すモデルを起点に、
+  // 親チェーンを辿った結果でそのまま描き分けます:
+  //   - 親チェーンが elements を持つ（= block モデルを参照する）なら 3D 等角投影で描画。
+  //   - `item/generated` 系のフラットアイテム（松明・棒・レール等）は、バニラのインベントリと同じく
+  //     スロットいっぱいの 2D スプライトとして描画します（renderModelToSvg → flatItemSvg）。
+  //     以前はここで平面アイテムをスキップして `block/<path>` の 3D を強制していましたが、
+  //     松明が極細スティック（実質1px単位）に潰れてバニラと別物になるため取りやめました。
   // ブロックエンティティ（チェストなど）はエレメントのない `builtin/entity` に解決されるため、
   // 代わりにエンティティのアトラスからジオメトリを合成する必要があります。
   const synthetic = ns === 'minecraft' && CHEST_VARIANTS[path]
@@ -67,7 +71,7 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
 
   for (const candidate of candidates) {
     const model = candidate.model ?? (await loadModel(candidate.id, getModel));
-    if (!hasGeometry(model)) continue;
+    if (!isRenderable(model)) continue;
 
     // 合成モデルは、IDで再読み込みされることなく直接渡されます。
     const resolve = candidate.model
@@ -80,11 +84,15 @@ export async function renderBlockIconSvg(env: Env, ns: string, path: string): Pr
 }
 
 /**
- * 解決されたモデルチェーンが、実際にレンダリング可能なジオメトリを返したかどうかを判定します。
+ * 解決されたモデルチェーンが renderModelToSvg で描画可能かどうかを判定します。
+ * 3Dジオメトリ（elements）を持つか、または `item/generated` 系のフラットアイテム
+ * （flatItemSvg で2Dスプライトとして描画される）であれば描画可能です。
  * @param model モデルデータ
  */
-function hasGeometry(model: any): boolean {
-  return !!model && Array.isArray(model.elements) && model.elements.length > 0;
+function isRenderable(model: any): boolean {
+  if (!model) return false;
+  if (FLAT_ITEM_PARENTS.has(model.parent)) return true;
+  return Array.isArray(model.elements) && model.elements.length > 0;
 }
 
 // 1つのアイコンをレンダリングする際、同じオブジェクトが何度も再読み込みされます：

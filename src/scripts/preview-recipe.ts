@@ -55,18 +55,13 @@ function toDataUri(png: Buffer | Uint8Array): string {
   return `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
 }
 
-/** 解決されたモデルチェーンが、実際にレンダリング可能なジオメトリを持つか判定する（block-icon.ts の hasGeometry と同じ）。 */
-function hasGeometry(model: any): boolean {
-  return !!model && Array.isArray(model.elements) && model.elements.length > 0;
-}
-
 /**
  * アイテムIDのアイコン data URI を jar から解決する（本番 renderBlockIconSvg のローカル版）。
  * 解決順は block-icon.ts と一致させる:
  *   - チェスト等のブロックエンティティは builtin/entity でエレメントを持たないため、
  *     エンティティアトラスから合成した chestModel を使う。
- *   - それ以外は item モデル優先、無ければ block モデルの 3D ジオメトリを描画。
- *     （松明の item/generated のようにジオメトリを持たないモデルはスキップして block/<path> を採用）
+ *   - それ以外は item モデル優先、無ければ block モデル。renderModel が親チェーンを見て
+ *     3D（elements あり）か 2Dフラットスプライト（item/generated 系の松明・棒等）かを描き分ける。
  *   - どちらも解決できなければ平面アイテムテクスチャにフォールバック。
  */
 const iconCache = new Map<string, Promise<string | null>>();
@@ -80,10 +75,10 @@ function resolveIcon(itemId: string): Promise<string | null> {
         const png = await renderModel(chestModel(CHEST_VARIANTS[p])).catch(() => null);
         if (png) return toDataUri(png);
       } else {
-        // 2) 3Dブロック（item モデル優先、無ければ block モデル）
+        // 2) item モデル優先、無ければ block モデル（renderModel が3D/2Dを判定）
         for (const modelId of [`item/${p}`, `block/${p}`]) {
           const model = loadModel(modelId);
-          if (!hasGeometry(model)) continue;
+          if (!model) continue;
           const png = await renderModel(model).catch(() => null);
           if (png) return toDataUri(png);
         }
