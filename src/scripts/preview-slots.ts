@@ -24,6 +24,7 @@ import {
   ICON,
   GRID_X,
   GRID_Y,
+  SLOT,
   OUT_X,
   OUT_Y,
   CANVAS_W,
@@ -81,13 +82,15 @@ async function main(): Promise<void> {
   }
   const href = toDataUri(png);
 
-  // 本番と同じ背景・同じ iconSvg で、入力スロット(0) と 出力スロット に同一画像を配置。
+  // 本番 generateRecipeSvg と同じレイアウトで、入力3x3の全9スロットと出力スロットに同一画像を配置。
+  // （1スロットだけだとレシピの体をなさず配置検証にならないため、実際のグリッドを敷き詰める。）
   const inputX = GRID_X;
   const inputY = GRID_Y;
-  const body =
-    `<image href="${BACKGROUND}" x="0" y="0" width="${CANVAS_W}" height="${CANVAS_H}" image-rendering="optimizeSpeed"/>` +
-    iconSvg(href, inputX, inputY) +
-    iconSvg(href, OUT_X, OUT_Y);
+  let body = `<image href="${BACKGROUND}" x="0" y="0" width="${CANVAS_W}" height="${CANVAS_H}" image-rendering="optimizeSpeed"/>`;
+  for (let i = 0; i < 9; i++) {
+    body += iconSvg(href, GRID_X + (i % 3) * SLOT, GRID_Y + Math.floor(i / 3) * SLOT);
+  }
+  body += iconSvg(href, OUT_X, OUT_Y);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}"` +
     ` viewBox="0 0 ${CANVAS_W} ${CANVAS_H}" shape-rendering="crispEdges">${body}</svg>`;
