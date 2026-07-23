@@ -6,7 +6,7 @@ import * as unzipper from 'unzipper';
 import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
-import { uploadToR2, runPool, BUCKET_NAME } from './r2';
+import { uploadToR2, getFromR2, runPool, BUCKET_NAME } from './r2';
 import { resultItemOf, isCraftingType } from '../core/recipe';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
@@ -133,10 +133,32 @@ async function run() {
         // 不正なレシピJSONは無視します
       }
     }
-    recipes.sort((a, b) => a.id.localeCompare(b.id));
-    const index = { count: recipes.length, generatedAt: new Date().toISOString(), recipes };
+    // 既存の index/recipes.json とマージします。fetch はバニラJARしか知らないため、
+    // 全置換すると書き込みAPIで登録された mod レシピ（`<mod>:...`）が一覧/検索から消えてしまいます。
+    // そこで既存 index を読み、`minecraft:` 以外のエントリ（= mod 分）を温存し、
+    // `minecraft:` 分だけを今回のバニラ抽出結果で丸ごと差し替えます
+    // （バニラ側で削除されたレシピも正しく反映されます）。
+    const existingObj = await getFromR2('index/recipes.json');
+    let modRecipes: any[] = [];
+    if (existingObj) {
+      try {
+        const existing: any = JSON.parse(existingObj.toString('utf-8'));
+        const list: any[] = Array.isArray(existing.recipes)
+          ? existing.recipes
+          : Array.isArray(existing.ids)
+            ? existing.ids.map((i: string) => ({ id: i, result: i }))
+            : [];
+        modRecipes = list.filter((r) => typeof r.id === 'string' && !r.id.startsWith('minecraft:'));
+      } catch {
+        // 破損した既存 index は無視してバニラ分のみで作り直します
+      }
+    }
+    const merged = [...modRecipes, ...recipes].sort((a, b) => a.id.localeCompare(b.id));
+    const index = { count: merged.length, generatedAt: new Date().toISOString(), recipes: merged };
     await uploadToR2('index/recipes.json', Buffer.from(JSON.stringify(index)));
-    console.log(`Wrote recipe index with ${recipes.length} entries to index/recipes.json`);
+    console.log(
+      `Wrote recipe index: ${recipes.length} vanilla + ${modRecipes.length} mod = ${merged.length} entries to index/recipes.json`,
+    );
 
     if (failed > 0) process.exit(1);
   } catch (error) {

@@ -4,7 +4,7 @@
  * 必要なのは R2 S3 認証情報のみです（CLOUDFLARE_API_TOKEN は不要）。
  */
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, NoSuchKey } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
 import dotenv from 'dotenv';
@@ -75,6 +75,23 @@ export async function uploadToR2(key: string, body: Buffer): Promise<void> {
       ContentType: contentTypeFor(key),
     })
   );
+}
+
+/**
+ * R2 バケットの指定キーを取得します。存在しない場合は null を返します。
+ * @param key 取得するオブジェクトキー
+ */
+export async function getFromR2(key: string): Promise<Buffer | null> {
+  try {
+    const res = await getS3().send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+    const bytes = await res.Body!.transformToByteArray();
+    return Buffer.from(bytes);
+  } catch (e) {
+    if (e instanceof NoSuchKey || (e as any)?.name === 'NoSuchKey' || (e as any)?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw e;
+  }
 }
 
 /**
