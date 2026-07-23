@@ -24,7 +24,6 @@ import {
   ICON,
   GRID_X,
   GRID_Y,
-  SLOT,
   OUT_X,
   OUT_Y,
   CANVAS_W,
@@ -69,7 +68,9 @@ function measure(
 
 async function main(): Promise<void> {
   const modelId = process.argv[2] || 'block/crafting_table';
-  const scale = Number(process.argv[3] || 2);
+  // 注意: キャンバス(236x112)はすでにネイティブ(118x56)の2倍。この scale はさらに上に掛かる倍率。
+  // 既定 1 = 236x112 = あなたが座標(192,40 等)を測っている空間そのもの。拡大したいときだけ 2,3.. を指定。
+  const scale = Number(process.argv[3] || 1);
 
   await initLocalResvg();
 

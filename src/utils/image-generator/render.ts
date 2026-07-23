@@ -9,11 +9,26 @@ import { ensureWasm } from '../wasm';
 import { generateRecipeSvg } from './svg';
 import { Buffer } from 'buffer'; // ensure we have Buffer for jpeg-js if needed
 
-// キャンバス全体において、アンチエイリアシングが発生してしまう原因となる小数倍のリサンプリングを避けるため、整数倍のズームでレンダリングします。
-// 整数スケーリングにより、ピクセルアートの鮮明さが維持されます。
-// ベースのキャンバスサイズは 236x112 なので、スケール N の場合は (236*N)x(112*N) になります。デフォルトの1倍は 236x112 です。
-export const DEFAULT_SCALE = 1;
+// ベースのキャンバスサイズは 236x112 です。
+// scale は 0.5 倍を1単位とする整数指標で、実際のズーム倍率は scale * 0.5 になります。
+//   scale=1 → ズーム0.5 → 118x56（ハーフサイズのサムネイル）
+//   scale=2 → ズーム1.0 → 236x112（デフォルト、等倍）
+//   scale=4 → ズーム2.0 → 472x224
+// scale が偶数のときは整数倍ズームになり、ピクセルアートの鮮明さが維持されます。
+export const DEFAULT_SCALE = 2;
 export const MAX_SCALE = 8;
+
+/** scale 指標から実際のズーム倍率へ変換する係数。 */
+export const SCALE_ZOOM_FACTOR = 0.5;
+
+/**
+ * scale 指標を実際のレンダリングズーム倍率に変換します。
+ * @param scale 正規化済みの scale 値
+ * @returns resvg に渡すズーム倍率
+ */
+export function zoomForScale(scale: number): number {
+  return scale * SCALE_ZOOM_FACTOR;
+}
 
 /**
  * 指定されたスケール値を安全な整数範囲（1〜8）に丸めて返します。
@@ -32,7 +47,7 @@ export function normalizeScale(value: unknown): number {
 export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
   return resvg.render().asPng();
 }
 
@@ -42,7 +57,7 @@ export async function renderRecipePng(recipeData: any, env: Env, tagOffset: numb
 export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset);
-  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
+  const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;
 

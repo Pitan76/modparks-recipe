@@ -7,7 +7,7 @@ import { Env } from '../minecraft';
 import { encodeGif } from '../gif-encoder';
 import { ensureWasm } from '../wasm';
 import { generateRecipeSvg } from './svg';
-import { DEFAULT_SCALE } from './render';
+import { DEFAULT_SCALE, zoomForScale } from './render';
 
 /**
  * レシピのタグローテーション（素材切り替え）などを考慮し、アニメーションGIF画像を生成します。
@@ -18,7 +18,7 @@ export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: numb
 
   for (let i = 0; i < maxFrames; i++) {
     const svg = await generateRecipeSvg(recipeData, env, i);
-    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale }, shapeRendering: 0, imageRendering: 1 });
+    const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
     const rendered = resvg.render();
     frames.push({
       width: rendered.width,

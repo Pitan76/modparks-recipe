@@ -112,7 +112,7 @@ imageRoutes.get('/api/:namespace/batch', async (c) => {
  * キャッシュ可能なGET版（スプライトシート）：
  * 要求されたすべてのレシピを行優先（row-major）で並べた1つのPNGスプライトシートを返し、ブラウザが単一のキャッシュ可能な画像のみを取得するようにします。
  * 例: GET /api/:namespace/sprite?ids=stone_pickaxe,furnace&cols=8&scale=2
- * 各タイルのサイズは TILE_BASE_WIDTH x TILE_BASE_HEIGHT * scale です。タイル i の切り出し位置は以下の通りです：
+ * 各タイルのサイズは TILE_BASE_WIDTH x TILE_BASE_HEIGHT * (scale * 0.5) です。タイル i の切り出し位置は以下の通りです：
  *   col = i % cols, row = Math.floor(i / cols); x = col * tileW, y = row * tileH.
  * レイアウトのメタデータはレスポンスヘッダーで返されるため、クライアントは要求した順序でIDをタイルの位置にマッピングできます：
  *   X-Sprite-Columns, X-Sprite-Rows, X-Sprite-Count,

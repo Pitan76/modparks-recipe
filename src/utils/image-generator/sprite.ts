@@ -6,7 +6,7 @@ import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { ensureWasm } from '../wasm';
 import { CANVAS_W, CANVAS_H } from './svg';
-import { renderRecipePng, DEFAULT_SCALE } from './render';
+import { renderRecipePng, DEFAULT_SCALE, zoomForScale } from './render';
 
 export const TILE_BASE_WIDTH = CANVAS_W;
 export const TILE_BASE_HEIGHT = CANVAS_H;
@@ -54,8 +54,8 @@ export async function renderRecipeSpriteSheet(
 ): Promise<SpriteSheet> {
   await ensureWasm();
 
-  const tileWidth = TILE_BASE_WIDTH * scale;
-  const tileHeight = TILE_BASE_HEIGHT * scale;
+  const tileWidth = Math.round(TILE_BASE_WIDTH * zoomForScale(scale));
+  const tileHeight = Math.round(TILE_BASE_HEIGHT * zoomForScale(scale));
   const cols = Math.max(1, Math.floor(columns));
   const count = entries.length;
   const rows = Math.max(1, Math.ceil(count / cols));
