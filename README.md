@@ -266,6 +266,21 @@ npx tsx src/scripts/upload-vanilla-models.ts http://localhost:8787
 
 client.jar がなければ自動でダウンロードします。約3900件を150件ずつバルクAPIへ送るため、完了まで数分〜十数分かかります。
 
+### スロット配置をローカルで即確認する
+
+入力スロットと出力スロットのアイテム描画位置がズレて見えるときの切り分け用スクリプトです。R2 / wasm 初期化に依存せず、`client.jar` から実ブロックをレンダリング（＝本番と同じ画像）し、本番と同じ背景・同じ `iconSvg`・同じレイアウト定数（`src/utils/image-generator/layout.ts`）で SVG を組み立てて PNG 化します。
+
+同じアイテム画像を「入力スロット(0)」と「出力スロット」の両方に置き、各スロット内でアイテムが実際にどこから描画されているかをピクセル単位で計測して表示します。**入力基準の出力ズレが (0,0) なら、スロット処理は入力・出力で完全一致**（見た目のズレは画像の中身＝ブロックレンダ自身の非対称な余白が原因）と判断できます。
+
+```bash
+npx tsx src/scripts/preview-slots.ts [modelId] [scale]
+# 例:
+npx tsx src/scripts/preview-slots.ts block/crafting_table 2
+```
+
+- 出力 PNG: `preview/slots-<modelId>@<scale>x.png`（プロジェクト内 `preview/` フォルダ）
+- 標準出力に、入力/出力スロットの枠内オフセットと「入力基準の出力ズレ」を表示します。
+
 ## その他設計上の注意点
 - Minecraft公式データそのものの直接公開は避け、あくまで「レシピ画像として合成された画像」をCDN経由で配信する設計としています。
 - `namespace` をURLに含めることで、バニラ（`minecraft`）以外の別Mod（アドオン）のレシピ描画にも柔軟に対応できる設計になっています。

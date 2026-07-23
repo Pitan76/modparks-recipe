@@ -56,3 +56,6 @@ server.jar
 tail.log
 
 /secret/
+
+# ローカルのスロット配置プレビュー出力
+preview/
