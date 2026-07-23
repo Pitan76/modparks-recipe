@@ -197,7 +197,7 @@ export const REF_SIZE = (() => {
  * 参照レンダラー（mcrecipe.pitan76.net）を基準に調整されています。
  * そちらのフルブロックのシルエットは 32px のスロット内で 28x30 であり、1/0.9 だと 26x28 になっていました。
  */
-export const FRAME_MARGIN = 28 / 27;
+export const FRAME_MARGIN = 31 / 30;
 
 /**
  * 「このアイテムをフラットな2Dスプライトとして描画する」ことを意味するモデルの親（parent）。
