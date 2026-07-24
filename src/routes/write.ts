@@ -5,8 +5,10 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
-import { storeRecipe, putRecipeBody, updateIndexMany } from '../utils/recipe-store';
+import { storeRecipe, putRecipeBody, updateIndexMany, upsertIndexEntries, indexEntryOf } from '../utils/recipe-store';
+import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
+import { beginIngest, isIngestOpen, stageEntries, collectStaged, cleanupIngest, type StagedEntry } from '../utils/ingest';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
@@ -140,7 +142,14 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   let p: any;
   try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
 
+  // セッション付きの bulk はインデックスを触らず、追加分をステージングして commit でまとめる。
+  const session = c.req.query('session');
+  if (session && !(await isIngestOpen(c.env, namespace, session))) {
+    return c.text('Unknown or expired ingest session', 409);
+  }
+
   const indexEntries: { fullId: string; data: any }[] = [];
+  const staged: StagedEntry[] = [];
   let recipes = 0, tags = 0, textures = 0, models = 0;
 
   for (const [id, val] of Object.entries(p.recipes || {})) {
@@ -148,10 +157,17 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     let data: any;
     try { data = JSON.parse(body); } catch { continue; }
     await putRecipeBody(c.env, namespace, id, body);
-    indexEntries.push({ fullId: `${namespace}:${id}`, data });
+    const fullId = `${namespace}:${id}`;
+    if (session) {
+      if (isCraftingType(data?.type)) staged.push(indexEntryOf(fullId, data));
+    } else {
+      indexEntries.push({ fullId, data });
+    }
     recipes++;
   }
-  await updateIndexMany(c.env, indexEntries);
+
+  if (session) await stageEntries(c.env, namespace, session, staged);
+  else await updateIndexMany(c.env, indexEntries);
 
   for (const [path, val] of Object.entries(p.tags || {})) {
     const body = typeof val === 'string' ? val : JSON.stringify(val);
@@ -181,6 +197,43 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     models++;
   });
 
+  // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
+  if (!session) await bumpAssetVersion(c.env, namespace);
+  return c.json({ ok: true, namespace, recipes, tags, textures, models, session: session ?? null });
+});
+
+// 取り込みセッションを開始します。以降の bulk は ?session= を付けて送り、最後に commit します。
+writeRoutes.post('/api/:namespace/ingest/begin', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace } = c.req.param();
+  const session = await beginIngest(c.env, namespace);
+  return c.json({ ok: true, namespace, session });
+});
+
+// 取り込みセッションを確定します。ステージング分をインデックスへ1回でマージし、バージョンを1回だけ上げます。
+writeRoutes.post('/api/:namespace/ingest/commit', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace } = c.req.param();
+  const session = c.req.query('session');
+  if (!session) return c.text('Missing session', 400);
+  if (!(await isIngestOpen(c.env, namespace, session))) {
+    return c.text('Unknown or expired ingest session', 409);
+  }
+
+  const entries = await collectStaged(c.env, namespace, session);
+  await upsertIndexEntries(c.env, entries.map((e) => e.id), entries);
   await bumpAssetVersion(c.env, namespace);
-  return c.json({ ok: true, namespace, recipes, tags, textures, models });
+  await cleanupIngest(c.env, namespace, session);
+
+  return c.json({ ok: true, namespace, committed: entries.length });
+});
+
+// 取り込みセッションを破棄します（ステージング分を捨て、インデックスもバージョンも変更しません）。
+writeRoutes.post('/api/:namespace/ingest/abort', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace } = c.req.param();
+  const session = c.req.query('session');
+  if (!session) return c.text('Missing session', 400);
+  await cleanupIngest(c.env, namespace, session);
+  return c.json({ ok: true, namespace, aborted: true });
 });

@@ -7,6 +7,7 @@ import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion, ensureAssetVersions } from '../utils/cache-version';
 import { resultItemOf, isCraftingType } from '../utils/minecraft';
+import { sweepStaleIngests } from '../utils/ingest';
 
 type IndexEntry = { id: string; result: string | null; type: string };
 
@@ -146,6 +147,19 @@ adminRoutes.get('/admin/purge/:namespace', async (c) => {
   await bumpAssetVersion(c.env, namespace);
 
   return c.json({ ok: true, namespace, iconsDeleted: icons, imageCacheInvalidated: true });
+});
+
+/**
+ * commit/abort されずに放置された、失効済みの取り込みセッションを一掃します。
+ * 例: GET /admin/sweep-ingests?secret=...
+ */
+adminRoutes.get('/admin/sweep-ingests', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+  const swept = await sweepStaleIngests(c.env);
+  return c.json({ ok: true, swept });
 });
 
 /**

@@ -37,22 +37,48 @@ export async function putRecipeBody(env: Env, namespace: string, id: string, bod
  * @param entries アップサートするレシピのエントリ情報（IDとデータのペアの配列）
  */
 export async function updateIndexMany(env: Env, entries: { fullId: string; data: any }[]): Promise<void> {
-  if (entries.length === 0) return;
+  const shaped: IndexEntry[] = [];
+  for (const { fullId, data } of entries) {
+    if (isCraftingType(data?.type)) shaped.push(indexEntryOf(fullId, data));
+  }
+  await upsertIndexEntries(env, entries.map((e) => e.fullId), shaped);
+}
+
+/** 公開インデックスに載る1レシピの形。 */
+export type IndexEntry = { id: string; result: string | null; type: string };
+
+/**
+ * レシピデータから索引エントリを組み立てます。呼び出し側でクラフト系判定を済ませておくこと。
+ * @param fullId 完全修飾レシピID
+ * @param data レシピJSONデータ
+ */
+export function indexEntryOf(fullId: string, data: any): IndexEntry {
+  return { id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') };
+}
+
+/**
+ * 指定IDを差し替える形で、索引エントリ群を index/recipes.json にアップサートします（1回の read-modify-write）。
+ * 取り込みセッションの commit と単発 bulk の両方から共有されます。
+ * @param env 環境変数
+ * @param removeIds いったん取り除く既存ID（再投入分。空可）
+ * @param add 追加するエントリ（クラフト系のみを渡すこと）
+ */
+export async function upsertIndexEntries(env: Env, removeIds: string[], add: IndexEntry[]): Promise<void> {
+  if (removeIds.length === 0 && add.length === 0) return;
+
   const obj = await env.BUCKET.get('index/recipes.json');
   const idx: any = obj ? await obj.json() : {};
-  let recipes: any[] = Array.isArray(idx.recipes)
+  let recipes: IndexEntry[] = Array.isArray(idx.recipes)
     ? idx.recipes
     : Array.isArray(idx.ids)
-      ? idx.ids.map((i: string) => ({ id: i, result: i }))
+      ? idx.ids.map((i: string) => ({ id: i, result: i, type: '' }))
       : [];
-  const incoming = new Set(entries.map((e) => e.fullId));
+
+  const incoming = new Set(removeIds);
   recipes = recipes.filter((r) => !incoming.has(r.id));
-  for (const { fullId, data } of entries) {
-    if (isCraftingType(data?.type)) {
-      recipes.push({ id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') });
-    }
-  }
+  recipes.push(...add);
   recipes.sort((a, b) => a.id.localeCompare(b.id));
+
   await env.BUCKET.put(
     'index/recipes.json',
     JSON.stringify({ count: recipes.length, generatedAt: new Date().toISOString(), recipes }),
