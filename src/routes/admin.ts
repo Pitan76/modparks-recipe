@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
-import { bumpAssetVersion } from '../utils/cache-version';
+import { bumpAssetVersion, ensureAssetVersions } from '../utils/cache-version';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -116,6 +116,30 @@ adminRoutes.get('/admin/purge/:namespace', async (c) => {
   await bumpAssetVersion(c.env, namespace);
 
   return c.json({ ok: true, namespace, iconsDeleted: icons, imageCacheInvalidated: true });
+});
+
+/**
+ * バージョン未設定のネームスペースに初期バージョンを与えます。
+ * バージョンが無いとクライアントが画像URLに `?v=` を付けられず、画像1枚ごとにサーバ側の
+ * バージョン参照（R2 往復 約220ms）が残り続けます。導入時に一度だけ実行してください。
+ * インデックスは読むだけで書き換えません。
+ * 例: GET /admin/seed-versions?secret=...
+ */
+adminRoutes.get('/admin/seed-versions', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const obj = await c.env.BUCKET.get('index/recipes.json');
+  if (!obj) return c.json({ ok: false, error: 'index/recipes.json not found' }, 404);
+
+  const idx = await obj.json<{ recipes?: { id: string }[]; ids?: string[] }>();
+  const ids = idx.recipes ? idx.recipes.map((r) => r.id) : (idx.ids ?? []);
+  const namespaces = new Set(ids.map((i) => i.split(':')[0]).filter(Boolean));
+
+  const seeded = await ensureAssetVersions(c.env, namespaces);
+  return c.json({ ok: true, namespaces: [...namespaces], seeded });
 });
 
 /**

@@ -7,6 +7,7 @@ import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
 import { bytesToBase64 } from '../utils/http';
 import { getAssetVersion } from '../utils/cache-version';
+import { noteVersion } from '../utils/icon-memo';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
 
@@ -153,8 +154,16 @@ imageRoutes.get('/api/:namespace/sprite', async (c) => {
   });
 });
 
+/** 存在しないレシピを再探索し続けないための 404 の保持期間（秒）。 */
+const MISS_MAX_AGE = 300;
+
 /**
  * 個別レシピ画像エンドポイント: /api/:namespace/:id.(png|gif|jpg)
+ *
+ * `?v=` にアセットバージョンが載っている場合（`/api/list.json` の versions を参照）、
+ * URL 自体がバージョンを内包するため内容は不変になります。この場合バージョン参照のための
+ * R2 往復（実測 約220ms）を省略し、`immutable` を付けてブラウザの再検証も止めます。
+ * `?v=` が無い場合は従来どおりサーバ側でバージョンを引くフォールバック経路を通ります。
  */
 imageRoutes.get('/api/:namespace/:filename', async (c) => {
   const { namespace, filename } = c.req.param();
@@ -164,23 +173,30 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
     return c.text('Not found', 404);
   }
 
+  const pinned = c.req.query('v');
+  const version = pinned ?? (await getAssetVersion(c.env, namespace));
+  noteVersion(namespace, version);
+
   // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
   // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。
-  // ネームスペースのアセットバージョンがキャッシュキーの一部に含まれているため、アップロードが行われると古いキャッシュエントリは自動的にアクセス不能（無効化）になり、古い画像が残り続けるのを防ぎます。
   const cache = caches.default;
-  const version = await getAssetVersion(c.env, namespace);
-  const keyUrl = new URL(c.req.url);
-  keyUrl.searchParams.set('__v', version);
-  const cacheKey = new Request(keyUrl.toString(), { method: 'GET' });
+  const cacheKey = buildCacheKey(c.req.url, pinned, version);
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
+
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   const scale = normalizeScale(c.req.query('scale'));
 
   const recipeData = await getRecipe(`${namespace}:${id}`, c.env);
   if (!recipeData) {
-    return c.text('Recipe not found', 404);
+    // 404 もキャッシュする。壊れたリンクや古いIDは、そうしないと毎回 D1 と R2 を叩き続ける。
+    const miss = new Response('Recipe not found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': `public, max-age=${MISS_MAX_AGE}` },
+    });
+    c.executionCtx.waitUntil(cache.put(cacheKey, miss.clone()));
+    return miss;
   }
 
   let body: Uint8Array;
@@ -199,9 +215,26 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
   const response = new Response(body, {
     headers: {
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': pinned
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=86400',
     },
   });
   c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
 });
+
+/**
+ * キャッシュキーを組み立てます。`?v=` が付いている場合は URL 自体が既にバージョンを内包するため
+ * そのまま使い、無い場合のみサーバ側で引いたバージョンを `__v` として足します。
+ * @param url リクエストURL
+ * @param pinned クライアントが指定したバージョン（無ければ undefined）
+ * @param version 実効バージョン
+ */
+function buildCacheKey(url: string, pinned: string | undefined, version: string): Request {
+  if (pinned !== undefined) return new Request(url, { method: 'GET' });
+
+  const keyUrl = new URL(url);
+  keyUrl.searchParams.set('__v', version);
+  return new Request(keyUrl.toString(), { method: 'GET' });
+}

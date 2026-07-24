@@ -6,19 +6,14 @@ import { Env } from './env';
 import { parseNamespacedId } from './id';
 import { renderBlockIconPng } from '../block-icon';
 import { bytesToBase64 } from '../http';
+import { getIcon, setIcon } from '../icon-memo';
 
 /**
- * ArrayBufferをbase64文字列に変換します。
- * @param buffer 変換対象 of ArrayBuffer
+ * ArrayBufferをbase64のdataURLに変換します。
+ * @param buffer 変換対象の ArrayBuffer
  */
-function bufferToBase64(buffer: ArrayBuffer): string {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+function pngDataUrl(buffer: ArrayBuffer): string {
+  return `data:image/png;base64,${bytesToBase64(new Uint8Array(buffer))}`;
 }
 
 /**
@@ -31,7 +26,7 @@ async function textureDataUrl(texId: string, defaultNs: string, env: Env): Promi
   // プレフィックスのない参照はデフォルトで minecraft になります。Modのネームスペースで見つからない場合は minecraft も試します。
   if (!obj && tns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${tpath}.png`);
   if (!obj) return null;
-  return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
+  return pngDataUrl(await obj.arrayBuffer());
 }
 
 /**
@@ -101,11 +96,23 @@ export const TRANSPARENT_PNG =
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
+  const memoized = getIcon(namespace, path);
+  if (memoized !== undefined) return memoized;
+
+  const resolved = await resolveItemImage(namespace, path, env);
+  setIcon(namespace, path, resolved);
+  return resolved;
+}
+
+/**
+ * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
+ */
+async function resolveItemImage(namespace: string, path: string, env: Env): Promise<string> {
   let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
-  if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
+  if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
-  if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
+  if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   const icon = await renderBlockIconPng(env, namespace, path).catch(() => null);
   if (icon) {
@@ -116,7 +123,7 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   }
 
   obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
-  if (obj) return `data:image/png;base64,${bufferToBase64(await obj.arrayBuffer())}`;
+  if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   const viaModel = await resolveViaModel(namespace, path, env);
   if (viaModel) return viaModel;

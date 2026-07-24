@@ -4,6 +4,7 @@ import { RECIPE_PAGE_HTML } from './utils/page';
 import { writeRoutes } from './routes/write';
 import { imageRoutes } from './routes/images';
 import { adminRoutes } from './routes/admin';
+import { getAllVersions } from './utils/cache-version';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -14,19 +15,27 @@ app.get('/', (c) => {
 
 /**
  * 閲覧可能なレシピインデックスを取得します。
- * CIパイプラインによって一度だけ生成され、R2から長いキャッシュを伴ってストリーミングされるため、
+ * CIパイプラインによって一度だけ生成され、R2から長いキャッシュを伴って読み出されるため、
  * リクエストごとのスキャン負荷は発生しません。
+ *
+ * ネームスペースごとのアセットバージョンを `versions` として同梱します。クライアントはこれを
+ * 画像URLの `?v=` に載せることで、画像1枚ごとのバージョン参照（R2 往復 約220ms）を消せます。
+ * インデックスとバージョンは並列に読むため、この同梱による遅延の増加はありません。
  */
 app.get('/api/list.json', async (c) => {
-  const obj = await c.env.BUCKET.get('index/recipes.json');
+  const [obj, versions] = await Promise.all([
+    c.env.BUCKET.get('index/recipes.json'),
+    getAllVersions(c.env),
+  ]);
   if (!obj) {
-    return c.json({ count: 0, ids: [] });
+    return c.json({ count: 0, versions, recipes: [] });
   }
-  return new Response(obj.body, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600',
-    },
+
+  const index = await obj.json<Record<string, unknown>>();
+  return c.json({ ...index, versions }, 200, {
+    // versions が変わると画像URLも変わるため、ここが古いと新しい画像に切り替わらない。
+    // 短めにしてクライアント側の revalidate(60秒) と歩調を合わせる。
+    'Cache-Control': 'public, max-age=60',
   });
 });
 
