@@ -6,6 +6,36 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion, ensureAssetVersions } from '../utils/cache-version';
+import { resultItemOf, isCraftingType } from '../utils/minecraft';
+
+type IndexEntry = { id: string; result: string | null; type: string };
+
+/**
+ * レシピJSONを並列に読み、公開インデックス用の { id, result, type } エントリを組み立てます。
+ * クラフト系のみを対象とし、読めなかった/JSONでないものはスキップします。
+ * @param env 環境変数
+ * @param keys 列挙済みの { fullId, key } の配列
+ */
+async function buildRecipeEntries(env: Env, keys: { fullId: string; key: string }[]): Promise<IndexEntry[]> {
+  const out: IndexEntry[] = [];
+  const CONCURRENCY = 30;
+  let i = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, keys.length) }, async () => {
+      while (i < keys.length) {
+        const { fullId, key } = keys[i++];
+        const obj = await env.BUCKET.get(key);
+        if (!obj) continue;
+        let data: any;
+        try { data = JSON.parse(await obj.text()); } catch { continue; }
+        if (!isCraftingType(data?.type)) continue;
+        out.push({ id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') });
+      }
+    })
+  );
+  return out;
+}
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -153,22 +183,27 @@ adminRoutes.get('/admin/reindex', async (c) => {
     return c.text('Unauthorized', 401);
   }
 
-  const ids: string[] = [];
+  // R2 のレシピキーを列挙する。本文の取得は分離し、下でプールして並列に読む。
+  const keys: { fullId: string; key: string }[] = [];
   let cursor: string | undefined = undefined;
   do {
     const listed = await c.env.BUCKET.list({ prefix: 'data/', cursor, limit: 1000 });
     for (const o of listed.objects) {
       const m = o.key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/);
-      if (m) ids.push(`${m[1]}:${m[2]}`);
+      if (m) keys.push({ fullId: `${m[1]}:${m[2]}`, key: o.key });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
 
-  ids.sort();
-  const index = { count: ids.length, generatedAt: new Date().toISOString(), ids };
-  await c.env.BUCKET.put('index/recipes.json', JSON.stringify(index), {
-    httpMetadata: { contentType: 'application/json' },
-  });
+  // 公開用インデックスは { id, result, type } の recipes 形式でなければならない。
+  // 旧 ids 形式で書くと ProjectRecipes と updateIndexMany が recipes を読めず一覧が空になる。
+  const recipes = await buildRecipeEntries(c.env, keys);
+  recipes.sort((a, b) => a.id.localeCompare(b.id));
+  await c.env.BUCKET.put(
+    'index/recipes.json',
+    JSON.stringify({ count: recipes.length, generatedAt: new Date().toISOString(), recipes }),
+    { httpMetadata: { contentType: 'application/json' } }
+  );
 
-  return c.json({ ok: true, count: ids.length });
+  return c.json({ ok: true, count: recipes.length, scanned: keys.length });
 });
