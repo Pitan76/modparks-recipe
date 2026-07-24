@@ -7,6 +7,8 @@ import { parseNamespacedId } from './id';
 import { renderBlockIconPng } from '../block-icon';
 import { bytesToBase64 } from '../http';
 import { getIcon, setIcon } from '../icon-memo';
+import { getAssetVersion } from '../cache-version';
+import { rendererVersion } from '../render-version';
 
 /**
  * ArrayBufferをbase64のdataURLに変換します。
@@ -92,6 +94,10 @@ export const TRANSPARENT_PNG =
 
 /**
  * 指定されたアイテムIDに対応するテクスチャ/アイコン画像を解決し、base64データURLとして返します。
+ *
+ * 3層で解決します: L0 アイソレート内メモ → L1 解決済みアイコン(R2) → 最大5段の直列プローブ。
+ * L1/L0 のおかげで、温まったアイソレートや2回目以降の冷レンダリングでは、あの多段探索
+ * （失敗時 1秒超）を R2 GET 1回、あるいは往復ゼロに畳み込めます。
  */
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
@@ -99,9 +105,32 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
   const memoized = getIcon(namespace, path);
   if (memoized !== undefined) return memoized;
 
+  // L1: 解決済みアイコン。キーに ns バージョンとレンダラー版を含むため、テクスチャ更新や
+  // レンダラー変更で自動的に別キーとなり、古いものは参照されなくなる（削除不要）。
+  const l1Key = await iconCacheKey(env, namespace, path);
+  const l1 = await env.BUCKET.get(l1Key);
+  if (l1) {
+    const dataUrl = await l1.text();
+    setIcon(namespace, path, dataUrl);
+    return dataUrl;
+  }
+
   const resolved = await resolveItemImage(namespace, path, env);
   setIcon(namespace, path, resolved);
+
+  // 解決失敗（透明フォールバック）は永続化しない。テクスチャ未着の投入中に固定してしまうのを防ぐ。
+  if (resolved !== TRANSPARENT_PNG) {
+    await env.BUCKET.put(l1Key, resolved, { httpMetadata: { contentType: 'text/plain' } }).catch(() => {});
+  }
   return resolved;
+}
+
+/**
+ * L1 アイコンキャッシュのキーを組み立てます。ns バージョンとレンダラー版を世代として含めます。
+ */
+async function iconCacheKey(env: Env, ns: string, path: string): Promise<string> {
+  const [ver, rv] = [await getAssetVersion(env, ns), rendererVersion(env)];
+  return `cache/icon/${rv}/${ns}/${ver}/${path}.dataurl`;
 }
 
 /**

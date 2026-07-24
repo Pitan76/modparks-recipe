@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
-import { bumpAssetVersion, ensureAssetVersions } from '../utils/cache-version';
+import { bumpAssetVersion, ensureAssetVersions, getAllVersions } from '../utils/cache-version';
 import { resultItemOf, isCraftingType } from '../utils/minecraft';
 import { sweepStaleIngests } from '../utils/ingest';
 
@@ -147,6 +147,40 @@ adminRoutes.get('/admin/purge/:namespace', async (c) => {
   await bumpAssetVersion(c.env, namespace);
 
   return c.json({ ok: true, namespace, iconsDeleted: icons, imageCacheInvalidated: true });
+});
+
+/**
+ * キャッシュを明示的に無効化します。ネームスペースのバージョンを上げることで、そのネームスペースの
+ * レンダリング済み画像・アイコン（L1/L2）と、クライアントが載せる `?v=` を一斉に切り替えます。
+ * L1 は世代キー方式のため、古いオブジェクトは参照されなくなり lifecycle ルールで自然に消えます。
+ *
+ * リクエストボディ（JSON, いずれか）:
+ *   { "namespace": "minecraft" }  → 単一ネームスペース
+ *   { "all": true }               → 既知の全ネームスペース（緊急時・レンダラー変更の手動反映など）
+ *
+ * 例: POST /admin/invalidate?secret=...  (ボディに JSON)
+ * 個別レシピ単位の無効化はレシピごとのフィンガープリントが無いため未対応です（ネームスペース単位のみ）。
+ */
+adminRoutes.post('/admin/invalidate', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  let payload: any;
+  try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
+
+  let targets: string[];
+  if (payload.all === true) {
+    targets = Object.keys(await getAllVersions(c.env));
+  } else if (typeof payload.namespace === 'string' && payload.namespace) {
+    targets = [payload.namespace];
+  } else {
+    return c.text('Specify { namespace } or { all: true }', 400);
+  }
+
+  for (const ns of targets) await bumpAssetVersion(c.env, ns);
+  return c.json({ ok: true, invalidated: targets });
 });
 
 /**

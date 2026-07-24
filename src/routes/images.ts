@@ -8,6 +8,7 @@ import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, rend
 import { bytesToBase64 } from '../utils/http';
 import { getAssetVersion } from '../utils/cache-version';
 import { noteVersion } from '../utils/icon-memo';
+import { rendererVersion } from '../utils/render-version';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
 
@@ -187,6 +188,22 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   const scale = normalizeScale(c.req.query('scale'));
+  const cacheControl = pinned
+    ? 'public, max-age=31536000, immutable'
+    : 'public, max-age=86400';
+
+  // L1: レンダリング済み画像。エッジキャッシュは PoP ローカルで容量圧迫時に消えるため、
+  // PoP を跨ぐミスは従来フルレンダリング（R2 多往復 + ラスタライズ）をやり直していた。
+  // R2 に永続化しておけば、そうしたミスは R2 GET 1回で済む。キーに ns バージョンと
+  // レンダラー版を含むので、更新時は別キーになり古い画像は参照されなくなる。
+  const contentType = contentTypeForExt(ext);
+  const imgKey = `cache/img/${rendererVersion(c.env)}/${namespace}/${version}/${id}@${scale}+${tagOffset}.${ext}`;
+  const l1 = await c.env.BUCKET.get(imgKey);
+  if (l1) {
+    const res = new Response(l1.body, { headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl } });
+    c.executionCtx.waitUntil(cache.put(cacheKey, res.clone()));
+    return res;
+  }
 
   const recipeData = await getRecipe(`${namespace}:${id}`, c.env);
   if (!recipeData) {
@@ -200,29 +217,30 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
   }
 
   let body: Uint8Array;
-  let contentType: string;
   if (ext === 'gif') {
     body = await renderRecipeGif(recipeData, c.env, 5, scale); // 5フレーム
-    contentType = 'image/gif';
   } else if (ext === 'jpg' || ext === 'jpeg') {
     body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale);
-    contentType = 'image/jpeg';
   } else {
     body = await renderRecipePng(recipeData, c.env, tagOffset, scale);
-    contentType = 'image/png';
   }
 
   const response = new Response(body, {
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': pinned
-        ? 'public, max-age=31536000, immutable'
-        : 'public, max-age=86400',
-    },
+    headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl },
   });
-  c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+  c.executionCtx.waitUntil(Promise.all([
+    cache.put(cacheKey, response.clone()),
+    c.env.BUCKET.put(imgKey, body, { httpMetadata: { contentType } }),
+  ]));
   return response;
 });
+
+/** 拡張子から Content-Type を返します。 */
+function contentTypeForExt(ext: string): string {
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  return 'image/png';
+}
 
 /**
  * キャッシュキーを組み立てます。`?v=` が付いている場合は URL 自体が既にバージョンを内包するため
