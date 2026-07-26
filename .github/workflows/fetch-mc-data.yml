@@ -2,8 +2,18 @@ name: Fetch Minecraft Data
 
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
+    inputs:
+      locales:
+        description: 'Vanilla item-name locales to ingest (comma separated)'
+        required: false
+        default: 'ja_jp,en_us'
   schedule:
     - cron: '0 0 * * 0' # Runs every Sunday at midnight UTC
+
+env:
+  # Locales ingested on the weekly run. Adding a language here is the only
+  # change needed -- the API does not pin the set of supported locales.
+  DEFAULT_LOCALES: 'ja_jp,en_us'
 
 jobs:
   update-assets:
@@ -31,7 +41,18 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
         run: npm run fetch-mc-data
 
-      # 2. Render isometric 3D block PNGs from the downloaded client.jar and
+      # 2. Ingest vanilla item names. ja_jp and other locales come from the
+      #    Mojang asset index; en_us exists only inside the client.jar that the
+      #    previous step left behind, so this must run after it.
+      - name: Upload vanilla item names
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
+        run: npm run upload-lang -- "${{ inputs.locales || env.DEFAULT_LOCALES }}"
+
+      # 3. Render isometric 3D block PNGs from the downloaded client.jar and
       #    upload them to R2 (render3d/) directly via the S3 client.
       - name: Render and upload 3D block PNGs
         env:

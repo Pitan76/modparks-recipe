@@ -79,13 +79,27 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 
 #### 取り込み
 
+バニラのアイテム名は GitHub Actions で取り込みます。ワークフローは2つあります。
+
+| ワークフロー | 使いどころ |
+| --- | --- |
+| `Fetch Minecraft Data` | 毎週日曜の定期実行。Minecraftデータ一式の更新に含めて取り込みます。 |
+| `Upload Item Names` | 言語を追加したい・データを直したいときの単発実行。パイプライン全体を回さずに済みます。 |
+
+どちらも Actions 画面の `Run workflow` から手動実行でき、`locales` にロケールを指定します（既定は `ja_jp,en_us`）。定期実行で取り込む言語を恒久的に増やすときは、`Fetch Minecraft Data` の `DEFAULT_LOCALES` を変更するだけです。API側はロケールを固定していないため、コード変更は要りません。
+
+ローカルから直接叩く場合:
+
 ```
-npm run upload-lang                        # バニラの ja_jp, en_us
-npm run upload-lang -- ja_jp,en_us,zh_cn   # 対応言語を増やす
-npm run upload-lang -- ja_jp --jar mymod.jar  # Modのjarから抽出
+npm run upload-lang                             # バニラの ja_jp, en_us
+npm run upload-lang -- ja_jp,en_us,zh_cn        # 対応言語を増やす
+npm run upload-lang -- ja_jp,en_us --download-jar  # client.jar が無ければ取得する
+npm run upload-lang -- ja_jp --jar mymod.jar    # Modのjarから抽出
 ```
 
-バニラの `en_us` は client.jar に含まれますが、それ以外の言語は Mojang のアセットインデックス経由でしか取得できないため、jar 指定が無い場合はそちらを使います。
+バニラは出所が2つに分かれます。`en_us` は client.jar の中にしか無く、それ以外の言語は Mojang のアセットインデックスにしか無いためです。スクリプトはアセットインデックスを先に引き、そこに無かったロケールだけ `client.jar` から拾います。**`en_us` には client.jar が必要**なので、`npm run fetch-mc-data` を先に走らせるか `--download-jar` を付けてください（`Fetch Minecraft Data` では jar 取得の直後に走るため自動的に満たされます）。
+
+Mod のアイテム名はこの操作では入りません。jar アップロード時に modparks 側の Worker が自動で取り込みます。
 
 ### 画像取得API
 

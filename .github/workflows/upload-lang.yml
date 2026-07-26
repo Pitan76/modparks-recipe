@@ -1,0 +1,45 @@
+name: Upload Item Names
+
+# Ingests vanilla item names (lang files) on demand, without re-running the
+# whole Minecraft data pipeline. The weekly `Fetch Minecraft Data` workflow
+# already does this as one of its steps; use this one to add a language or to
+# repair the data without waiting for Sunday.
+
+on:
+  workflow_dispatch:
+    inputs:
+      locales:
+        description: 'Locales to ingest (comma separated, e.g. ja_jp,en_us,zh_cn)'
+        required: true
+        default: 'ja_jp,en_us'
+      download_jar:
+        description: 'Download client.jar if needed (required for en_us; ~300MB)'
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  upload-lang:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Locales other than en_us come from the Mojang asset index and need no
+      # jar. en_us exists only inside client.jar, hence the opt-in download.
+      - name: Upload item names
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'mp-recipe-images' }}
+        run: npm run upload-lang -- "${{ inputs.locales }}" ${{ inputs.download_jar && '--download-jar' || '' }}
