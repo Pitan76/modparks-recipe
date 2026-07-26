@@ -13,7 +13,8 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
-| `GET` | `/api/list.json` | レシピの索引と名前空間ごとのアセットバージョンを返します。 |
+| `GET` | `/api/list.json` | 全名前空間のレシピ索引とアセットバージョンを返します。 |
+| `GET` | `/api/:namespace/list.json` | 名前空間1つ分のレシピ索引を返します（`?lang=` でアイテム名を同梱）。 |
 | `GET` | `/api/:namespace/:id.png` | レシピ画像（PNG）を返します。 |
 | `GET` | `/api/:namespace/:id.jpg` | レシピ画像（JPG）を返します。 |
 | `GET` | `/api/:namespace/:id.gif` | レシピ画像（アニメーションGIF）を返します。 |
@@ -38,6 +39,27 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 | `GET` | `/admin/ls` | R2の中身を一覧します（読み取り専用。要 `secret`）。 |
 | `GET` | `/admin/render3d/:namespace/:path` | ブロック1つを3D描画して返します（保存しない。要 `secret`）。 |
 | `GET` | `/admin/purge/:namespace` | 生成済み3Dアイコンとエッジキャッシュを破棄します（要 `secret`）。 |
+
+### レシピ索引API
+
+- `GET /api/list.json`
+  - 全名前空間の索引（`{ count, generatedAt, versions, recipes: [{ id, result, type }] }`）。mp-recipe の検索ページが使います。アイテム名は含みません。
+
+- `GET /api/:namespace/list.json`
+  - 名前空間1つ分の索引。1つのModのページを描くのに全Modの索引を転送しないで済みます。
+  - `?lang=<locale>` を付けると各エントリに完成品のアイテム名 `name` が入り、**一覧表示が1往復で完結します**（名前解決のための追加リクエストが不要）。未翻訳のアイテムにはIDがそのまま入るため、呼び出し側は `name` をそのまま表示できます。
+  - レスポンス例:
+    ```json
+    {
+      "namespace": "mymod",
+      "version": "m2k9x1",
+      "count": 1,
+      "recipes": [
+        { "id": "mymod:widget", "result": "mymod:widget", "type": "crafting_shaped", "name": "ウィジェット" }
+      ]
+    }
+    ```
+  - `version` をそのまま画像URLの `?v=` に使えます（`0` は未設定を意味するので付けないでください）。
 
 ### アイテム名API
 
