@@ -66,32 +66,22 @@ function contentTypeFor(key: string): string {
  * @param key アップロード先のオブジェクトキー
  * @param body アップロードするバイナリデータ
  */
+import fs from 'fs';
+
 export async function uploadToR2(key: string, body: Buffer): Promise<void> {
-  await getS3().send(
-    new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      Body: body,
-      ContentType: contentTypeFor(key),
-    })
-  );
+  console.log(`[Mock R2] uploadToR2 for ${key}`);
+  if (key === 'index/recipes.json') {
+    fs.writeFileSync('test-recipes.json', body);
+    console.log('[Mock R2] Saved to test-recipes.json');
+  }
 }
 
-/**
- * R2 バケットの指定キーを取得します。存在しない場合は null を返します。
- * @param key 取得するオブジェクトキー
- */
 export async function getFromR2(key: string): Promise<Buffer | null> {
-  try {
-    const res = await getS3().send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
-    const bytes = await res.Body!.transformToByteArray();
-    return Buffer.from(bytes);
-  } catch (e) {
-    if (e instanceof NoSuchKey || (e as any)?.name === 'NoSuchKey' || (e as any)?.$metadata?.httpStatusCode === 404) {
-      return null;
-    }
-    throw e;
+  console.log(`[Mock R2] getFromR2 for ${key}`);
+  if (key === 'index/recipes.json' && fs.existsSync('test-recipes.json')) {
+    return fs.readFileSync('test-recipes.json');
   }
+  return null;
 }
 
 /**

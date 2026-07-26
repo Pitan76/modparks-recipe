@@ -36,10 +36,10 @@ function shouldExtract(p: string): boolean {
 }
 
 /**
- * Mojangのバージョンマニフェストから、最新のMinecraftリリースのクライアントJARのダウンロードURLを取得します。
- * @returns クライアントJARのURL
+ * Mojangのバージョンマニフェストから、最新のMinecraftリリースのクライアントJARのダウンロードURLとバージョン名を取得します。
+ * @returns クライアントJARのURLとバージョン名
  */
-async function fetchLatestVersionUrl(): Promise<string> {
+async function fetchLatestVersionData(): Promise<{ url: string; version: string }> {
   console.log('Fetching version manifest...');
   const res = await fetch(MANIFEST_URL);
   if (!res.ok) throw new Error(`Failed to fetch manifest: ${res.statusText}`);
@@ -54,7 +54,10 @@ async function fetchLatestVersionUrl(): Promise<string> {
   const versionRes = await fetch(versionData.url);
   if (!versionRes.ok) throw new Error(`Failed to fetch version details: ${versionRes.statusText}`);
   const versionJson = (await versionRes.json()) as any;
-  return versionJson.downloads.client.url;
+  return {
+    url: versionJson.downloads.client.url,
+    version: latestRelease,
+  };
 }
 
 /**
@@ -62,7 +65,39 @@ async function fetchLatestVersionUrl(): Promise<string> {
  */
 async function run() {
   try {
-    const clientJarUrl = await fetchLatestVersionUrl();
+    if (fs.existsSync('.skipped')) {
+      fs.unlinkSync('.skipped');
+    }
+
+    const { url: clientJarUrl, version: latestRelease } = await fetchLatestVersionData();
+
+    const isForce = process.argv.includes('--force');
+
+    // 既存の index/recipes.json を取得してバージョン比較
+    const existingObj = await getFromR2('index/recipes.json');
+    let existingVersion: string | null = null;
+    let modRecipes: any[] = [];
+    if (existingObj) {
+      try {
+        const existing: any = JSON.parse(existingObj.toString('utf-8'));
+        existingVersion = existing.minecraftVersion || null;
+        const list: any[] = Array.isArray(existing.recipes)
+          ? existing.recipes
+          : Array.isArray(existing.ids)
+            ? existing.ids.map((i: string) => ({ id: i, result: i }))
+            : [];
+        modRecipes = list.filter((r) => typeof r.id === 'string' && !r.id.startsWith('minecraft:'));
+      } catch {
+        // 破損した既存 index は無視してバニラ分のみで作り直します
+      }
+    }
+
+    if (!isForce && existingVersion === latestRelease) {
+      console.log(`Minecraft is already up to date (version: ${latestRelease}). Skipping data fetch.`);
+      fs.writeFileSync('.skipped', 'true');
+      return;
+    }
+
     console.log(`Downloading client JAR from ${clientJarUrl}...`);
 
     const response = await fetch(clientJarUrl);
@@ -133,28 +168,15 @@ async function run() {
         // 不正なレシピJSONは無視します
       }
     }
-    // 既存の index/recipes.json とマージします。fetch はバニラJARしか知らないため、
-    // 全置換すると書き込みAPIで登録された mod レシピ（`<mod>:...`）が一覧/検索から消えてしまいます。
-    // そこで既存 index を読み、`minecraft:` 以外のエントリ（= mod 分）を温存し、
-    // `minecraft:` 分だけを今回のバニラ抽出結果で丸ごと差し替えます
-    // （バニラ側で削除されたレシピも正しく反映されます）。
-    const existingObj = await getFromR2('index/recipes.json');
-    let modRecipes: any[] = [];
-    if (existingObj) {
-      try {
-        const existing: any = JSON.parse(existingObj.toString('utf-8'));
-        const list: any[] = Array.isArray(existing.recipes)
-          ? existing.recipes
-          : Array.isArray(existing.ids)
-            ? existing.ids.map((i: string) => ({ id: i, result: i }))
-            : [];
-        modRecipes = list.filter((r) => typeof r.id === 'string' && !r.id.startsWith('minecraft:'));
-      } catch {
-        // 破損した既存 index は無視してバニラ分のみで作り直します
-      }
-    }
+    // 既存の index/recipes.json とマージします。
+    // （modRecipes は関数の最初で抽出済み）
     const merged = [...modRecipes, ...recipes].sort((a, b) => a.id.localeCompare(b.id));
-    const index = { count: merged.length, generatedAt: new Date().toISOString(), recipes: merged };
+    const index = {
+      count: merged.length,
+      generatedAt: new Date().toISOString(),
+      minecraftVersion: latestRelease,
+      recipes: merged,
+    };
     await uploadToR2('index/recipes.json', Buffer.from(JSON.stringify(index)));
     console.log(
       `Wrote recipe index: ${recipes.length} vanilla + ${modRecipes.length} mod = ${merged.length} entries to index/recipes.json`,
