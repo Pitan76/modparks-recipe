@@ -68,6 +68,37 @@ async function uploadViaApi(items: { key: string; body: Buffer }[], onProgress?:
 }
 
 /**
+ * 言語ファイルを、設定されたアップロード先へ送ります。
+ * テクスチャと違い1ネームスペースあたり数ファイルしかないため、バッチ分割はしません。
+ * @param entries ネームスペース・ロケール・本文の組
+ */
+export async function uploadLangs(entries: { ns: string; locale: string; body: string }[]): Promise<void> {
+  if (!API_URL) {
+    await runPool(entries, 10, async ({ ns, locale, body }) => {
+      await uploadToR2(`assets/${ns}/lang/${locale}.json`, Buffer.from(body));
+    });
+    return;
+  }
+  if (!SECRET) throw new Error('MP_RECIPE_URL is set but UPLOAD_SECRET/ADMIN_SECRET is not.');
+
+  const byNs = new Map<string, Record<string, string>>();
+  for (const { ns, locale, body } of entries) {
+    const bucket = byNs.get(ns) || {};
+    bucket[locale] = body;
+    byNs.set(ns, bucket);
+  }
+
+  for (const [ns, langs] of byNs) {
+    const res = await fetch(`${API_URL}/api/${ns}/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ langs }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  }
+}
+
+/**
  * 設定されたアップロード先（S3 または HTTP API）を使用して、すべてのアイテムをアップロードします。
  * @param items アップロード対象アイテムの配列
  * @param onProgress 進捗コールバック関数

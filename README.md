@@ -21,6 +21,10 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 | `PUT` | `/api/:namespace/texture/:path` | テクスチャ等をアップロード（要 認証）。 |
 | `PUT` | `/api/:namespace/model/:path` | モデルJSONをアップロード（要 認証）。 |
 | `PUT` | `/api/:namespace/tag/:path` | タグJSONをアップロード（要 認証）。 |
+| `PUT` | `/api/:namespace/lang/:locale` | 言語ファイル（アイテム名）をアップロード（要 認証）。 |
+| `GET` | `/api/:namespace/lang.json` | 登録済みロケールの一覧を返します。 |
+| `GET` | `/api/:namespace/lang/:locale.json` | 言語ファイル（翻訳キー→表示名）を返します。 |
+| `GET` | `/api/names` | アイテムIDをまとめて表示名に解決します。 |
 | `POST` | `/api/:namespace/recipe/:id/bundle` | レシピ＋テクスチャ＋モデルを一括アップロード（要 認証）。 |
 | `POST` | `/api/:namespace/bulk` | レシピ/タグ/テクスチャ/モデルを大量一括投入（要 認証）。 |
 | `POST` | `/api/:namespace/ingest/begin` | 取り込みセッションを開始（要 認証）。 |
@@ -34,6 +38,32 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 | `GET` | `/admin/ls` | R2の中身を一覧します（読み取り専用。要 `secret`）。 |
 | `GET` | `/admin/render3d/:namespace/:path` | ブロック1つを3D描画して返します（保存しない。要 `secret`）。 |
 | `GET` | `/admin/purge/:namespace` | 生成済み3Dアイコンとエッジキャッシュを破棄します（要 `secret`）。 |
+
+### アイテム名API
+
+アイテム名は jar / リソースパック由来の素の Minecraft lang JSON をそのまま `assets/<ns>/lang/<locale>.json` に保存し、テクスチャやモデルと同じアセットバージョンで無効化されます。画像と同様、`?v=` を付けると `immutable` で返ります。
+
+対応ロケールはAPI側で固定していません。`GET /api/:namespace/lang.json` で実際に登録済みのロケールを取得できます。
+
+- `GET /api/:namespace/lang/:locale.json`
+  - 翻訳キー（`item.minecraft.stone` など）から表示名へのマップをそのまま返します。多数のアイテム名を扱う場合は1回引いて手元で解決するのが安く済みます。
+
+- `GET /api/names?ids=<id,id,...>&lang=<locale>`
+  - アイテムIDをまとめて表示名に解決します。IDはネームスペース付き（`minecraft:stone`）。省略時は `minecraft` 扱いです。
+  - IDは1リクエストあたり最大500件。
+  - `item.<ns>.<path>` → `block.<ns>.<path>` の順に翻訳キーを試します。
+  - 未翻訳のIDはレスポンスに含まれません。ロケール間のフォールバックは行わないため、欠けたIDの扱いは呼び出し側で決められます。
+  - レスポンス例: `{ "lang": "ja_jp", "names": { "minecraft:stone": "石" } }`
+
+#### 取り込み
+
+```
+npm run upload-lang                        # バニラの ja_jp, en_us
+npm run upload-lang -- ja_jp,en_us,zh_cn   # 対応言語を増やす
+npm run upload-lang -- ja_jp --jar mymod.jar  # Modのjarから抽出
+```
+
+バニラの `en_us` は client.jar に含まれますが、それ以外の言語は Mojang のアセットインデックス経由でしか取得できないため、jar 指定が無い場合はそちらを使います。
 
 ### 画像取得API
 
@@ -118,6 +148,9 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
 - **`PUT /api/:namespace/tag/:path`**
   タグJSONを `data/:namespace/tags/:path.json` に保存します（例: `item/planks`）。
 
+- **`PUT /api/:namespace/lang/:locale`**
+  言語ファイル（アイテム名）を `assets/:namespace/lang/:locale.json` に保存します（例: `ja_jp`）。ボディは素の Minecraft lang JSON。ロケールを固定していないため、新しい言語は投入するだけで増やせます。
+
 - **`POST /api/:namespace/recipe/:id/bundle`**
   レシピ1つと、それが参照するテクスチャ（およびオプションでモデル）を**1リクエストで一括投入**します。テクスチャは base64。
   ```json
@@ -133,13 +166,14 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
   レスポンス: `{ "ok": true, "id": "mymod:gadget", "recipeStored": true, "textureCount": 2, "modelCount": 1 }`
 
 - **`POST /api/:namespace/bulk`**
-  レシピ/タグ/テクスチャ/モデルを**まとめて投入**します。1ファイル1リクエストにするとサブリクエスト上限に達するため、抽出側は数回の bulk に分けて送ります。すべてオプションです。テクスチャは base64。
+  レシピ/タグ/テクスチャ/モデル/言語ファイルを**まとめて投入**します。1ファイル1リクエストにするとサブリクエスト上限に達するため、抽出側は数回の bulk に分けて送ります。すべてオプションです。テクスチャは base64。
   ```json
   {
     "recipes":  { "<id>": <json|string>, ... },
     "tags":     { "<path>": <json|string>, ... },
     "textures": { "<path>.png": "<base64>", ... },
-    "models":   { "<path>": <json|string>, ... }
+    "models":   { "<path>": <json|string>, ... },
+    "langs":    { "<locale>": <json|string>, ... }
   }
   ```
   `?session=<id>` を付けると取り込みセッションの一部として扱われ（下記）、インデックス更新とバージョン更新を commit まで遅延します。付けない場合は従来どおり毎回インデックス更新＋バージョン更新を行います。

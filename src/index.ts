@@ -4,6 +4,7 @@ import { RECIPE_PAGE_HTML } from './utils/page';
 import { writeRoutes } from './routes/write';
 import { imageRoutes } from './routes/images';
 import { adminRoutes } from './routes/admin';
+import { langRoutes } from './routes/lang';
 import { getAllVersions } from './utils/cache-version';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -43,6 +44,8 @@ app.get('/api/list.json', async (c) => {
 app.route('/', writeRoutes);
 // 画像API（一括処理、スプライトシート、個別レシピ画像）。
 app.route('/', imageRoutes);
+// アイテム名API（言語ファイルの取得、アイテムIDの表示名解決）。
+app.route('/', langRoutes);
 // 管理用ユーティリティ（R2のクリーンアップ、インデックスの再構築）。
 app.route('/', adminRoutes);
 

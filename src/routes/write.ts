@@ -8,6 +8,7 @@ import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
 import { storeRecipe, putRecipeBody, updateIndexMany, upsertIndexEntries, indexEntryOf } from '../utils/recipe-store';
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
+import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
 import { beginIngest, isIngestOpen, stageEntries, collectStaged, cleanupIngest, type StagedEntry } from '../utils/ingest';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
@@ -87,6 +88,22 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
 
+// assets/<ns>/lang/<locale>.json に言語ファイルをアップロードします（リクエストボディ = 素の Minecraft lang JSON）。
+// 対応ロケールはAPI側で固定していないため、新しい言語は取り込み側で指定するだけで増やせます。
+writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
+  if (!authorized(c)) return c.text('Unauthorized', 401);
+  const { namespace } = c.req.param();
+  const locale = c.req.param('locale').replace(/\.json$/, '');
+  if (!isValidLocale(locale)) return c.text('Invalid locale', 400);
+
+  const body = await c.req.text();
+  if (!isValidLangBody(body)) return c.text('Invalid JSON', 400);
+
+  await putLang(c.env, namespace, locale, body);
+  await bumpAssetVersion(c.env, namespace);
+  return c.json({ ok: true, key: `assets/${namespace}/lang/${locale}.json` });
+});
+
 // レシプレベルのバンドル：レシピと、そのテクスチャ（およびオプションで事前レンダリング済みの3D PNG）を1回で送信します。
 // リクエストボディのJSON例:
 // { "recipe": {...}, "textures": { "item/foo.png": "<base64>", ... } }
@@ -135,7 +152,8 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
 //   { "recipes": { "<id>": <json|string>, ... },   // id にはスラッシュが含まれる場合があります
 //     "tags":    { "<path>": <json|string>, ... },  // 例: "item/planks"
 //     "textures":{ "<path>": "<base64>", ... },     // 例: "item/foo.png"
-//     "models":  { "<path>": <json|string>, ... } } // 例: "item/foo"
+//     "models":  { "<path>": <json|string>, ... },  // 例: "item/foo"
+//     "langs":   { "<locale>": <json|string>, ... } } // 例: "ja_jp"
 writeRoutes.post('/api/:namespace/bulk', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
@@ -150,7 +168,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
 
   const indexEntries: { fullId: string; data: any }[] = [];
   const staged: StagedEntry[] = [];
-  let recipes = 0, tags = 0, textures = 0, models = 0;
+  let recipes = 0, tags = 0, textures = 0, models = 0, langs = 0;
 
   for (const [id, val] of Object.entries(p.recipes || {})) {
     const body = typeof val === 'string' ? val : JSON.stringify(val);
@@ -197,9 +215,16 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     models++;
   });
 
+  for (const [locale, val] of Object.entries(p.langs || {})) {
+    const body = typeof val === 'string' ? val : JSON.stringify(val);
+    if (!isValidLocale(locale) || !isValidLangBody(body)) continue;
+    await putLang(c.env, namespace, locale, body);
+    langs++;
+  }
+
   // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
   if (!session) await bumpAssetVersion(c.env, namespace);
-  return c.json({ ok: true, namespace, recipes, tags, textures, models, session: session ?? null });
+  return c.json({ ok: true, namespace, recipes, tags, textures, models, langs, session: session ?? null });
 });
 
 // 取り込みセッションを開始します。以降の bulk は ?session= を付けて送り、最後に commit します。
