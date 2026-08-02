@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Env } from './utils/minecraft';
 import { RECIPE_PAGE_HTML } from './utils/page';
 import { writeRoutes } from './routes/write';
+import { ingestRoutes } from './routes/ingest';
 import { imageRoutes } from './routes/images';
 import { adminRoutes } from './routes/admin';
 import { langRoutes } from './routes/lang';
@@ -16,6 +17,8 @@ app.get('/', (c) => {
 
 // 書き込みAPI（レシピ/テクスチャ/モデル/タグ/言語ファイルのPUT、バンドルのPOST）— 認証が必要。
 app.route('/', writeRoutes);
+// 取り込みセッションAPI（begin/commit/abort）— 認証が必要。
+app.route('/', ingestRoutes);
 // レシピ索引API（全体版とネームスペース版）。
 // 画像APIの `/api/:namespace/:filename` が `/api/:namespace/list.json` を拾わないよう、先に登録します。
 app.route('/', listRoutes);

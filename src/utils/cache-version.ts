@@ -12,6 +12,7 @@
  */
 
 import type { Env } from './minecraft';
+import { updateJson } from './r2-json';
 
 const KEY = 'meta/versions.json';
 
@@ -24,12 +25,13 @@ let memo: { value: VersionMap; readAt: number } | null = null;
 
 /**
  * 集約バージョンオブジェクトを読み取ります。
+ *
+ * 更新側は `updateJson` が必ず実体を読み直すため、ここは常にメモを使って構いません。
  * @param env 環境変数
- * @param fresh メモをバイパスして必ず R2 から読むか（更新の read-modify-write 用）
  * @returns ネームスペース -> バージョン のマップ
  */
-async function readVersions(env: Env, fresh = false): Promise<VersionMap> {
-  if (!fresh && memo && Date.now() - memo.readAt < MEMO_TTL) return memo.value;
+async function readVersions(env: Env): Promise<VersionMap> {
+  if (memo && Date.now() - memo.readAt < MEMO_TTL) return memo.value;
 
   const obj = await env.BUCKET.get(KEY);
   let value: VersionMap = {};
@@ -74,11 +76,21 @@ export async function getAssetVersion(env: Env, ns: string): Promise<string> {
  * @param ns ネームスペース
  */
 export async function bumpAssetVersion(env: Env, ns: string): Promise<void> {
-  // 他ネームスペースの同時更新を取りこぼさないよう、メモではなく実体から読み直す。
-  const versions = { ...(await readVersions(env, true)) };
-  versions[ns] = Date.now().toString(36);
+  await mutateVersions(env, (versions) => ({ ...versions, [ns]: nextVersion(versions[ns]) }));
+}
 
-  await writeVersions(env, versions);
+/**
+ * 次のバージョン値を作ります。
+ *
+ * 単なる現在時刻だと、同じミリ秒に2回上げたときに値が変わらず、`immutable` で1年キャッシュ
+ * された画像が更新されません。前の値以下になりそうなら1つ進めて、必ず変化させます。
+ * @param previous 現在のバージョン（未設定なら undefined）
+ */
+function nextVersion(previous: string | undefined): string {
+  const now = Date.now();
+  const prev = previous ? parseInt(previous, 36) : 0;
+  if (!Number.isFinite(prev) || prev < now) return now.toString(36);
+  return (prev + 1).toString(36);
 }
 
 /**
@@ -90,31 +102,37 @@ export async function bumpAssetVersion(env: Env, ns: string): Promise<void> {
  * @returns 新たに初期化されたネームスペースの数
  */
 export async function ensureAssetVersions(env: Env, namespaces: Iterable<string>): Promise<number> {
-  const versions = { ...(await readVersions(env, true)) };
+  const wanted = [...namespaces];
 
   let added = 0;
-  for (const ns of namespaces) {
-    if (versions[ns]) continue;
-    versions[ns] = Date.now().toString(36);
-    added++;
-  }
-  if (added === 0) return 0;
-
-  await writeVersions(env, versions);
+  await mutateVersions(env, (versions) => {
+    added = 0;
+    const next = { ...versions };
+    for (const ns of wanted) {
+      if (next[ns]) continue;
+      next[ns] = nextVersion(undefined);
+      added++;
+    }
+    return next;
+  });
   return added;
 }
 
 /**
- * バージョンマップを R2 へ書き戻し、アイソレート内のメモも更新します。
+ * バージョンマップを read-modify-write で更新し、アイソレート内のメモも更新します。
  *
+ * 更新は条件付き書き込みで行うため、他ネームスペースの同時更新を上書きで消しません。
  * 失敗は握りつぶさず呼び出し元へ伝えます。書き込めなかったのにメモだけ進めると、
  * このアイソレートだけが存在しないバージョンを配り、そのバージョンで L1 キャッシュが
  * 書かれて誰からも参照されない孤児オブジェクトになるためです。
  * 書き込みAPIは冪等なので、呼び出し元はそのまま失敗させて再送させて構いません。
+ * @param env 環境変数
+ * @param mutate 現在のバージョンマップから新しいマップを作る関数
  */
-async function writeVersions(env: Env, versions: VersionMap): Promise<void> {
-  await env.BUCKET.put(KEY, JSON.stringify(versions), {
-    httpMetadata: { contentType: 'application/json' },
+async function mutateVersions(env: Env, mutate: (versions: VersionMap) => VersionMap): Promise<void> {
+  const written = await updateJson<VersionMap>(env, KEY, (current) => {
+    const versions = current && typeof current === 'object' ? current : {};
+    return mutate(versions);
   });
-  memo = { value: versions, readAt: Date.now() };
+  memo = { value: written, readAt: Date.now() };
 }

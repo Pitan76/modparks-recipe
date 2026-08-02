@@ -36,6 +36,19 @@ function secretEquals(given: string, expected: string | undefined): boolean {
 }
 
 /**
+ * リクエストボディの一部を「キー -> 値」のマップとして取り出します。
+ *
+ * 素の `Object.entries` に文字列を渡すと1文字ずつ回り、配列を渡すと添字がキーになります。
+ * 送信側の型ミスがそのままR2への奇妙な書き込みに化けるため、素直なオブジェクト以外は空にします。
+ * @param value 検証対象の値
+ * @returns [キー, 値] の配列。オブジェクトでなければ空配列
+ */
+export function plainEntries(value: unknown): [string, unknown][] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.entries(value as Record<string, unknown>);
+}
+
+/**
  * base64文字列をバイナリデータ（Uint8Array）にデコードします。
  * データURLスキーム（例: "data:image/png;base64,"）が含まれている場合でも、自動的にプレフィックスを削除してデコードします。
  * @param b64 デコード対象のbase64文字列

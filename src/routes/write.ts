@@ -4,13 +4,14 @@
 
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
-import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
-import { storeRecipe, putRecipeBody, updateIndexMany, upsertIndexEntries, indexEntryOf, type IndexEntry } from '../utils/recipe-store';
+import { authorized, decodeBase64, contentTypeForKey, plainEntries } from '../utils/http';
+import { storeRecipe, putRecipeBody, updateIndexMany, indexEntryOf } from '../utils/recipe-store';
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
-import { beginIngest, isIngestOpen, stageEntries, collectStaged, cleanupIngest, type StagedEntry } from '../utils/ingest';
+import { isIngestOpen, stageEntries, type StagedEntry } from '../utils/ingest';
 import { runPool } from '../utils/pool';
+import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
@@ -22,6 +23,8 @@ export const writeRoutes = new Hono<{ Bindings: Env }>();
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
+  if (!isSafeAssetTarget(namespace, id)) return c.text('Invalid namespace or id', 400);
+
   const body = await c.req.text();
   let data: any;
   try { data = JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
@@ -35,6 +38,8 @@ writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
 writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
+  if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
   const key = `assets/${namespace}/textures/${path}`;
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: contentTypeForKey(key) } });
@@ -47,6 +52,8 @@ writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
 writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
+  if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
   const id = path.replace(/\.json$/, '');
@@ -61,6 +68,8 @@ writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
 writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
+  if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
   const id = path.replace(/\.json$/, '');
@@ -77,6 +86,8 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
 writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
+  if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
   const locale = c.req.param('locale').replace(/\.json$/, '');
   if (!isValidLocale(locale)) return c.text('Invalid locale', 400);
 
@@ -95,6 +106,8 @@ writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
 writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
+  if (!isSafeAssetTarget(namespace, id)) return c.text('Invalid namespace or id', 400);
+
   let payload: any;
   try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
 
@@ -104,10 +117,17 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
     recipeStored = true;
   }
 
+  // 送信側の型ミスで妙なキーを作らないよう、素直なオブジェクトのみを回し、
+  // 安全でないパスは書かずに数えるだけにします（1件のミスで残りを落とさないため）。
   let textureCount = 0;
-  for (const [texPath, b64] of Object.entries(payload.textures || {})) {
+  let skipped = 0;
+  for (const [texPath, b64] of plainEntries(payload.textures)) {
+    if (!isSafePath(texPath) || typeof b64 !== 'string') {
+      skipped++;
+      continue;
+    }
     const key = `assets/${namespace}/textures/${texPath}`;
-    await c.env.BUCKET.put(key, decodeBase64(b64 as string), {
+    await c.env.BUCKET.put(key, decodeBase64(b64), {
       httpMetadata: { contentType: contentTypeForKey(key) },
     });
     textureCount++;
@@ -116,7 +136,11 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   // テクスチャのファイル名がIDと異なるアイテムを解決できるようにするための、オプションのモデルJSON。
   // キーは assets/<ns>/models/ 配下のパスです（例: "item/gadget.json"）。値はモデルJSON（文字列またはオブジェクト）です。
   let modelCount = 0;
-  for (const [modelPath, val] of Object.entries(payload.models || {})) {
+  for (const [modelPath, val] of plainEntries(payload.models)) {
+    if (!isSafePath(modelPath)) {
+      skipped++;
+      continue;
+    }
     const rel = modelPath.replace(/\.json$/, '');
     const json = typeof val === 'string' ? val : JSON.stringify(val);
     await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
@@ -126,7 +150,7 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
   }
 
   await bumpAssetVersion(c.env, namespace);
-  return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount });
+  return c.json({ ok: true, id: `${namespace}:${id}`, recipeStored, textureCount, modelCount, skipped });
 });
 
 // 大量取り込み（Bulk Ingest）：特定のネームスペースについて、多くのレシピ/タグ/テクスチャ/モデルを1回のリクエストで送信します。
@@ -141,6 +165,8 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
 writeRoutes.post('/api/:namespace/bulk', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
+  if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
   let p: any;
   try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
 
@@ -152,12 +178,18 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
 
   const indexEntries: { fullId: string; data: any }[] = [];
   const staged: StagedEntry[] = [];
-  let recipes = 0, tags = 0, textures = 0, models = 0, langs = 0;
+  // 安全でないパスや型違いは書かずに数えるだけにします。1件のミスで残り全部を落とすと、
+  // 投入側は数百件を再送する羽目になります。
+  let recipes = 0, tags = 0, textures = 0, models = 0, langs = 0, skipped = 0;
 
-  for (const [id, val] of Object.entries(p.recipes || {})) {
+  for (const [id, val] of plainEntries(p.recipes)) {
+    if (!isSafePath(id)) {
+      skipped++;
+      continue;
+    }
     const body = typeof val === 'string' ? val : JSON.stringify(val);
     let data: any;
-    try { data = JSON.parse(body); } catch { continue; }
+    try { data = JSON.parse(body); } catch { skipped++; continue; }
     await putRecipeBody(c.env, namespace, id, body);
     const fullId = `${namespace}:${id}`;
     if (session) {
@@ -171,9 +203,13 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   if (session) await stageEntries(c.env, namespace, session, staged);
   else await updateIndexMany(c.env, indexEntries);
 
-  for (const [path, val] of Object.entries(p.tags || {})) {
+  for (const [path, val] of plainEntries(p.tags)) {
+    if (!isSafePath(path)) {
+      skipped++;
+      continue;
+    }
     const body = typeof val === 'string' ? val : JSON.stringify(val);
-    try { JSON.parse(body); } catch { continue; }
+    try { JSON.parse(body); } catch { skipped++; continue; }
     const id = path.replace(/\.json$/, '');
     await c.env.BUCKET.put(`data/${namespace}/tags/${id}.json`, body, {
       httpMetadata: { contentType: 'application/json' },
@@ -182,16 +218,24 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     tags++;
   }
 
-  await runPool(Object.entries(p.textures || {}), 20, async ([path, b64]) => {
+  await runPool(plainEntries(p.textures), 20, async ([path, b64]) => {
+    if (!isSafePath(path) || typeof b64 !== 'string') {
+      skipped++;
+      return;
+    }
     const key = `assets/${namespace}/textures/${path}`;
-    await c.env.BUCKET.put(key, decodeBase64(b64 as string), {
+    await c.env.BUCKET.put(key, decodeBase64(b64), {
       httpMetadata: { contentType: contentTypeForKey(key) },
     });
     textures++;
   });
 
-  await runPool(Object.entries(p.models || {}), 20, async ([path, val]) => {
-    const rel = (path as string).replace(/\.json$/, '');
+  await runPool(plainEntries(p.models), 20, async ([path, val]) => {
+    if (!isSafePath(path)) {
+      skipped++;
+      return;
+    }
+    const rel = path.replace(/\.json$/, '');
     const json = typeof val === 'string' ? val : JSON.stringify(val);
     await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
       httpMetadata: { contentType: 'application/json' },
@@ -199,53 +243,17 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     models++;
   });
 
-  for (const [locale, val] of Object.entries(p.langs || {})) {
+  for (const [locale, val] of plainEntries(p.langs)) {
     const body = typeof val === 'string' ? val : JSON.stringify(val);
-    if (!isValidLocale(locale) || !isValidLangBody(body)) continue;
+    if (!isValidLocale(locale) || !isValidLangBody(body)) {
+      skipped++;
+      continue;
+    }
     await putLang(c.env, namespace, locale, body);
     langs++;
   }
 
   // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
   if (!session) await bumpAssetVersion(c.env, namespace);
-  return c.json({ ok: true, namespace, recipes, tags, textures, models, langs, session: session ?? null });
-});
-
-// 取り込みセッションを開始します。以降の bulk は ?session= を付けて送り、最後に commit します。
-writeRoutes.post('/api/:namespace/ingest/begin', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
-  const { namespace } = c.req.param();
-  const session = await beginIngest(c.env, namespace);
-  return c.json({ ok: true, namespace, session });
-});
-
-// 取り込みセッションを確定します。ステージング分をインデックスへ1回でマージし、バージョンを1回だけ上げます。
-writeRoutes.post('/api/:namespace/ingest/commit', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
-  const { namespace } = c.req.param();
-  const session = c.req.query('session');
-  if (!session) return c.text('Missing session', 400);
-  if (!(await isIngestOpen(c.env, namespace, session))) {
-    return c.text('Unknown or expired ingest session', 409);
-  }
-
-  const staged = await collectStaged(c.env, namespace, session);
-  // `!!e` なのは、デプロイを跨いだセッションに旧形式の断片が残りうるため。
-  // 形が違えば索引に載せず、IDだけ除去対象として扱う（次の取り込みで載り直す）。
-  const indexed = staged.map((s) => s.entry).filter((e): e is IndexEntry => !!e);
-  await upsertIndexEntries(c.env, staged.map((s) => s.id), indexed);
-  await bumpAssetVersion(c.env, namespace);
-  await cleanupIngest(c.env, namespace, session);
-
-  return c.json({ ok: true, namespace, committed: staged.length, indexed: indexed.length });
-});
-
-// 取り込みセッションを破棄します（ステージング分を捨て、インデックスもバージョンも変更しません）。
-writeRoutes.post('/api/:namespace/ingest/abort', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
-  const { namespace } = c.req.param();
-  const session = c.req.query('session');
-  if (!session) return c.text('Missing session', 400);
-  await cleanupIngest(c.env, namespace, session);
-  return c.json({ ok: true, namespace, aborted: true });
+  return c.json({ ok: true, namespace, recipes, tags, textures, models, langs, skipped, session: session ?? null });
 });

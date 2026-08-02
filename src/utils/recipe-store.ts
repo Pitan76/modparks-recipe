@@ -3,6 +3,12 @@
  */
 
 import { Env, resultItemOf, isCraftingType } from './minecraft';
+import { updateJson } from './r2-json';
+
+const INDEX_KEY = 'index/recipes.json';
+
+/** 公開インデックスのファイル形。`ids` は移行前の旧形式。 */
+type IndexFile = { count?: number; generatedAt?: string; recipes?: IndexEntry[]; ids?: string[] };
 
 /**
  * レシピJSONをR2に保存し、D1の古いキャッシュ行を破棄した上で、インデックスを更新します。
@@ -66,28 +72,31 @@ export function indexEntryOf(fullId: string, data: any): IndexEntry {
 export async function upsertIndexEntries(env: Env, removeIds: string[], add: IndexEntry[]): Promise<void> {
   if (removeIds.length === 0 && add.length === 0) return;
 
-  const obj = await env.BUCKET.get('index/recipes.json');
-  const idx: any = obj ? await obj.json() : {};
-  let recipes: IndexEntry[] = Array.isArray(idx.recipes)
-    ? idx.recipes
-    : Array.isArray(idx.ids)
-      ? idx.ids.map((i: string) => ({ id: i, result: i, type: '' }))
-      : [];
+  // 条件付き書き込みでやり直すため、複数の mod を同時に投入しても片方の追加分が消えません。
+  await updateJson<IndexFile>(env, INDEX_KEY, (current) => {
+    // 同一IDが `add` に複数入りうる（取り込みセッションで同じレシピを再送した場合など）。
+    // 既存分の除去だけでは重複が残るため、ここで後勝ちに畳む。
+    const deduped = new Map(add.map((entry) => [entry.id, entry]));
 
-  // 同一IDが `add` に複数入りうる（取り込みセッションで同じレシピを再送した場合など）。
-  // 既存分の除去だけでは重複が残るため、ここで後勝ちに畳む。
-  const deduped = new Map(add.map((entry) => [entry.id, entry]));
+    const incoming = new Set(removeIds);
+    const recipes = readEntries(current)
+      .filter((r) => !incoming.has(r.id) && !deduped.has(r.id))
+      .concat([...deduped.values()])
+      .sort((a, b) => a.id.localeCompare(b.id));
 
-  const incoming = new Set(removeIds);
-  recipes = recipes.filter((r) => !incoming.has(r.id) && !deduped.has(r.id));
-  recipes.push(...deduped.values());
-  recipes.sort((a, b) => a.id.localeCompare(b.id));
+    return { count: recipes.length, generatedAt: new Date().toISOString(), recipes };
+  });
+}
 
-  await env.BUCKET.put(
-    'index/recipes.json',
-    JSON.stringify({ count: recipes.length, generatedAt: new Date().toISOString(), recipes }),
-    { httpMetadata: { contentType: 'application/json' } }
-  );
+/**
+ * 索引ファイルからエントリ配列を取り出します。旧 `ids` 形式も読めるようにしています。
+ * @param file 読み出した索引ファイル（未作成なら null）
+ */
+function readEntries(file: IndexFile | null): IndexEntry[] {
+  if (!file) return [];
+  if (Array.isArray(file.recipes)) return file.recipes;
+  if (Array.isArray(file.ids)) return file.ids.map((id) => ({ id, result: id, type: '' }));
+  return [];
 }
 
 /**
@@ -97,21 +106,6 @@ export async function upsertIndexEntries(env: Env, removeIds: string[], add: Ind
  * @param data レシピのJSONデータ
  */
 export async function updateIndex(env: Env, fullId: string, data: any): Promise<void> {
-  const obj = await env.BUCKET.get('index/recipes.json');
-  const idx: any = obj ? await obj.json() : {};
-  let recipes: any[] = Array.isArray(idx.recipes)
-    ? idx.recipes
-    : Array.isArray(idx.ids)
-      ? idx.ids.map((i: string) => ({ id: i, result: i }))
-      : [];
-  recipes = recipes.filter((r) => r.id !== fullId);
-  if (isCraftingType(data?.type)) {
-    recipes.push({ id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') });
-  }
-  recipes.sort((a, b) => a.id.localeCompare(b.id));
-  await env.BUCKET.put(
-    'index/recipes.json',
-    JSON.stringify({ count: recipes.length, generatedAt: new Date().toISOString(), recipes }),
-    { httpMetadata: { contentType: 'application/json' } }
-  );
+  const add = isCraftingType(data?.type) ? [indexEntryOf(fullId, data)] : [];
+  await upsertIndexEntries(env, [fullId], add);
 }

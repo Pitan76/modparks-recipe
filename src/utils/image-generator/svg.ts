@@ -89,6 +89,9 @@ export async function resolveIngredient(
   if (Array.isArray(ingredient)) return resolveIngredient(ingredient[0], env, tagOffset, cache, next);
   if (typeof ingredient.item === 'string') return itemIcon(ingredient.item, env, cache);
   if (typeof ingredient.tag === 'string') return resolveTag(ingredient.tag, env, tagOffset, cache, next);
+  // タグの構成要素は `{ "id": "minecraft:stone", "required": false }` の形も取ります。
+  // 文字列として解決し直すことで、`#` 付きの別タグ参照もそのまま辿れます。
+  if (typeof ingredient.id === 'string') return resolveIngredient(ingredient.id, env, tagOffset, cache, next);
   return null;
 }
 
