@@ -74,9 +74,13 @@ export async function upsertIndexEntries(env: Env, removeIds: string[], add: Ind
       ? idx.ids.map((i: string) => ({ id: i, result: i, type: '' }))
       : [];
 
+  // 同一IDが `add` に複数入りうる（取り込みセッションで同じレシピを再送した場合など）。
+  // 既存分の除去だけでは重複が残るため、ここで後勝ちに畳む。
+  const deduped = new Map(add.map((entry) => [entry.id, entry]));
+
   const incoming = new Set(removeIds);
-  recipes = recipes.filter((r) => !incoming.has(r.id));
-  recipes.push(...add);
+  recipes = recipes.filter((r) => !incoming.has(r.id) && !deduped.has(r.id));
+  recipes.push(...deduped.values());
   recipes.sort((a, b) => a.id.localeCompare(b.id));
 
   await env.BUCKET.put(

@@ -106,10 +106,15 @@ export async function ensureAssetVersions(env: Env, namespaces: Iterable<string>
 
 /**
  * バージョンマップを R2 へ書き戻し、アイソレート内のメモも更新します。
+ *
+ * 失敗は握りつぶさず呼び出し元へ伝えます。書き込めなかったのにメモだけ進めると、
+ * このアイソレートだけが存在しないバージョンを配り、そのバージョンで L1 キャッシュが
+ * 書かれて誰からも参照されない孤児オブジェクトになるためです。
+ * 書き込みAPIは冪等なので、呼び出し元はそのまま失敗させて再送させて構いません。
  */
 async function writeVersions(env: Env, versions: VersionMap): Promise<void> {
-  memo = { value: versions, readAt: Date.now() };
   await env.BUCKET.put(KEY, JSON.stringify(versions), {
     httpMetadata: { contentType: 'application/json' },
-  }).catch(() => {});
+  });
+  memo = { value: versions, readAt: Date.now() };
 }

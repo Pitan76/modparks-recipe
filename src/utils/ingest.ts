@@ -11,9 +11,16 @@
  */
 
 import type { Env } from './minecraft';
+import type { IndexEntry } from './recipe-store';
 
-/** ステージングされる1レシピの索引エントリ（公開インデックスの形と同一）。 */
-export type StagedEntry = { id: string; result: string | null; type: string };
+/**
+ * ステージングされる1レシピ。
+ *
+ * `entry` が null なのは「投入されたが索引には載らない」レシピ（クラフト系以外）です。
+ * IDだけは残しておかないと、クラフト系から他の型へ差し替えられたときに
+ * 古い索引エントリを消せません。
+ */
+export type StagedEntry = { id: string; entry: IndexEntry | null };
 
 const SESSION_PREFIX = 'meta/ingest';
 

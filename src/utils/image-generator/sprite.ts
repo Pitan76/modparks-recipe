@@ -44,6 +44,21 @@ export interface SpriteSheet {
 }
 
 /**
+ * 1タイル分を描画し、描画できなければ null を返します。
+ * @param recipe レシピJSONデータ
+ * @param env 環境変数
+ * @param scale スケール倍率
+ */
+async function renderTile(recipe: any, env: Env, scale: number): Promise<Uint8Array | null> {
+  try {
+    return await renderRecipePng(recipe, env, 0, scale);
+  } catch (err) {
+    console.error('sprite tile render failed', err);
+    return null;
+  }
+}
+
+/**
  * 複数のレシピを行優先（row-major）で並べた1つのPNGスプライトシート画像にレンダリングします。
  */
 export async function renderRecipeSpriteSheet(
@@ -70,12 +85,14 @@ export async function renderRecipeSpriteSheet(
       const row = Math.floor(i / cols);
       const x = col * tileWidth;
       const y = row * tileHeight;
-      if (!entry.recipe) {
+      // 1タイルの失敗でシート全体を落とさない。落とすと残りのタイルも
+      // 再取得させることになり、そのシートは永久に描けなくなる。
+      const png = entry.recipe ? await renderTile(entry.recipe, env, scale) : null;
+      if (!png) {
         order[i] = null;
         missing.push(entry.id);
         return;
       }
-      const png = await renderRecipePng(entry.recipe, env, 0, scale);
       const dataUrl = `data:image/png;base64,${bytesToBase64Local(png)}`;
       order[i] = entry.id;
       tiles[i] = `<image x="${x}" y="${y}" width="${tileWidth}" height="${tileHeight}" image-rendering="optimizeSpeed" href="${dataUrl}" />`;

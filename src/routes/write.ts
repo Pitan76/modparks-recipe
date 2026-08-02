@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { authorized, decodeBase64, contentTypeForKey } from '../utils/http';
-import { storeRecipe, putRecipeBody, updateIndexMany, upsertIndexEntries, indexEntryOf } from '../utils/recipe-store';
+import { storeRecipe, putRecipeBody, updateIndexMany, upsertIndexEntries, indexEntryOf, type IndexEntry } from '../utils/recipe-store';
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
@@ -177,7 +177,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     await putRecipeBody(c.env, namespace, id, body);
     const fullId = `${namespace}:${id}`;
     if (session) {
-      if (isCraftingType(data?.type)) staged.push(indexEntryOf(fullId, data));
+      staged.push({ id: fullId, entry: isCraftingType(data?.type) ? indexEntryOf(fullId, data) : null });
     } else {
       indexEntries.push({ fullId, data });
     }
@@ -245,12 +245,15 @@ writeRoutes.post('/api/:namespace/ingest/commit', async (c) => {
     return c.text('Unknown or expired ingest session', 409);
   }
 
-  const entries = await collectStaged(c.env, namespace, session);
-  await upsertIndexEntries(c.env, entries.map((e) => e.id), entries);
+  const staged = await collectStaged(c.env, namespace, session);
+  // `!!e` なのは、デプロイを跨いだセッションに旧形式の断片が残りうるため。
+  // 形が違えば索引に載せず、IDだけ除去対象として扱う（次の取り込みで載り直す）。
+  const indexed = staged.map((s) => s.entry).filter((e): e is IndexEntry => !!e);
+  await upsertIndexEntries(c.env, staged.map((s) => s.id), indexed);
   await bumpAssetVersion(c.env, namespace);
   await cleanupIngest(c.env, namespace, session);
 
-  return c.json({ ok: true, namespace, committed: entries.length });
+  return c.json({ ok: true, namespace, committed: staged.length, indexed: indexed.length });
 });
 
 // 取り込みセッションを破棄します（ステージング分を捨て、インデックスもバージョンも変更しません）。

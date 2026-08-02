@@ -22,6 +22,28 @@ export const imageRoutes = new Hono<{ Bindings: Env }>();
  * @param tagOffset タグオフセット
  * @returns レンダリングされた画像データのマップと不足しているIDのリスト
  */
+/**
+ * 1レシピを描画し、見つからない・描画できない場合は null を返します。
+ * 一括系エンドポイントが1件の失敗で全体を落とさないための境界です。
+ * @param render 実際に描画する関数
+ * @param fullId 完全修飾レシピID
+ * @param env 環境変数
+ */
+async function renderOrNull(
+  render: (recipe: any) => Promise<Uint8Array>,
+  fullId: string,
+  env: Env
+): Promise<Uint8Array | null> {
+  try {
+    const recipe = await getRecipe(fullId, env);
+    if (!recipe) return null;
+    return await render(recipe);
+  } catch (err) {
+    console.error(`render failed: ${fullId}`, err);
+    return null;
+  }
+}
+
 async function renderBatch(
   env: Env,
   namespace: string,
@@ -48,13 +70,14 @@ async function renderBatch(
   await Promise.all(
     ids.map(async (rawId) => {
       const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
-      const recipe = await getRecipe(fullId, env);
-      if (!recipe) {
+      // 1件の失敗でバッチ全体を落とさない。壊れた1レシピのために
+      // 残り199件の再レンダリングをやり直させる方が高くつく。
+      const bytes = await renderOrNull(render, fullId, env);
+      if (!bytes) {
         images[rawId] = null;
         missing.push(rawId);
         return;
       }
-      const bytes = await render(recipe);
       images[rawId] = `data:${mime};base64,${bytesToBase64(bytes)}`;
     })
   );
