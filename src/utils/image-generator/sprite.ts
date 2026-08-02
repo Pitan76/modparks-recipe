@@ -5,11 +5,15 @@
 import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { ensureWasm } from '../wasm';
+import { runPool } from '../pool';
 import { CANVAS_W, CANVAS_H } from './svg';
 import { renderRecipePng, DEFAULT_SCALE, zoomForScale } from './render';
 
 export const TILE_BASE_WIDTH = CANVAS_W;
 export const TILE_BASE_HEIGHT = CANVAS_H;
+
+/** 同時に描画するタイル数。最大200枚を一斉にラスタライズさせないための幅。 */
+const TILE_CONCURRENCY = 8;
 
 /**
  * ローカル用の簡易Bytes to base64ヘルパー。
@@ -79,25 +83,21 @@ export async function renderRecipeSpriteSheet(
   const missing: string[] = [];
   const tiles: string[] = [];
 
-  await Promise.all(
-    entries.map(async (entry, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = col * tileWidth;
-      const y = row * tileHeight;
-      // 1タイルの失敗でシート全体を落とさない。落とすと残りのタイルも
-      // 再取得させることになり、そのシートは永久に描けなくなる。
-      const png = entry.recipe ? await renderTile(entry.recipe, env, scale) : null;
-      if (!png) {
-        order[i] = null;
-        missing.push(entry.id);
-        return;
-      }
-      const dataUrl = `data:image/png;base64,${bytesToBase64Local(png)}`;
-      order[i] = entry.id;
-      tiles[i] = `<image x="${x}" y="${y}" width="${tileWidth}" height="${tileHeight}" image-rendering="optimizeSpeed" href="${dataUrl}" />`;
-    })
-  );
+  await runPool(entries, TILE_CONCURRENCY, async (entry, i) => {
+    const x = (i % cols) * tileWidth;
+    const y = Math.floor(i / cols) * tileHeight;
+    // 1タイルの失敗でシート全体を落とさない。落とすと残りのタイルも
+    // 再取得させることになり、そのシートは永久に描けなくなる。
+    const png = entry.recipe ? await renderTile(entry.recipe, env, scale) : null;
+    if (!png) {
+      order[i] = null;
+      missing.push(entry.id);
+      return;
+    }
+    const dataUrl = `data:image/png;base64,${bytesToBase64Local(png)}`;
+    order[i] = entry.id;
+    tiles[i] = `<image x="${x}" y="${y}" width="${tileWidth}" height="${tileHeight}" image-rendering="optimizeSpeed" href="${dataUrl}" />`;
+  });
 
   const sheetWidth = cols * tileWidth;
   const sheetHeight = rows * tileHeight;

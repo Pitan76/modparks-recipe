@@ -6,37 +6,8 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion, ensureAssetVersions, getAllVersions } from '../utils/cache-version';
-import { resultItemOf, isCraftingType } from '../utils/minecraft';
 import { sweepStaleIngests } from '../utils/ingest';
-
-type IndexEntry = { id: string; result: string | null; type: string };
-
-/**
- * レシピJSONを並列に読み、公開インデックス用の { id, result, type } エントリを組み立てます。
- * クラフト系のみを対象とし、読めなかった/JSONでないものはスキップします。
- * @param env 環境変数
- * @param keys 列挙済みの { fullId, key } の配列
- */
-async function buildRecipeEntries(env: Env, keys: { fullId: string; key: string }[]): Promise<IndexEntry[]> {
-  const out: IndexEntry[] = [];
-  const CONCURRENCY = 30;
-  let i = 0;
-
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, keys.length) }, async () => {
-      while (i < keys.length) {
-        const { fullId, key } = keys[i++];
-        const obj = await env.BUCKET.get(key);
-        if (!obj) continue;
-        let data: any;
-        try { data = JSON.parse(await obj.text()); } catch { continue; }
-        if (!isCraftingType(data?.type)) continue;
-        out.push({ id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') });
-      }
-    })
-  );
-  return out;
-}
+import { reindexStep, normalizeBatch } from '../utils/reindex';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -222,8 +193,14 @@ adminRoutes.get('/admin/seed-versions', async (c) => {
 
 /**
  * R2にすでに存在するレシピJSONからレシピインデックスを（再）構築するための管理者用エンドポイント。
- * オンデマンド（1回のバケットスキャン）で実行されるため、公開用の /api/list.json は低コストな静的読み取りのまま維持されます。
+ * オンデマンドで実行されるため、公開用の /api/list.json は低コストな静的読み取りのまま維持されます。
  * CIを待たずにインデックスを補完するために使用します。
+ *
+ * レシピ1件につきR2 GETが1回走るため、1回の呼び出しでは既定500件までしか進みません。
+ * `done: false` が返ったら、返ってきた `cursor` を付けて完了するまで呼び直してください。
+ * 公開インデックスが差し替わるのは最後の呼び出しの時だけです。
+ *
+ * 例: GET /admin/reindex?secret=...&cursor=...&batch=500
  */
 adminRoutes.get('/admin/reindex', async (c) => {
   const secret = c.req.query('secret');
@@ -231,27 +208,8 @@ adminRoutes.get('/admin/reindex', async (c) => {
     return c.text('Unauthorized', 401);
   }
 
-  // R2 のレシピキーを列挙する。本文の取得は分離し、下でプールして並列に読む。
-  const keys: { fullId: string; key: string }[] = [];
-  let cursor: string | undefined = undefined;
-  do {
-    const listed = await c.env.BUCKET.list({ prefix: 'data/', cursor, limit: 1000 });
-    for (const o of listed.objects) {
-      const m = o.key.match(/^data\/([^/]+)\/recipes?\/(.+)\.json$/);
-      if (m) keys.push({ fullId: `${m[1]}:${m[2]}`, key: o.key });
-    }
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
-
   // 公開用インデックスは { id, result, type } の recipes 形式でなければならない。
   // 旧 ids 形式で書くと ProjectRecipes と updateIndexMany が recipes を読めず一覧が空になる。
-  const recipes = await buildRecipeEntries(c.env, keys);
-  recipes.sort((a, b) => a.id.localeCompare(b.id));
-  await c.env.BUCKET.put(
-    'index/recipes.json',
-    JSON.stringify({ count: recipes.length, generatedAt: new Date().toISOString(), recipes }),
-    { httpMetadata: { contentType: 'application/json' } }
-  );
-
-  return c.json({ ok: true, count: recipes.length, scanned: keys.length });
+  const step = await reindexStep(c.env, c.req.query('cursor'), normalizeBatch(c.req.query('batch')));
+  return c.json({ ok: true, ...step });
 });

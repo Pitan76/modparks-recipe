@@ -39,13 +39,18 @@ langRoutes.get('/api/:namespace/lang.json', async (c) => {
   const { namespace } = c.req.param();
   const prefix = `assets/${namespace}/lang/`;
 
-  const listed = await c.env.BUCKET.list({ prefix });
-  const locales = listed.objects
-    .map((o) => o.key.slice(prefix.length).replace(/\.json$/, ''))
-    .filter((l) => l.length > 0)
-    .sort();
+  const locales: string[] = [];
+  let cursor: string | undefined = undefined;
+  do {
+    const listed = await c.env.BUCKET.list({ prefix, cursor });
+    for (const o of listed.objects) {
+      const locale = o.key.slice(prefix.length).replace(/\.json$/, '');
+      if (locale.length > 0) locales.push(locale);
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
 
-  return c.json({ namespace, locales }, 200, { 'Cache-Control': cacheControlOf(c) });
+  return c.json({ namespace, locales: locales.sort() }, 200, { 'Cache-Control': cacheControlOf(c) });
 });
 
 /**

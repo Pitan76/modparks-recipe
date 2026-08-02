@@ -5,84 +5,11 @@
 import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
-import { bytesToBase64 } from '../utils/http';
 import { getAssetVersion } from '../utils/cache-version';
 import { rendererVersion } from '../utils/render-version';
+import { renderBatch } from '../utils/batch-render';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
-
-/**
- * 下記の POST/GET バッチエンドポイント用で共有される一括レンダラー。
- * 各IDを並行処理で base64 データURLにレンダリングします。存在しないIDは null になります。
- * @param env 環境変数
- * @param namespace ネームスペース（Mod ID など）
- * @param ids レシピIDのリスト
- * @param ext 拡張子（png, gif, jpg）
- * @param scale スケール倍率
- * @param tagOffset タグオフセット
- * @returns レンダリングされた画像データのマップと不足しているIDのリスト
- */
-/**
- * 1レシピを描画し、見つからない・描画できない場合は null を返します。
- * 一括系エンドポイントが1件の失敗で全体を落とさないための境界です。
- * @param render 実際に描画する関数
- * @param fullId 完全修飾レシピID
- * @param env 環境変数
- */
-async function renderOrNull(
-  render: (recipe: any) => Promise<Uint8Array>,
-  fullId: string,
-  env: Env
-): Promise<Uint8Array | null> {
-  try {
-    const recipe = await getRecipe(fullId, env);
-    if (!recipe) return null;
-    return await render(recipe);
-  } catch (err) {
-    console.error(`render failed: ${fullId}`, err);
-    return null;
-  }
-}
-
-async function renderBatch(
-  env: Env,
-  namespace: string,
-  ids: string[],
-  ext: string,
-  scale: number,
-  tagOffset: number
-): Promise<{ images: Record<string, string | null>; missing: string[] }> {
-  let mime: string;
-  let render: (recipe: any) => Promise<Uint8Array>;
-  if (ext === 'gif') {
-    mime = 'image/gif';
-    render = (r) => renderRecipeGif(r, env, 5, scale);
-  } else if (ext === 'jpg' || ext === 'jpeg') {
-    mime = 'image/jpeg';
-    render = (r) => renderRecipeJpg(r, env, tagOffset, scale);
-  } else {
-    mime = 'image/png';
-    render = (r) => renderRecipePng(r, env, tagOffset, scale);
-  }
-
-  const images: Record<string, string | null> = {};
-  const missing: string[] = [];
-  await Promise.all(
-    ids.map(async (rawId) => {
-      const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
-      // 1件の失敗でバッチ全体を落とさない。壊れた1レシピのために
-      // 残り199件の再レンダリングをやり直させる方が高くつく。
-      const bytes = await renderOrNull(render, fullId, env);
-      if (!bytes) {
-        images[rawId] = null;
-        missing.push(rawId);
-        return;
-      }
-      images[rawId] = `data:${mime};base64,${bytesToBase64(bytes)}`;
-    })
-  );
-  return { images, missing };
-}
 
 /**
  * 一括画像エンドポイント：Web UIがレシピごとに個別のHTTPリクエストを送信するのを防ぐため、1回のリクエストで複数のレシピ画像を取得します。
@@ -206,8 +133,12 @@ function pinnedVersion(c: any): string | undefined {
  * URL 自体がバージョンを内包するため内容は不変になります。この場合バージョン参照のための
  * R2 往復（実測 約220ms）を省略し、`immutable` を付けてブラウザの再検証も止めます。
  * `?v=` が無い場合は従来どおりサーバ側でバージョンを引くフォールバック経路を通ります。
+ *
+ * `:filename{.+}` としてスラッシュも拾います。bulk 取り込みのレシピIDには `shaped/foo` の
+ * ようにスラッシュが入りうるため、1セグメントだと索引に載っているのに画像だけ404になります。
+ * 拡張子で絞るのは下の正規表現の役目です。
  */
-imageRoutes.get('/api/:namespace/:filename', async (c) => {
+imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   const { namespace, filename } = c.req.param();
 
   const match = filename.match(/^(.+)\.(png|gif|jpg|jpeg)$/);

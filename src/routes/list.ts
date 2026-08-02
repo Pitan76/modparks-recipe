@@ -46,12 +46,13 @@ async function readIndex(env: Env): Promise<IndexEntry[]> {
  */
 listRoutes.get('/api/list.json', async (c) => {
   const [obj, versions] = await Promise.all([c.env.BUCKET.get(INDEX_KEY), getAllVersions(c.env)]);
-  if (!obj) return c.json({ count: 0, versions, recipes: [] });
+  const cacheControl = { 'Cache-Control': `public, max-age=${INDEX_MAX_AGE}` };
+  // 索引が未生成のときも同じだけキャッシュさせる。ここを素通しにすると、
+  // 立ち上げ直後や再構築中に空応答のリクエストが全部オリジンまで来る。
+  if (!obj) return c.json({ count: 0, versions, recipes: [] }, 200, cacheControl);
 
   const index = await obj.json<Record<string, unknown>>();
-  return c.json({ ...index, versions }, 200, {
-    'Cache-Control': `public, max-age=${INDEX_MAX_AGE}`,
-  });
+  return c.json({ ...index, versions }, 200, cacheControl);
 });
 
 /**

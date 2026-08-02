@@ -10,29 +10,13 @@ import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
 import { beginIngest, isIngestOpen, stageEntries, collectStaged, cleanupIngest, type StagedEntry } from '../utils/ingest';
+import { runPool } from '../utils/pool';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
 // 認証: Authorization: Bearer <secret> または ?secret=。
 
 export const writeRoutes = new Hono<{ Bindings: Env }>();
-
-/**
- * 指定された同時実行数制限内でタスクを実行します。
- * 大量取り込み（Bulk Ingest）では、1回のリクエストで数百個のオブジェクトを配置します。
- * それらを順番に処理すると、通信の往復待ち時間でリクエスト制限時間が全て消費され、Workerがタイムアウトしてしまいます。
- * @param items 処理するアイテムの配列
- * @param limit 同時実行数の上限
- * @param worker 各アイテムを処理する非同期関数
- */
-async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (i < items.length) await worker(items[i++]);
-    })
-  );
-}
 
 // 単一のレシピJSONをアップロードします。リクエストボディ = レシピのJSONデータ。
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {

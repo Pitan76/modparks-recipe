@@ -15,7 +15,24 @@ export function authorized(c: any): boolean {
   const header = c.req.header('Authorization') || '';
   const token = header.replace(/^Bearer\s+/i, '') || c.req.query('secret') || '';
   if (!token) return false;
-  return token === c.env.UPLOAD_SECRET || token === c.env.ADMIN_SECRET;
+  return secretEquals(token, c.env.UPLOAD_SECRET) || secretEquals(token, c.env.ADMIN_SECRET);
+}
+
+/**
+ * シークレットを一定時間で比較します。
+ * `===` は最初に食い違ったバイトで抜けるため、応答時間の差から先頭から1文字ずつ
+ * 突き止められます。長さの違いは秘匿しません（長さ自体は秘密ではないため）。
+ * @param given リクエストが提示した値
+ * @param expected 期待するシークレット（未設定なら常に不一致）
+ */
+function secretEquals(given: string, expected: string | undefined): boolean {
+  if (!expected || given.length !== expected.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) {
+    diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 /**
