@@ -6,7 +6,7 @@ import { Env } from './env';
 import { parseNamespacedId } from './id';
 import { renderBlockIconPng } from '../block-icon';
 import { bytesToBase64 } from '../http';
-import { getIcon, setIcon } from '../icon-memo';
+import { getIcon, setIcon, noteVersion } from '../icon-memo';
 import { getAssetVersion } from '../cache-version';
 import { rendererVersion } from '../render-version';
 
@@ -102,21 +102,27 @@ export const TRANSPARENT_PNG =
 export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
-  const memoized = getIcon(namespace, path);
+  // L0 と L1 で同じ世代を使う。ここで実バージョンを引くため、`?v=` の有無や
+  // 経路（個別画像 / batch / sprite）に関わらずメモの世代が揃う。
+  // アイソレート内でメモされるため、通常は R2 往復を伴わない。
+  const version = await getAssetVersion(env, namespace);
+  noteVersion(namespace, version);
+
+  const memoized = getIcon(namespace, version, path);
   if (memoized !== undefined) return memoized;
 
   // L1: 解決済みアイコン。キーに ns バージョンとレンダラー版を含むため、テクスチャ更新や
   // レンダラー変更で自動的に別キーとなり、古いものは参照されなくなる（削除不要）。
-  const l1Key = await iconCacheKey(env, namespace, path);
+  const l1Key = iconCacheKey(env, namespace, version, path);
   const l1 = await env.BUCKET.get(l1Key);
   if (l1) {
     const dataUrl = await l1.text();
-    setIcon(namespace, path, dataUrl);
+    setIcon(namespace, version, path, dataUrl);
     return dataUrl;
   }
 
   const resolved = await resolveItemImage(namespace, path, env);
-  setIcon(namespace, path, resolved);
+  setIcon(namespace, version, path, resolved);
 
   // 解決失敗（透明フォールバック）は永続化しない。テクスチャ未着の投入中に固定してしまうのを防ぐ。
   if (resolved !== TRANSPARENT_PNG) {
@@ -128,9 +134,8 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
 /**
  * L1 アイコンキャッシュのキーを組み立てます。ns バージョンとレンダラー版を世代として含めます。
  */
-async function iconCacheKey(env: Env, ns: string, path: string): Promise<string> {
-  const [ver, rv] = [await getAssetVersion(env, ns), rendererVersion(env)];
-  return `cache/icon/${rv}/${ns}/${ver}/${path}.dataurl`;
+function iconCacheKey(env: Env, ns: string, version: string, path: string): string {
+  return `cache/icon/${rendererVersion(env)}/${ns}/${version}/${path}.dataurl`;
 }
 
 /**

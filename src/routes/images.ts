@@ -7,7 +7,6 @@ import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
 import { bytesToBase64 } from '../utils/http';
 import { getAssetVersion } from '../utils/cache-version';
-import { noteVersion } from '../utils/icon-memo';
 import { rendererVersion } from '../utils/render-version';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
@@ -159,6 +158,25 @@ imageRoutes.get('/api/:namespace/sprite', async (c) => {
 const MISS_MAX_AGE = 300;
 
 /**
+ * アセットバージョンとして受け付ける形（`Date.now().toString(36)` が生む文字種）。
+ *
+ * `?v=` は R2 の永続キャッシュキーに入るため、素通しすると任意のキーで無認証に
+ * オブジェクトを作らせられます。形が違えばピン留め無しとして扱い、サーバ側で引き直します。
+ */
+const VERSION_PATTERN = /^[0-9a-z]{1,16}$/;
+
+/**
+ * クライアントがピン留めしたアセットバージョンを取り出します。
+ * @param c Honoのコンテキストオブジェクト
+ * @returns 妥当なバージョン、無い/不正なら undefined
+ */
+function pinnedVersion(c: any): string | undefined {
+  const v = c.req.query('v');
+  if (!v || !VERSION_PATTERN.test(v)) return undefined;
+  return v;
+}
+
+/**
  * 個別レシピ画像エンドポイント: /api/:namespace/:id.(png|gif|jpg)
  *
  * `?v=` にアセットバージョンが載っている場合（`/api/list.json` の versions を参照）、
@@ -174,9 +192,8 @@ imageRoutes.get('/api/:namespace/:filename', async (c) => {
     return c.text('Not found', 404);
   }
 
-  const pinned = c.req.query('v');
+  const pinned = pinnedVersion(c);
   const version = pinned ?? (await getAssetVersion(c.env, namespace));
-  noteVersion(namespace, version);
 
   // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
   // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。

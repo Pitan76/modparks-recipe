@@ -51,31 +51,113 @@ export function itemIcon(id: string, env: Env, cache: IconCache): Promise<string
 }
 
 /**
- * レシピの素材オブジェクト（item, tag, 配列など）を解決し、対応するアイテムのアイコンデータURLを返します。
+ * 素材参照をたどれる最大段数。
+ * レシピJSONは書き込みAPIで形を検証していないため、深く入れ子になった配列や
+ * 互いを指し合うタグ（A→B→A）で再帰が尽きるのを防ぎます。
  */
-export async function resolveIngredient(ingredient: any, env: Env, tagOffset: number, cache: IconCache): Promise<string | null> {
+const MAX_INGREDIENT_DEPTH = 8;
+
+/**
+ * 1つの素材を解決する間だけ持ち回る探索状態。
+ */
+type IngredientTrail = {
+  /** 既に展開したタグID。循環参照を検出するために使います。 */
+  tags: Set<string>;
+  /** 現在の再帰段数。 */
+  depth: number;
+};
+
+/**
+ * レシピの素材オブジェクト（item, tag, 配列など）を解決し、対応するアイテムのアイコンデータURLを返します。
+ * @param trail 循環参照と深さの検出に使う探索状態（呼び出し側は省略します）
+ */
+export async function resolveIngredient(
+  ingredient: any,
+  env: Env,
+  tagOffset: number,
+  cache: IconCache,
+  trail: IngredientTrail = { tags: new Set(), depth: 0 }
+): Promise<string | null> {
   if (!ingredient) return null;
+  if (trail.depth >= MAX_INGREDIENT_DEPTH) return null;
+
+  const next = { tags: trail.tags, depth: trail.depth + 1 };
   if (typeof ingredient === 'string') {
-    if (ingredient.startsWith('#')) {
-      return resolveIngredient({ tag: ingredient.substring(1) }, env, tagOffset, cache);
-    } else {
-      return resolveIngredient({ item: ingredient }, env, tagOffset, cache);
-    }
+    const wrapped = ingredient.startsWith('#') ? { tag: ingredient.substring(1) } : { item: ingredient };
+    return resolveIngredient(wrapped, env, tagOffset, cache, next);
   }
-  if (Array.isArray(ingredient)) {
-    return resolveIngredient(ingredient[0], env, tagOffset, cache);
-  }
-  if (ingredient.item) {
-    return await itemIcon(ingredient.item, env, cache);
-  }
-  if (ingredient.tag) {
-    const tagItems = await getTag(ingredient.tag, env);
-    if (tagItems.length > 0) {
-      const targetItem = tagItems[tagOffset % tagItems.length];
-      return resolveIngredient(targetItem, env, tagOffset, cache);
-    }
-  }
+  if (Array.isArray(ingredient)) return resolveIngredient(ingredient[0], env, tagOffset, cache, next);
+  if (typeof ingredient.item === 'string') return itemIcon(ingredient.item, env, cache);
+  if (typeof ingredient.tag === 'string') return resolveTag(ingredient.tag, env, tagOffset, cache, next);
   return null;
+}
+
+/**
+ * タグを構成アイテムのいずれか1つに落として解決します。
+ * 既に展開済みのタグは循環とみなして打ち切ります。
+ */
+async function resolveTag(
+  tag: string,
+  env: Env,
+  tagOffset: number,
+  cache: IconCache,
+  trail: IngredientTrail
+): Promise<string | null> {
+  const id = tag.replace(/^#/, '');
+  if (trail.tags.has(id)) return null;
+  trail.tags.add(id);
+
+  const tagItems = await getTag(id, env);
+  if (tagItems.length === 0) return null;
+  return resolveIngredient(tagItems[tagOffset % tagItems.length], env, tagOffset, cache, trail);
+}
+
+/** クラフトグリッドの一辺のスロット数。 */
+const GRID_SIZE = 3;
+
+/** グリッド上の1マスに割り当てられた素材。 */
+type Slot = { index: number; ingredient: any };
+
+/**
+ * 定型（shaped）レシピのパターンからスロット割り当てを作ります。
+ * パターンは書き込みAPIで形を検証していない生の入力なので、
+ * 3x3に収まらない行・列はグリッドを壊す前にここで捨てます。
+ */
+function shapedSlots(recipeData: any): Slot[] {
+  const { pattern, key } = recipeData;
+  if (!Array.isArray(pattern) || !key || typeof key !== 'object') return [];
+
+  const slots: Slot[] = [];
+  for (let r = 0; r < Math.min(pattern.length, GRID_SIZE); r++) {
+    const row = pattern[r];
+    if (typeof row !== 'string') continue;
+    for (let c = 0; c < Math.min(row.length, GRID_SIZE); c++) {
+      if (row[c] !== ' ') slots.push({ index: r * GRID_SIZE + c, ingredient: key[row[c]] });
+    }
+  }
+  return slots;
+}
+
+/**
+ * 不定形（shapeless）レシピの素材列からスロット割り当てを作ります。
+ * 9個を超える分は3x3に置けないため捨てます。
+ */
+function shapelessSlots(recipeData: any): Slot[] {
+  const { ingredients } = recipeData;
+  if (!Array.isArray(ingredients)) return [];
+  return ingredients
+    .slice(0, GRID_SIZE * GRID_SIZE)
+    .map((ingredient: any, index: number) => ({ index, ingredient }));
+}
+
+/**
+ * レシピデータからスロット割り当てを作ります。クラフト系以外は空になります。
+ */
+function slotsOf(recipeData: any): Slot[] {
+  const type = String(recipeData?.type ?? '').replace(/^minecraft:/, '');
+  if (type === 'crafting_shaped') return shapedSlots(recipeData);
+  if (type === 'crafting_shapeless') return shapelessSlots(recipeData);
+  return [];
 }
 
 /**
@@ -87,26 +169,9 @@ export async function createRecipeGrid(
   tagOffset: number,
   cache: IconCache = new Map()
 ): Promise<Array<string | null>> {
-  const slots: { index: number; ingredient: any }[] = [];
-
-  if (recipeData.type === 'minecraft:crafting_shaped' || recipeData.type === 'crafting_shaped') {
-    const pattern = recipeData.pattern;
-    const key = recipeData.key;
-
-    for (let r = 0; r < pattern.length; r++) {
-      for (let c = 0; c < pattern[r].length; c++) {
-        const char = pattern[r][c];
-        if (char !== ' ') slots.push({ index: r * 3 + c, ingredient: key[char] });
-      }
-    }
-  } else if (recipeData.type === 'minecraft:crafting_shapeless' || recipeData.type === 'crafting_shapeless') {
-    const ingredients = recipeData.ingredients;
-    for (let i = 0; i < ingredients.length; i++) slots.push({ index: i, ingredient: ingredients[i] });
-  }
-
-  const grid: Array<string | null> = Array(9).fill(null);
+  const grid: Array<string | null> = Array(GRID_SIZE * GRID_SIZE).fill(null);
   await Promise.all(
-    slots.map(async ({ index, ingredient }) => {
+    slotsOf(recipeData).map(async ({ index, ingredient }) => {
       grid[index] = await resolveIngredient(ingredient, env, tagOffset, cache);
     })
   );

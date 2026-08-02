@@ -12,15 +12,18 @@
 /** 保持する最大エントリ数。16x16 PNG の dataURL は概ね数百B〜1KB なので、上限でも数MB に収まります。 */
 const MAX_ENTRIES = 3000;
 
-/** `${ns}|${gen}|${path}` -> dataURL。Map の挿入順を LRU として利用します。 */
+/** `${ns}|${version}|${path}` -> dataURL。Map の挿入順を LRU として利用します。 */
 const memo = new Map<string, string>();
 
-/** ネームスペース -> 現在のアセットバージョン。 */
+/** ネームスペース -> 直近に観測したアセットバージョン。 */
 const gens = new Map<string, string>();
 
 /**
  * ネームスペースの現在のアセットバージョンを記録します。
  * 変化していた場合、そのネームスペースの古いエントリを破棄します。
+ *
+ * 呼び出し側は必ずサーバが引いた実バージョンを渡してください。クライアント由来の
+ * `?v=` を渡すと、任意の値でメモ全体を破棄させられます。
  * @param ns ネームスペース
  * @param version アセットバージョン
  */
@@ -36,21 +39,21 @@ export function noteVersion(ns: string, version: string): void {
 }
 
 /**
- * メモのキーを組み立てます。バージョン未知のネームスペースは '?' 世代として扱い、
- * 後から `noteVersion` で確定した時点で破棄されます。
+ * メモのキーを組み立てます。
  */
-function keyFor(ns: string, path: string): string {
-  return `${ns}|${gens.get(ns) ?? '?'}|${path}`;
+function keyFor(ns: string, version: string, path: string): string {
+  return `${ns}|${version}|${path}`;
 }
 
 /**
  * メモからアイコンの dataURL を取得します。
  * @param ns ネームスペース
+ * @param version アセットバージョン
  * @param path テクスチャパス
  * @returns 記録済みなら dataURL、無ければ undefined
  */
-export function getIcon(ns: string, path: string): string | undefined {
-  const key = keyFor(ns, path);
+export function getIcon(ns: string, version: string, path: string): string | undefined {
+  const key = keyFor(ns, version, path);
   const hit = memo.get(key);
   if (hit === undefined) return undefined;
 
@@ -63,11 +66,12 @@ export function getIcon(ns: string, path: string): string | undefined {
 /**
  * アイコンの dataURL をメモに記録します。
  * @param ns ネームスペース
+ * @param version アセットバージョン
  * @param path テクスチャパス
  * @param dataUrl 記録する dataURL
  */
-export function setIcon(ns: string, path: string, dataUrl: string): void {
-  memo.set(keyFor(ns, path), dataUrl);
+export function setIcon(ns: string, version: string, path: string, dataUrl: string): void {
+  memo.set(keyFor(ns, version, path), dataUrl);
   while (memo.size > MAX_ENTRIES) {
     const oldest = memo.keys().next();
     if (oldest.done) break;
