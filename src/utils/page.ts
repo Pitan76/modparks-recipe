@@ -151,11 +151,14 @@ window.MPR_SEARCH_MESSAGES = ${JSON.stringify(t)};
     return e(Container, { maxWidth: 'md', sx: { py: 6 } },
       e(Box, { sx: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 } },
         e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, t.title),
-        e(Link, {
-          href: 'https://github.com/Pitan76/modparks-recipe', target: '_blank', rel: 'noopener',
-          color: 'text.secondary', title: 'GitHub',
-          sx: { fontSize: 28, display: 'inline-flex', '&:hover': { color: 'text.primary' } }
-        }, e('i', { className: 'fa-brands fa-github' }))),
+        // 投稿ポータルへの導線。ここに置かないとログイン画面へ辿り着く手段が無い。
+        e(Stack, { direction: 'row', spacing: 2, alignItems: 'center' },
+          e(Link, { href: '/upload', color: 'text.secondary', sx: { '&:hover': { color: 'text.primary' } } }, t.publish),
+          e(Link, {
+            href: 'https://github.com/Pitan76/modparks-recipe', target: '_blank', rel: 'noopener',
+            color: 'text.secondary', title: 'GitHub',
+            sx: { fontSize: 28, display: 'inline-flex', '&:hover': { color: 'text.primary' } }
+          }, e('i', { className: 'fa-brands fa-github' })))),
       e(Typography, { color: 'text.secondary', sx: { mb: 3 } },
         t.lead),
 

@@ -19,6 +19,8 @@ export type ProviderUser = { subject: string; displayName: string; accessToken: 
 /** ログイン手段の実装が満たすべき形。 */
 export interface IdentityProvider {
   readonly id: string;
+  /** 画面に出す名前。IDをそのまま見せると `modparks` のような内部表記が漏れます。 */
+  readonly name: string;
   /**
    * 認可画面のURLを組み立てます。
    * @param state CSRF対策のための状態値
@@ -66,6 +68,7 @@ function modparksProvider(env: Env): IdentityProvider {
 
   return {
     id: 'modparks',
+    name: 'ModParks',
 
     authorizeUrl(state: string, redirectUri: string): string {
       const url = new URL(`${base}/api/oauth/authorize`);

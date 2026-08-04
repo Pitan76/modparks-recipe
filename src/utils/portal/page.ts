@@ -99,10 +99,10 @@ const PORTAL_SCRIPT = /* js */ `
       app.appendChild(el('p', { class: 'error' }, [t.noProviders]));
       return;
     }
-    providers.forEach(function (id) {
+    providers.forEach(function (p) {
       app.appendChild(el('button', {
-        onclick: function () { location.href = '/auth/' + id + '/start?redirect=/upload'; }
-      }, [t.signIn + ' — ' + id]));
+        onclick: function () { location.href = '/auth/' + p.id + '/start?redirect=/upload'; }
+      }, [t.signInWith.replace('{provider}', p.name)]));
     });
   }
 

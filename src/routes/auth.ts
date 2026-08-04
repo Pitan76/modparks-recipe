@@ -21,7 +21,8 @@ const UPLOAD_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** 有効なログイン手段の一覧。ポータルがボタンを出し分けるために使います。 */
 authRoutes.get('/auth/providers.json', (c) => {
-  return c.json({ providers: [...providersOf(c.env).keys()] });
+  const providers = [...providersOf(c.env).values()].map((p) => ({ id: p.id, name: p.name }));
+  return c.json({ providers });
 });
 
 // 認可画面へ送ります。state は Cookie に控え、コールバックで突き合わせます。

@@ -16,7 +16,7 @@ export type MessageKey = keyof typeof JA;
 const JA = {
   title: 'ModParks Recipe への投稿',
   lead: 'jar をアップロードすると、レシピとテクスチャを取り出して公開します。jar 自体は保存しません。',
-  signIn: 'ログイン',
+  signInWith: '{provider} でログイン',
   signInLead: '投稿にはアカウントが必要です。',
   signOut: 'ログアウト',
   noProviders: 'ログイン手段が設定されていません。',
@@ -42,7 +42,7 @@ const JA = {
 const EN: Messages = {
   title: 'Publish to ModParks Recipe',
   lead: 'Upload a jar to extract and publish its recipes and textures. The jar itself is not stored.',
-  signIn: 'Sign in',
+  signInWith: 'Sign in with {provider}',
   signInLead: 'An account is required to publish.',
   signOut: 'Sign out',
   noProviders: 'No sign-in method is configured.',
