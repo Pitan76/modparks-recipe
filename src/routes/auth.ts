@@ -12,6 +12,7 @@ import { providersOf } from '../utils/auth/providers';
 import { getIdentity, linksOf, resolveIdentity } from '../utils/auth/identity';
 import { issueToken, verifyToken } from '../utils/auth/tokens';
 import { claimNamespace, getOwnership, type Trust } from '../utils/auth/ownership';
+import { remainingUploads } from '../utils/auth/quota';
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -29,7 +30,13 @@ authRoutes.get('/auth/:provider/start', (c) => {
   if (!provider) return c.text('Unknown provider', 404);
 
   const state = crypto.randomUUID();
-  c.header('Set-Cookie', `mpr_state=${state}; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
+  c.header('Set-Cookie', `mpr_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`, { append: true });
+
+  // ブラウザから来た場合の戻り先。オープンリダイレクタにしないため自サイト内のパスだけ受けます。
+  const back = c.req.query('redirect');
+  if (back?.startsWith('/') && !back.startsWith('//')) {
+    c.header('Set-Cookie', `mpr_back=${encodeURIComponent(back)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`, { append: true });
+  }
   return c.redirect(provider.authorizeUrl(state, redirectUriOf(c)));
 });
 
@@ -47,7 +54,23 @@ authRoutes.get('/auth/:provider/callback', async (c) => {
 
   const identity = await resolveIdentity(c.env, id, user.subject, user.displayName, user.accessToken);
   const token = await issueToken(c.env, identity.id, 'upload', UPLOAD_TOKEN_TTL_MS);
+
+  // ブラウザ経由ならページへ戻す。トークンはフラグメントに載せるため、Referer や
+  // サーバのアクセスログには残りません。API から直に叩かれた場合は JSON のまま返します。
+  const back = cookieOf(c, 'mpr_back');
+  if (back) return c.redirect(`${decodeURIComponent(back)}#token=${token}`);
   return c.json({ ok: true, identity: { id: identity.id, displayName: identity.displayName }, token });
+});
+
+/** ログイン中の主体と、その日の残り投稿数。ポータルの表示に使います。 */
+authRoutes.get('/auth/me', async (c) => {
+  const grant = await verifyToken(c.env, bearerOf(c));
+  if (!grant) return c.text('Unauthorized', 401);
+
+  const identity = await getIdentity(c.env, grant.identityId);
+  if (!identity) return c.text('Unauthorized', 401);
+
+  return c.json({ displayName: identity.displayName, remaining: await remainingUploads(c.env, grant.identityId) });
 });
 
 // namespace の所有権を主張します。ModParks 側で所有が確認できれば verified になります。
@@ -120,11 +143,18 @@ function redirectUriOf(c: any): string {
  * @param state コールバックが返した state
  */
 function stateMatches(c: any, state: string | null): boolean {
-  if (!state) return false;
+  return !!state && cookieOf(c, 'mpr_state') === state;
+}
 
-  const cookie = c.req.header('Cookie') || '';
-  const matched = /(?:^|;\s*)mpr_state=([^;]+)/.exec(cookie);
-  return !!matched && matched[1] === state;
+/**
+ * Cookie を1つ取り出します。
+ * @param c Honoのコンテキストオブジェクト
+ * @param name Cookie名
+ * @returns 値。無ければ null
+ */
+function cookieOf(c: any, name: string): string | null {
+  const matched = new RegExp(`(?:^|;\s*)${name}=([^;]+)`).exec(c.req.header('Cookie') || '');
+  return matched ? matched[1] : null;
 }
 
 /**

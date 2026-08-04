@@ -12,6 +12,8 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { verifyToken } from '../utils/auth/tokens';
 import { consumeUploadQuota, remainingUploads } from '../utils/auth/quota';
+import { portalPage } from '../utils/portal/page';
+import { pickLocale } from '../utils/portal/messages';
 
 export const uploadRoutes = new Hono<{ Bindings: Env }>();
 
@@ -20,6 +22,12 @@ const MAX_JAR_BYTES = 32 * 1024 * 1024;
 
 /** 一時保管した jar を jar Worker が取りに来るまでの猶予（ミリ秒）。 */
 const PICKUP_TTL_MS = 10 * 60 * 1000;
+
+/** 投稿ポータルのページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
+uploadRoutes.get('/upload', (c) => {
+  const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null);
+  return c.html(portalPage(locale), 200, { 'Cache-Control': 'public, max-age=300' });
+});
 
 // jar を受け取り、解析と取り込みを jar Worker に委ねます。
 uploadRoutes.post('/api/upload', async (c) => {
