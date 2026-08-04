@@ -14,8 +14,16 @@ import { resolveChannel } from './mc-version';
 /** MCチャネル -> build ID。 */
 export type ChannelMap = Record<string, string>;
 
-/** modVersion -> build ID。同じ build を複数の版が指しうる（内容が同じなら1本に畳まれるため）。 */
-export type VersionMap = Record<string, string>;
+/** 1つの mod バージョンと、それが指す build。 */
+export type VersionEntry = { modVersion: string; buildId: string; at: string };
+
+/**
+ * modVersion の別名表。
+ *
+ * 連想配列ではなく配列なのは、保持数の上限（unverified は直近5版）を適用するのに
+ * 登録順が要るためです。同じ build を複数の版が指しうります（内容が同じなら1本に畳まれるため）。
+ */
+export type VersionList = { entries: VersionEntry[] };
 
 /** あるMCチャネルにおける、全ネームスペースの解決結果。 */
 export type ResolveSnapshot = { rid: string; builds: Record<string, string> };
@@ -34,8 +42,9 @@ export async function readChannels(env: Env, ns: string): Promise<ChannelMap> {
  * @param env 環境変数
  * @param ns ネームスペース
  */
-export async function readVersions(env: Env, ns: string): Promise<VersionMap> {
-  return readJson<VersionMap>(env, versionsKey(ns));
+export async function readVersions(env: Env, ns: string): Promise<VersionEntry[]> {
+  const stored = await readJson<VersionList>(env, versionsKey(ns));
+  return Array.isArray(stored.entries) ? stored.entries : [];
 }
 
 /**
@@ -46,7 +55,31 @@ export async function readVersions(env: Env, ns: string): Promise<VersionMap> {
  * @param buildId build ID
  */
 export async function registerVersion(env: Env, ns: string, modVersion: string, buildId: string): Promise<void> {
-  await updateJson<VersionMap>(env, versionsKey(ns), (current) => ({ ...(current ?? {}), [modVersion]: buildId }));
+  await updateJson<VersionList>(env, versionsKey(ns), (current) => {
+    const entries = (current?.entries ?? []).filter((e) => e.modVersion !== modVersion);
+    entries.push({ modVersion, buildId, at: new Date().toISOString() });
+    return { entries };
+  });
+}
+
+/**
+ * 別名表を直近 `keep` 件へ切り詰めます。
+ *
+ * 溢れた別名を落とすと、その build がどこからも参照されなくなり GC の対象になります。
+ * build を直接消すのではなく参照を外すだけなので、チャネルが指している版は絶対に消えません。
+ * @param env 環境変数
+ * @param ns ネームスペース
+ * @param keep 残す件数
+ * @returns 落とした件数
+ */
+export async function pruneVersions(env: Env, ns: string, keep: number): Promise<number> {
+  let dropped = 0;
+  await updateJson<VersionList>(env, versionsKey(ns), (current) => {
+    const entries = current?.entries ?? [];
+    dropped = Math.max(0, entries.length - keep);
+    return { entries: dropped > 0 ? entries.slice(entries.length - keep) : entries };
+  });
+  return dropped;
 }
 
 /**

@@ -9,7 +9,8 @@
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
     "render-blocks": "tsx src/scripts/render-blocks.ts",
     "upload-lang": "tsx src/scripts/upload-lang.ts",
-    "migrate-builds": "tsx src/scripts/migrate-builds.ts"
+    "migrate-builds": "tsx src/scripts/migrate-builds.ts",
+    "gc-builds": "tsx src/scripts/gc-builds.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",

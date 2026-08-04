@@ -10,6 +10,7 @@ import { listRoutes } from './routes/list';
 import { migrateRoutes } from './routes/migrate';
 import { authRoutes } from './routes/auth';
 import { uploadRoutes } from './routes/upload';
+import { gcRoutes } from './routes/gc';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -38,5 +39,7 @@ app.route('/', imageRoutes);
 app.route('/', adminRoutes);
 // 既存のフラットなアセットを build へ移行する管理用API。
 app.route('/', migrateRoutes);
+// 参照されなくなった build と blob の掃除。
+app.route('/', gcRoutes);
 
 export default app;
