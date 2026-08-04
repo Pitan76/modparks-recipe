@@ -45,7 +45,7 @@ authRoutes.get('/auth/:provider/callback', async (c) => {
   const user = await provider.verify(url.searchParams, redirectUriOf(c));
   if (!user) return c.text('Authentication failed', 401);
 
-  const identity = await resolveIdentity(c.env, id, user.subject, user.displayName);
+  const identity = await resolveIdentity(c.env, id, user.subject, user.displayName, user.accessToken);
   const token = await issueToken(c.env, identity.id, 'upload', UPLOAD_TOKEN_TTL_MS);
   return c.json({ ok: true, identity: { id: identity.id, displayName: identity.displayName }, token });
 });
@@ -99,8 +99,8 @@ async function trustFor(env: Env, identityId: string, ns: string): Promise<Trust
   const providers = providersOf(env);
   for (const link of await linksOf(env, identityId)) {
     const provider = providers.get(link.provider);
-    if (!provider?.ownedNamespaces) continue;
-    if ((await provider.ownedNamespaces(link.subject)).includes(ns)) return 'verified';
+    if (!provider?.ownedNamespaces || !link.accessToken) continue;
+    if ((await provider.ownedNamespaces(link.subject, link.accessToken)).includes(ns)) return 'verified';
   }
   return 'unverified';
 }

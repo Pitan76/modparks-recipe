@@ -16,26 +16,25 @@ export type Identity = { id: string; displayName: string };
  * @param provider プロバイダID（`modparks` など）
  * @param subject プロバイダ側のユーザID
  * @param displayName 表示名（新規作成時に使用）
+ * @param accessToken プロバイダ側のアクセストークン（所有 ns の照会に使う）
  * @returns 対応する identity
  */
 export async function resolveIdentity(
   env: Env,
   provider: string,
   subject: string,
-  displayName: string
+  displayName: string,
+  accessToken: string
 ): Promise<Identity> {
   const linked = await findLinked(env, provider, subject);
-  if (linked) return linked;
+  if (linked) {
+    await linkIdentity(env, linked.id, provider, subject, accessToken);
+    return linked;
+  }
 
   const id = crypto.randomUUID();
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO identities (id, display_name) VALUES (?, ?)').bind(id, displayName),
-    env.DB.prepare('INSERT INTO identity_links (provider, subject, identity_id) VALUES (?, ?, ?)').bind(
-      provider,
-      subject,
-      id
-    ),
-  ]);
+  await env.DB.prepare('INSERT INTO identities (id, display_name) VALUES (?, ?)').bind(id, displayName).run();
+  await linkIdentity(env, id, provider, subject, accessToken);
   return { id, displayName };
 }
 
@@ -45,12 +44,19 @@ export async function resolveIdentity(
  * @param identityId 既存の identity
  * @param provider プロバイダID
  * @param subject プロバイダ側のユーザID
+ * @param accessToken プロバイダ側のアクセストークン
  */
-export async function linkIdentity(env: Env, identityId: string, provider: string, subject: string): Promise<void> {
+export async function linkIdentity(
+  env: Env,
+  identityId: string,
+  provider: string,
+  subject: string,
+  accessToken: string | null
+): Promise<void> {
   await env.DB.prepare(
-    'INSERT OR REPLACE INTO identity_links (provider, subject, identity_id) VALUES (?, ?, ?)'
+    'INSERT OR REPLACE INTO identity_links (provider, subject, identity_id, access_token) VALUES (?, ?, ?, ?)'
   )
-    .bind(provider, subject, identityId)
+    .bind(provider, subject, identityId, accessToken)
     .run();
 }
 
@@ -75,11 +81,16 @@ export async function getIdentity(env: Env, id: string): Promise<Identity | null
  * @param identityId identity のID
  * @returns プロバイダIDとプロバイダ側ユーザIDの組
  */
-export async function linksOf(env: Env, identityId: string): Promise<{ provider: string; subject: string }[]> {
-  const { results } = await env.DB.prepare('SELECT provider, subject FROM identity_links WHERE identity_id = ?')
+export async function linksOf(
+  env: Env,
+  identityId: string
+): Promise<{ provider: string; subject: string; accessToken: string | null }[]> {
+  const { results } = await env.DB.prepare(
+    'SELECT provider, subject, access_token FROM identity_links WHERE identity_id = ?'
+  )
     .bind(identityId)
-    .all<{ provider: string; subject: string }>();
-  return results ?? [];
+    .all<{ provider: string; subject: string; access_token: string | null }>();
+  return (results ?? []).map((r) => ({ provider: r.provider, subject: r.subject, accessToken: r.access_token }));
 }
 
 /**

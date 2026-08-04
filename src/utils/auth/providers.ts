@@ -8,8 +8,13 @@
 
 import type { Env } from '../minecraft';
 
-/** プロバイダが返す、プロバイダ側のユーザ。 */
-export type ProviderUser = { subject: string; displayName: string };
+/**
+ * プロバイダが返す、プロバイダ側のユーザ。
+ *
+ * `accessToken` を持ち回るのは、所有 ns の照会が「本人のトークンで本人の情報を引く」形だからです。
+ * クライアント資格情報で他人の情報を引ける口を要求せずに済みます。
+ */
+export type ProviderUser = { subject: string; displayName: string; accessToken: string };
 
 /** ログイン手段の実装が満たすべき形。 */
 export interface IdentityProvider {
@@ -31,8 +36,9 @@ export interface IdentityProvider {
    *
    * 実装しないプロバイダ経由のユーザは unverified しか作れません。
    * @param subject プロバイダ側のユーザID
+   * @param accessToken そのユーザのアクセストークン
    */
-  ownedNamespaces?(subject: string): Promise<string[]>;
+  ownedNamespaces?(subject: string, accessToken: string): Promise<string[]>;
 }
 
 /**
@@ -49,7 +55,10 @@ export function providersOf(env: Env): Map<string, IdentityProvider> {
 }
 
 /**
- * ModParks アカウントを使うプロバイダ（OAuth2 認可コード）。
+ * ModParks アカウントを使うプロバイダ。
+ *
+ * ModParks は OIDC プロバイダを備えているため、その認可コードフローに素直に乗ります。
+ * エンドポイントはディスカバリ文書（`/.well-known/openid-configuration`）に載っているものです。
  * @param env 環境変数
  */
 function modparksProvider(env: Env): IdentityProvider {
@@ -59,11 +68,12 @@ function modparksProvider(env: Env): IdentityProvider {
     id: 'modparks',
 
     authorizeUrl(state: string, redirectUri: string): string {
-      const url = new URL(`${base}/oauth/authorize`);
+      const url = new URL(`${base}/api/oauth/authorize`);
       url.searchParams.set('client_id', env.MODPARKS_CLIENT_ID!);
       url.searchParams.set('redirect_uri', redirectUri);
       url.searchParams.set('response_type', 'code');
-      url.searchParams.set('scope', 'projects:read');
+      // profile:read は本人特定に、projects:read は verified 判定（所有 ns の照会）に要る。
+      url.searchParams.set('scope', 'openid profile:read projects:read');
       url.searchParams.set('state', state);
       return url.toString();
     },
@@ -74,12 +84,14 @@ function modparksProvider(env: Env): IdentityProvider {
 
       const token = await exchangeCode(base, env, code, redirectUri);
       if (!token) return null;
-      return fetchUser(base, token);
+
+      const user = await fetchUser(base, token);
+      return user && { ...user, accessToken: token };
     },
 
-    async ownedNamespaces(subject: string): Promise<string[]> {
-      const res = await fetch(`${base}/api/v2/users/${encodeURIComponent(subject)}/recipe-namespaces`, {
-        headers: { Authorization: `Bearer ${env.MODPARKS_CLIENT_SECRET}` },
+    async ownedNamespaces(_subject: string, accessToken: string): Promise<string[]> {
+      const res = await fetch(`${base}/api/v2/me/recipe-namespaces`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) return [];
 
@@ -98,7 +110,7 @@ function modparksProvider(env: Env): IdentityProvider {
  * @returns アクセストークン。失敗なら null
  */
 async function exchangeCode(base: string, env: Env, code: string, redirectUri: string): Promise<string | null> {
-  const res = await fetch(`${base}/oauth/token`, {
+  const res = await fetch(`${base}/api/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -121,11 +133,11 @@ async function exchangeCode(base: string, env: Env, code: string, redirectUri: s
  * @param token アクセストークン
  * @returns プロバイダ側のユーザ。失敗なら null
  */
-async function fetchUser(base: string, token: string): Promise<ProviderUser | null> {
-  const res = await fetch(`${base}/api/v2/me`, { headers: { Authorization: `Bearer ${token}` } });
+async function fetchUser(base: string, token: string): Promise<Omit<ProviderUser, 'accessToken'> | null> {
+  const res = await fetch(`${base}/api/oauth/userinfo`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return null;
 
-  const body = (await res.json()) as { id?: string; name?: string; username?: string };
-  if (!body.id) return null;
-  return { subject: String(body.id), displayName: String(body.name ?? body.username ?? body.id) };
+  const claims = (await res.json()) as { sub?: string; name?: string; preferred_username?: string };
+  if (!claims.sub) return null;
+  return { subject: claims.sub, displayName: claims.name ?? claims.preferred_username ?? claims.sub };
 }

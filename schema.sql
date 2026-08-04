@@ -27,10 +27,14 @@ CREATE TABLE IF NOT EXISTS identities (
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- access_token はプロバイダ側のアクセストークン。所有 ns の照会は「本人のトークンで本人を引く」
+-- 形にしているため、ログイン時に受け取ったものを所有権の主張時まで持ち越す。失効していれば
+-- 照会が失敗し、unverified として扱われるだけで害はない。
 CREATE TABLE IF NOT EXISTS identity_links (
-  provider    TEXT NOT NULL,
-  subject     TEXT NOT NULL,
-  identity_id TEXT NOT NULL REFERENCES identities(id),
+  provider     TEXT NOT NULL,
+  subject      TEXT NOT NULL,
+  identity_id  TEXT NOT NULL REFERENCES identities(id),
+  access_token TEXT,
   PRIMARY KEY (provider, subject)
 );
 
