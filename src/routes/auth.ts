@@ -6,7 +6,7 @@
  */
 
 import { Hono } from 'hono';
-import { getCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
 import { Env } from '../utils/minecraft';
 import { isValidNamespace } from '../utils/asset-path';
 import { providersOf } from '../utils/auth/providers';
@@ -32,12 +32,24 @@ authRoutes.get('/auth/:provider/start', (c) => {
   if (!provider) return c.text('Unknown provider', 404);
 
   const state = crypto.randomUUID();
-  c.header('Set-Cookie', `mpr_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`, { append: true });
+  setCookie(c, 'mpr_state', state, {
+    path: '/',
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    maxAge: 600,
+  });
 
   // ブラウザから来た場合の戻り先。オープンリダイレクタにしないため自サイト内のパスだけ受けます。
   const back = c.req.query('redirect');
   if (back?.startsWith('/') && !back.startsWith('//')) {
-    c.header('Set-Cookie', `mpr_back=${encodeURIComponent(back)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`, { append: true });
+    setCookie(c, 'mpr_back', encodeURIComponent(back), {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      maxAge: 600,
+    });
   }
   return c.redirect(provider.authorizeUrl(state, redirectUriOf(c)));
 });
