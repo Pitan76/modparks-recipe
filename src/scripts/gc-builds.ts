@@ -33,15 +33,26 @@ async function callAdmin(path: string, method: 'GET' | 'POST'): Promise<any> {
 }
 
 /**
+ * 必要な環境変数が揃っているかを確かめます。
+ *
+ * どちらが欠けているかを名指しします。まとめて報告すると、片方だけ足りないときに
+ * 何を直せばよいのか分かりません。
+ * @throws 欠けている変数がある場合
+ */
+function requireEnv(): void {
+  const missing = [
+    !API_URL && 'MP_RECIPE_URL (deployed worker URL, e.g. https://recipe.example.net)',
+    !SECRET && 'ADMIN_SECRET (read from .dev.vars)',
+  ].filter(Boolean);
+
+  if (missing.length > 0) throw new Error(`Missing: ${missing.join(', ')}`);
+}
+
+/**
  * エントリポイント。
  */
 async function main(): Promise<void> {
-  if (!API_URL || !SECRET) {
-    throw new Error(
-      'MP_RECIPE_URL and ADMIN_SECRET are required. ' +
-        'ADMIN_SECRET is read from .dev.vars; set MP_RECIPE_URL to the deployed worker URL.'
-    );
-  }
+  requireEnv();
 
   const requested = process.argv.slice(2);
   const namespaces = requested.length > 0 ? requested : (await callAdmin('/admin/gc/namespaces', 'GET')).namespaces;
