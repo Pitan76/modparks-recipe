@@ -10,6 +10,10 @@ import type { Env } from '../utils/minecraft';
 import type { IndexEntry } from '../utils/recipe-store';
 import { getAllVersions, getAssetVersion } from '../utils/cache-version';
 import { resolveNames, isValidLocale } from '../utils/lang-store';
+import { AssetSource } from '../utils/build/asset-source';
+import { readChannels } from '../utils/build/channels';
+import { foldBuild } from '../utils/build/manifest';
+import { toChannel, resolveChannel } from '../utils/build/mc-version';
 
 export const listRoutes = new Hono<{ Bindings: Env }>();
 
@@ -67,18 +71,52 @@ listRoutes.get('/api/:namespace/list.json', async (c) => {
   const locale = c.req.query('lang');
   if (locale && !isValidLocale(locale)) return c.text('Invalid locale', 400);
 
-  const [all, version] = await Promise.all([readIndex(c.env), getAssetVersion(c.env, namespace)]);
-  const recipes: NamedEntry[] = all.filter((r) => r.id.startsWith(`${namespace}:`));
+  const wanted = toChannel(c.req.query('mc') ?? '');
+  const src = new AssetSource(c.env, wanted);
+  const listing = await namespaceListing(c.env, namespace, wanted, src);
 
-  if (locale) await attachNames(c.env, recipes, locale);
+  if (locale) await attachNames(c.env, listing.recipes, locale, src);
 
-  return c.json({ namespace, version, count: recipes.length, recipes }, 200, {
+  return c.json({ namespace, ...listing, count: listing.recipes.length }, 200, {
     // `?v=` 付きは内容が一意に定まるため恒久キャッシュにできます。
     'Cache-Control': c.req.query('v')
       ? 'public, max-age=31536000, immutable'
       : `public, max-age=${INDEX_MAX_AGE}`,
   });
 });
+
+/**
+ * 1ネームスペース分の索引を、build があればそこから、無ければ従来の全体索引から作ります。
+ *
+ * build 経由なら `version` は build ID になります。内容ハッシュなので、クライアントが
+ * `?v=` に載せた時点でそのURLは不変になり、恒久キャッシュが安全に効きます。
+ * @param env 環境変数
+ * @param ns ネームスペース
+ * @param wanted 要求されたMCチャネル（未指定なら最新）
+ * @param src アセット読み出し口
+ */
+async function namespaceListing(
+  env: Env,
+  ns: string,
+  wanted: string | null,
+  src: AssetSource
+): Promise<{ version: string; mc: string | null; channels: string[]; recipes: NamedEntry[] }> {
+  const channels = Object.keys(await readChannels(env, ns)).sort();
+  const buildId = await src.buildOf(ns);
+
+  if (buildId) {
+    const folded = await foldBuild(env, ns, buildId);
+    return {
+      version: buildId.slice(0, 16),
+      mc: resolveChannel(wanted, channels),
+      channels,
+      recipes: (folded?.recipes ?? []) as NamedEntry[],
+    };
+  }
+
+  const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
+  return { version, mc: null, channels, recipes: all.filter((r) => r.id.startsWith(`${ns}:`)) };
+}
 
 /**
  * 各エントリに完成品のアイテム名を書き込みます。
@@ -89,10 +127,11 @@ listRoutes.get('/api/:namespace/list.json', async (c) => {
  * @param env 環境変数
  * @param recipes 対象のエントリ（破壊的に更新します）
  * @param locale ロケール名
+ * @param src アセット読み出し口
  */
-async function attachNames(env: Env, recipes: NamedEntry[], locale: string): Promise<void> {
+async function attachNames(env: Env, recipes: NamedEntry[], locale: string, src: AssetSource): Promise<void> {
   const ids = recipes.map((r) => r.result).filter((r): r is string => !!r);
-  const names = ids.length > 0 ? await resolveNames(env, ids, locale) : {};
+  const names = ids.length > 0 ? await resolveNames(env, ids, locale, src) : {};
 
   for (const entry of recipes) {
     const fallback = entry.result ?? entry.id;
