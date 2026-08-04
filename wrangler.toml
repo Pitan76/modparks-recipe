@@ -32,6 +32,6 @@ preview_bucket_name = "mp-recipe-images"
 # modparks-jar は自前の認証を持たず `workers_dev = false` で公開していないため、
 # 公開URLではなくバインディングで到達させること。
 # 同一アカウントに modparks-jar が存在しないとデプロイが失敗するので、確認してから外す。
-# [[services]]
-# binding = "JAR_WORKER"
-# service = "modparks-jar"
+[[services]]
+binding = "JAR_WORKER"
+service = "modparks-jar"
