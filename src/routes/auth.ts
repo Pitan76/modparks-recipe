@@ -48,6 +48,12 @@ authRoutes.get('/auth/:provider/callback', async (c) => {
   if (!provider) return c.text('Unknown provider', 404);
 
   const url = new URL(c.req.url);
+
+  // プロバイダ側が拒否した場合、そのまま state 検証に進むと「Invalid state」と表示され、
+  // 本当の原因（スコープ未許可など）が見えなくなる。先に理由を伝える。
+  const failure = url.searchParams.get('error');
+  if (failure) return c.text(`Sign-in was rejected by the provider: ${safeErrorCode(failure)}`, 400);
+
   if (!stateMatches(c, url.searchParams.get('state'))) return c.text('Invalid state', 400);
 
   const user = await provider.verify(url.searchParams, redirectUriOf(c));
@@ -127,6 +133,17 @@ async function trustFor(env: Env, identityId: string, ns: string): Promise<Trust
     if ((await provider.ownedNamespaces(link.subject, link.accessToken)).includes(ns)) return 'verified';
   }
   return 'unverified';
+}
+
+/**
+ * プロバイダが返したエラーコードを、そのまま表示してよい形に落とします。
+ *
+ * コールバックのクエリは誰でも組み立てられるため、受け取った文字列を素通しで表示すると
+ * 任意の文面をこのページ上に出せてしまいます。OAuth のエラーコードが取りうる字種だけ通します。
+ * @param code プロバイダが返した `error`
+ */
+function safeErrorCode(code: string): string {
+  return /^[a-z_]{1,64}$/.test(code) ? code : 'unknown_error';
 }
 
 /**
