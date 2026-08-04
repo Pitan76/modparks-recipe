@@ -5,6 +5,8 @@
  * ここだけを増やせば済むよう、文言は必ずこの表を経由させます。
  */
 
+import { FALLBACK_LOCALE } from '../i18n/locale';
+
 /** 1言語分の文言。 */
 export type Messages = Record<MessageKey, string>;
 
@@ -65,32 +67,13 @@ const EN: Messages = {
 
 const TABLES: Record<string, Messages> = { ja: JA, en: EN };
 
-/** 表に無い言語で要求されたときに使う言語。 */
-const FALLBACK = 'ja';
-
-/**
- * 要求から表示言語を決めます。
- *
- * `?lang=` を最優先にするのは、共有されたURLで言語を固定できるようにするためです。
- * @param url リクエストURL
- * @param acceptLanguage `Accept-Language` ヘッダ
- * @returns 言語コード
- */
-export function pickLocale(url: URL, acceptLanguage: string | null): string {
-  const requested = url.searchParams.get('lang');
-  if (requested && TABLES[requested]) return requested;
-
-  for (const part of (acceptLanguage ?? '').split(',')) {
-    const tag = part.split(';')[0].trim().toLowerCase().split('-')[0];
-    if (TABLES[tag]) return tag;
-  }
-  return FALLBACK;
-}
+/** 文言表が存在する言語。 */
+export const PORTAL_LOCALES = Object.keys(TABLES);
 
 /**
  * 指定言語の文言表を返します。
  * @param locale 言語コード
  */
 export function messagesFor(locale: string): Messages {
-  return TABLES[locale] ?? TABLES[FALLBACK];
+  return TABLES[locale] ?? TABLES[FALLBACK_LOCALE];
 }

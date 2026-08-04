@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { Env } from './utils/minecraft';
-import { RECIPE_PAGE_HTML } from './utils/page';
+import { searchPage } from './utils/page';
+import { pickLocale } from './utils/i18n/locale';
+import { SEARCH_LOCALES } from './utils/i18n/search';
 import { writeRoutes } from './routes/write';
 import { ingestRoutes } from './routes/ingest';
 import { imageRoutes } from './routes/images';
@@ -14,9 +16,10 @@ import { gcRoutes } from './routes/gc';
 
 const app = new Hono<{ Bindings: Env }>();
 
-/** レシピ検索ページ。 */
+/** レシピ検索ページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
 app.get('/', (c) => {
-  return c.html(RECIPE_PAGE_HTML);
+  const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null, SEARCH_LOCALES);
+  return c.html(searchPage(locale));
 });
 
 // 書き込みAPI（レシピ/テクスチャ/モデル/タグ/言語ファイルのPUT、バンドルのPOST）— 認証が必要。

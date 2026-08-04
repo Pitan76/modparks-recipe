@@ -5,7 +5,7 @@
  * ページ内に日本語も英語も書かないため、言語を増やしても触るのは messages.ts だけです。
  */
 
-import { messagesFor, type Messages } from './messages';
+import { messagesFor, type Messages } from '../i18n/portal';
 
 /**
  * 投稿ポータルのページを組み立てます。

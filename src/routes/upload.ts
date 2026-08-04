@@ -13,7 +13,8 @@ import { Env } from '../utils/minecraft';
 import { verifyToken } from '../utils/auth/tokens';
 import { consumeUploadQuota, remainingUploads } from '../utils/auth/quota';
 import { portalPage } from '../utils/portal/page';
-import { pickLocale } from '../utils/portal/messages';
+import { pickLocale } from '../utils/i18n/locale';
+import { PORTAL_LOCALES } from '../utils/i18n/portal';
 
 export const uploadRoutes = new Hono<{ Bindings: Env }>();
 
@@ -25,7 +26,7 @@ const PICKUP_TTL_MS = 10 * 60 * 1000;
 
 /** 投稿ポータルのページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
 uploadRoutes.get('/upload', (c) => {
-  const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null);
+  const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null, PORTAL_LOCALES);
   return c.html(portalPage(locale), 200, { 'Cache-Control': 'public, max-age=300' });
 });
 

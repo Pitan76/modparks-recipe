@@ -9,12 +9,21 @@
  * CDN経由の MUI (Material UI) UMD バンドルを使用して構築され、小さなReactアプリケーションによって動作します
  * （React.createElementを使用しているため、ビルド/JSXの手順はありません）。
  */
-export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
-<html lang="ja">
+import { searchMessagesFor, type SearchMessages } from './i18n/search';
+
+/**
+ * レシピ検索ページを組み立てます。
+ * @param locale 表示言語
+ * @returns HTML文字列
+ */
+export function searchPage(locale: string): string {
+  const t: SearchMessages = searchMessagesFor(locale);
+  return /* html */ `<!DOCTYPE html>
+<html lang="${locale}">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ModParks Recipe</title>
+<title>${t.title}</title>
 <style>
   html, body { margin: 0; background: #0f172a; }
 </style>
@@ -26,7 +35,9 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 <body>
   <div id="root"></div>
 <script>
+window.MPR_SEARCH_MESSAGES = ${JSON.stringify(t)};
 (function () {
+  const t = window.MPR_SEARCH_MESSAGES;
   const e = React.createElement;
   const MUI = MaterialUI;
   const {
@@ -77,7 +88,7 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
     const path = '/api/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.id) + '.' + props.fmt;
     return e(Box, { sx: { m: 1, textAlign: 'center' } },
       st === 'loading' && e(CircularProgress, { size: 24 }),
-      st === 'error' && e(Typography, { variant: 'caption', color: 'error' }, props.recipeId + ' を表示できません'),
+      st === 'error' && e(Typography, { variant: 'caption', color: 'error' }, props.recipeId + ' ' + t.cannotDisplay),
       e('img', {
         src: path + '?t=' + props.nonce,
         alt: props.recipeId,
@@ -139,29 +150,29 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 
     return e(Container, { maxWidth: 'md', sx: { py: 6 } },
       e(Box, { sx: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 } },
-        e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, 'ModParks Recipe'),
+        e(Typography, { variant: 'h4', gutterBottom: true, fontWeight: 700 }, t.title),
         e(Link, {
           href: 'https://github.com/Pitan76/modparks-recipe', target: '_blank', rel: 'noopener',
           color: 'text.secondary', title: 'GitHub',
           sx: { fontSize: 28, display: 'inline-flex', '&:hover': { color: 'text.primary' } }
         }, e('i', { className: 'fa-brands fa-github' }))),
       e(Typography, { color: 'text.secondary', sx: { mb: 3 } },
-        'レシピIDを入力してレシピを表示します。'),
+        t.lead),
 
       e('form', { onSubmit: openTyped },
         e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, sx: { mb: 2 } },
-          e(TextField, { label: '検索', placeholder: 'iron_ingot', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true, size: 'small' }),
-          e(TextField, { label: '形式', select: true, value: fmt, onChange: function (x) { setFmt(x.target.value); }, sx: { width: { sm: 130 } }, size: 'small' },
+          e(TextField, { label: t.search, placeholder: 'iron_ingot', value: q, onChange: function (x) { setQ(x.target.value); }, autoFocus: true, fullWidth: true, size: 'small' }),
+          e(TextField, { label: t.format, select: true, value: fmt, onChange: function (x) { setFmt(x.target.value); }, sx: { width: { sm: 130 } }, size: 'small' },
             e(MenuItem, { value: 'png' }, 'PNG'),
             e(MenuItem, { value: 'gif' }, 'GIF'),
             e(MenuItem, { value: 'jpg' }, 'JPG')),
-          e(Button, { type: 'submit', variant: 'contained', size: 'small', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, '表示'))),
+          e(Button, { type: 'submit', variant: 'contained', size: 'small', sx: { flexShrink: 0, whiteSpace: 'nowrap' } }, t.show))),
 
       // プレビュー: 選択されたアイテムを生成するすべてのレシピ
       sel && e(Box, { sx: { mb: 3 } },
         e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' } },
           e(Typography, { variant: 'h6', sx: { overflowWrap: 'anywhere' } }, sel.label),
-          e(Chip, { size: 'small', label: sel.recipeIds.length + ' レシピ' })),
+          e(Chip, { size: 'small', label: sel.recipeIds.length + ' ' + t.recipeCount })),
         e(Box, { sx: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } },
           sel.recipeIds.map(function (rid) {
             return e(ImageTile, { key: rid, recipeId: rid, fmt: fmt, nonce: nonce });
@@ -169,22 +180,22 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 
       // アイテム一覧
       e(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1, mb: 1 } },
-        e(Typography, { variant: 'subtitle1', fontWeight: 600 }, 'アイテム一覧'),
+        e(Typography, { variant: 'subtitle1', fontWeight: 600 }, t.itemList),
         recipes && e(Chip, { size: 'small', label: filtered.length + (query ? ' / ' + items.length : '') })),
       e(Box, null,
         recipes === null
           ? e(Box, { sx: { p: 3, textAlign: 'center' } }, e(CircularProgress, { size: 24 }))
           : items.length === 0
-            ? e(Box, { sx: { p: 3, textAlign: 'center', color: 'text.secondary' } }, '一覧を取得できませんでした（索引が未生成の可能性があります）。')
+            ? e(Box, { sx: { p: 3, textAlign: 'center', color: 'text.secondary' } }, t.listUnavailable)
             : e(React.Fragment, null,
                 e(List, { dense: true, sx: { maxHeight: 460, overflow: 'auto', py: 0 } },
                   filtered.slice(0, MAX_ROWS).map(function (item, i) {
                     const n = groups[item].length;
                     return e(ListItemButton, { key: item, divider: i < Math.min(filtered.length, MAX_ROWS) - 1, onClick: function () { select(item); } },
-                      e(ListItemText, { primary: item, secondary: n > 1 ? (n + ' レシピ') : null }));
+                      e(ListItemText, { primary: item, secondary: n > 1 ? (n + ' ' + t.recipeCount) : null }));
                   })),
                 filtered.length > MAX_ROWS && e(Box, { sx: { p: 1.5, textAlign: 'center', color: 'text.secondary', fontSize: 13 } },
-                  '他 ' + (filtered.length - MAX_ROWS) + ' 件… 検索で絞り込んでください'))));
+                  t.moreRowsPrefix + (filtered.length - MAX_ROWS) + t.moreRowsSuffix))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(
@@ -194,3 +205,4 @@ export const RECIPE_PAGE_HTML = /* html */ `<!DOCTYPE html>
 </script>
 </body>
 </html>`;
+}
