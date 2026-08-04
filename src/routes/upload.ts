@@ -32,7 +32,7 @@ uploadRoutes.get('/upload', (c) => {
 
 // jar を受け取り、解析と取り込みを jar Worker に委ねます。
 uploadRoutes.post('/api/upload', async (c) => {
-  if (!c.env.JAR_WORKER_URL) return c.text('Upload portal is not configured', 503);
+  if (!c.env.JAR_WORKER) return c.text('Upload portal is not configured', 503);
 
   const token = bearerOf(c);
   const grant = token ? await verifyToken(c.env, token) : null;
@@ -112,12 +112,10 @@ async function delegate(
   token: string
 ): Promise<{ count: number; namespaces: string[] } | null> {
   const origin = new URL(requestUrl).origin;
-  const res = await fetch(`${env.JAR_WORKER_URL!.replace(/\/$/, '')}/extract-recipes`, {
+  // Service Binding なのでホスト名は到達先に影響しません。パスだけが意味を持ちます。
+  const res = await env.JAR_WORKER!.fetch('https://modparks-jar/extract-recipes', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(env.JAR_WORKER_SECRET ? { Authorization: `Bearer ${env.JAR_WORKER_SECRET}` } : {}),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       source: { kind: 'url', url: `${origin}/api/upload/pickup/${pickup.id}?key=${pickup.key}` },
       cdnUrl: origin,

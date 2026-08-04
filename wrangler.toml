@@ -27,3 +27,11 @@ bucket_name = "mp-recipe-images"
 # purpose, so local debugging sees the real uploaded assets. Writes from local dev
 # therefore hit production too — read-only inspection only.
 preview_bucket_name = "mp-recipe-images"
+
+# jar 解析 Worker への Service Binding。外部 jar の投稿ポータルを使うときだけ有効化する。
+# modparks-jar は自前の認証を持たず `workers_dev = false` で公開していないため、
+# 公開URLではなくバインディングで到達させること。
+# 同一アカウントに modparks-jar が存在しないとデプロイが失敗するので、確認してから外す。
+# [[services]]
+# binding = "JAR_WORKER"
+# service = "modparks-jar"
