@@ -89,6 +89,27 @@ export async function upsertIndexEntries(env: Env, removeIds: string[], add: Ind
 }
 
 /**
+ * 既存の公開索引から、1ネームスペース分のエントリを取り出します。
+ *
+ * build への移行で使います。レシピJSONを全件読み直して型を判定するより、
+ * 既に判定済みの索引を絞る方がはるかに安く済みます。
+ * @param env 環境変数
+ * @param ns ネームスペース
+ */
+export async function readIndexEntriesFor(env: Env, ns: string): Promise<IndexEntry[]> {
+  const obj = await env.BUCKET.get(INDEX_KEY);
+  if (!obj) return [];
+
+  let file: IndexFile | null = null;
+  try {
+    file = await obj.json<IndexFile>();
+  } catch {
+    return [];
+  }
+  return readEntries(file).filter((e) => e.id.startsWith(`${ns}:`));
+}
+
+/**
  * 索引ファイルからエントリ配列を取り出します。旧 `ids` 形式も読めるようにしています。
  * @param file 読み出した索引ファイル（未作成なら null）
  */

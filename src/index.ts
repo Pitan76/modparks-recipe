@@ -7,6 +7,7 @@ import { imageRoutes } from './routes/images';
 import { adminRoutes } from './routes/admin';
 import { langRoutes } from './routes/lang';
 import { listRoutes } from './routes/list';
+import { migrateRoutes } from './routes/migrate';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -28,5 +29,7 @@ app.route('/', langRoutes);
 app.route('/', imageRoutes);
 // 管理用ユーティリティ（R2のクリーンアップ、インデックスの再構築）。
 app.route('/', adminRoutes);
+// 既存のフラットなアセットを build へ移行する管理用API。
+app.route('/', migrateRoutes);
 
 export default app;
