@@ -65,11 +65,12 @@ export async function revokeToken(env: Env, token: string): Promise<void> {
 /**
  * 権限が対象ネームスペースへの書き込みを含むかを判定します。
  *
- * `upload` はポータル経由の投稿用で、書き込み先はサーバ側が決めるため、
- * ここでは namespace 権限としては扱いません。
+ * `upload` も通します。投稿された jar にどの namespace が入っているかは解析するまで分からず、
+ * 事前に ns 単位のトークンを取らせることができないためです。実際の可否は所有権が決めるので
+ * （未所有なら先着で確保、他人の持ち物なら拒否）、ここを緩めても書き込み先は広がりません。
  * @param scope トークンの権限
  * @param ns 対象ネームスペース
  */
 export function scopeAllows(scope: string, ns: string): boolean {
-  return scope === `ns:${ns}`;
+  return scope === 'upload' || scope === `ns:${ns}`;
 }
