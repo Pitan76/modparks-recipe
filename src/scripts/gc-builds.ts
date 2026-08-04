@@ -10,7 +10,10 @@
 
 import dotenv from 'dotenv';
 
+// このリポジトリはシークレットを .dev.vars に置くため、そちらも読む。
+// dotenv は既存の環境変数を上書きしないので、コマンドラインでの指定が常に優先される。
 dotenv.config();
+dotenv.config({ path: '.dev.vars' });
 
 const API_URL = process.env.MP_RECIPE_URL?.replace(/\/$/, '');
 const SECRET = process.env.ADMIN_SECRET;
@@ -33,7 +36,12 @@ async function callAdmin(path: string, method: 'GET' | 'POST'): Promise<any> {
  * エントリポイント。
  */
 async function main(): Promise<void> {
-  if (!API_URL || !SECRET) throw new Error('MP_RECIPE_URL and ADMIN_SECRET are required');
+  if (!API_URL || !SECRET) {
+    throw new Error(
+      'MP_RECIPE_URL and ADMIN_SECRET are required. ' +
+        'ADMIN_SECRET is read from .dev.vars; set MP_RECIPE_URL to the deployed worker URL.'
+    );
+  }
 
   const requested = process.argv.slice(2);
   const namespaces = requested.length > 0 ? requested : (await callAdmin('/admin/gc/namespaces', 'GET')).namespaces;
