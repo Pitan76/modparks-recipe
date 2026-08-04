@@ -121,18 +121,15 @@ export async function collectPatches(env: Env, ns: string, session: string): Pro
  * @param full jar 全体の取り込みかどうか
  */
 export function toBuildPatch(staged: StagedPatch, parent: FoldedBuild | null, full: boolean): BuildPatch {
-  const patch: BuildPatch = {
-    changedFiles: staged.files,
-    changedRecipes: staged.recipes,
-    removedRecipes: [...staged.removedRecipes],
-  };
+  const removedRecipes = [...staged.removedRecipes];
+  const patch: BuildPatch = { changedFiles: staged.files, changedRecipes: staged.recipes, removedRecipes };
   if (!full || !parent) return patch;
 
   patch.removedFiles = Object.keys(parent.files).filter((p) => !(p in staged.files));
 
   const present = new Set(staged.recipes.map((r) => r.id));
   for (const entry of parent.recipes) {
-    if (!present.has(entry.id)) patch.removedRecipes.push(entry.id);
+    if (!present.has(entry.id)) removedRecipes.push(entry.id);
   }
   return patch;
 }

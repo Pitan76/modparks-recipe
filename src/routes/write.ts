@@ -9,7 +9,7 @@ import { storeRecipe, putRecipeBody, updateIndexMany, indexEntryOf } from '../ut
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
-import { isIngestOpen, readIngestMeta, stageEntries, type StagedEntry } from '../utils/ingest';
+import { readIngestMeta, stageEntries, type StagedEntry } from '../utils/ingest';
 import { PatchCollector, stagePatch } from '../utils/build/staging';
 import { runPool } from '../utils/pool';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
