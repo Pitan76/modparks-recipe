@@ -6,6 +6,7 @@
  */
 
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { Env } from '../utils/minecraft';
 import { isValidNamespace } from '../utils/asset-path';
 import { providersOf } from '../utils/auth/providers';
@@ -171,8 +172,7 @@ function stateMatches(c: any, state: string | null): boolean {
  * @returns 値。無ければ null
  */
 function cookieOf(c: any, name: string): string | null {
-  const matched = new RegExp(`(?:^|;\s*)${name}=([^;]+)`).exec(c.req.header('Cookie') || '');
-  return matched ? matched[1] : null;
+  return getCookie(c, name) ?? null;
 }
 
 /**
