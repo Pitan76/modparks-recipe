@@ -2,6 +2,7 @@
  * @fileoverview レシピ画像用SVGジェネレーター。
  */
 
+import { AssetSource, legacyAssetSource } from '../build/asset-source';
 import { getItemImageBase64, getTag, Env } from '../minecraft';
 
 // レイアウト定数と純粋な描画ヘルパーは layout.ts に集約し、ここから再エクスポートします。
@@ -34,9 +35,36 @@ import {
 } from './layout';
 
 /**
- * リクエストごとの「アイテムID -> アイコンデータURL」のメモ（キャッシュ）型。
+ * リクエスト1回分の描画文脈。
+ *
+ * 「アイテムID -> アイコンデータURL」のメモに加えて、どのMCチャネルで解決するかを持ちます。
+ * 素材の解決は ns を跨いで何段も潜るため、解決先を引数で持ち回るより文脈に載せる方が取り違えが起きません。
  */
-export type IconCache = Map<string, Promise<string | null>>;
+export class IconCache {
+  private readonly icons = new Map<string, Promise<string | null>>();
+
+  /**
+   * @param src アセット読み出し口
+   */
+  constructor(readonly src: AssetSource) {}
+
+  /**
+   * メモ済みのアイコンを返します。
+   * @param id アイテムID
+   */
+  get(id: string): Promise<string | null> | undefined {
+    return this.icons.get(id);
+  }
+
+  /**
+   * アイコンの解決結果をメモします。
+   * @param id アイテムID
+   * @param pending 解決中のPromise
+   */
+  set(id: string, pending: Promise<string | null>): void {
+    this.icons.set(id, pending);
+  }
+}
 
 /**
  * キャッシュを活用して、特定のアイテムIDに対応するアイコンデータURLを取得します。
@@ -44,7 +72,7 @@ export type IconCache = Map<string, Promise<string | null>>;
 export function itemIcon(id: string, env: Env, cache: IconCache): Promise<string | null> {
   let pending = cache.get(id);
   if (!pending) {
-    pending = getItemImageBase64(id, env);
+    pending = getItemImageBase64(id, env, cache.src);
     cache.set(id, pending);
   }
   return pending;
@@ -110,7 +138,7 @@ async function resolveTag(
   if (trail.tags.has(id)) return null;
   trail.tags.add(id);
 
-  const tagItems = await getTag(id, env);
+  const tagItems = await getTag(id, env, cache.src);
   if (tagItems.length === 0) return null;
   return resolveIngredient(tagItems[tagOffset % tagItems.length], env, tagOffset, cache, trail);
 }
@@ -170,7 +198,7 @@ export async function createRecipeGrid(
   recipeData: any,
   env: Env,
   tagOffset: number,
-  cache: IconCache = new Map()
+  cache: IconCache = new IconCache(legacyAssetSource(env))
 ): Promise<Array<string | null>> {
   const grid: Array<string | null> = Array(GRID_SIZE * GRID_SIZE).fill(null);
   await Promise.all(
@@ -184,8 +212,13 @@ export async function createRecipeGrid(
 /**
  * レシピ全体のUIを表現するSVG文字列を生成します。
  */
-export async function generateRecipeSvg(recipeData: any, env: Env, tagOffset: number = 0) {
-  const cache: IconCache = new Map();
+export async function generateRecipeSvg(
+  recipeData: any,
+  env: Env,
+  tagOffset: number = 0,
+  src: AssetSource = legacyAssetSource(env)
+) {
+  const cache = new IconCache(src);
 
   const result = recipeData.result ?? recipeData.output;
   const resultId = result

@@ -2,6 +2,8 @@
  * @fileoverview レシピ画像配信ルート定義。バッチレンダリング、スプライトシート生成、および個別レシピ画像のキャッシュ配信を行います。
  */
 
+import { AssetSource } from '../utils/build/asset-source';
+import { toChannel } from '../utils/build/mc-version';
 import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
@@ -33,7 +35,7 @@ imageRoutes.post('/api/:namespace/batch', async (c) => {
   const scale = normalizeScale(payload.scale);
   const tagOffset = parseInt(String(payload.tagOffset ?? 0), 10) || 0;
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset);
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)));
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -55,7 +57,7 @@ imageRoutes.get('/api/:namespace/batch', async (c) => {
   const scale = normalizeScale(c.req.query('scale'));
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10) || 0;
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset);
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)));
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -80,15 +82,16 @@ imageRoutes.get('/api/:namespace/sprite', async (c) => {
 
   const scale = normalizeScale(c.req.query('scale'));
   const cols = Math.max(1, Math.min(32, parseInt(c.req.query('cols') || '8', 10) || 8));
+  const src = new AssetSource(c.env, requestedChannel(c));
 
   const entries = await Promise.all(
     ids.map(async (rawId) => {
       const fullId = rawId.includes(':') ? rawId : `${namespace}:${rawId}`;
-      return { id: rawId, recipe: await getRecipe(fullId, c.env) };
+      return { id: rawId, recipe: await getRecipe(fullId, c.env, src) };
     })
   );
 
-  const sheet = await renderRecipeSpriteSheet(entries, c.env, cols, scale);
+  const sheet = await renderRecipeSpriteSheet(entries, c.env, cols, scale, src);
 
   return new Response(sheet.png, {
     headers: {
@@ -103,6 +106,17 @@ imageRoutes.get('/api/:namespace/sprite', async (c) => {
     },
   });
 });
+
+/**
+ * リクエストの `?mc=` から、解決に使うMCチャネルを取り出します。
+ *
+ * 未指定なら各ネームスペースの最新チャネルへ落ちます。指定が壊れている場合も同じ扱いにします
+ * （解釈できないバージョンで404を返すより、最新を見せた方が実害が小さい）。
+ * @param c Honoのコンテキストオブジェクト
+ */
+function requestedChannel(c: any): string | null {
+  return toChannel(c.req.query('mc') ?? '');
+}
 
 /** 存在しないレシピを再探索し続けないための 404 の保持期間（秒）。 */
 const MISS_MAX_AGE = 300;
@@ -147,7 +161,10 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   }
 
   const pinned = pinnedVersion(c);
-  const version = pinned ?? (await getAssetVersion(c.env, namespace));
+  const src = new AssetSource(c.env, requestedChannel(c));
+  // build を持つ ns では build ID が世代になる。内容ハッシュなので、同じ絵に別の世代が
+  // 割り当たることも、違う内容が同じ世代を共有することも起きない。
+  const version = pinned ?? (await src.buildOf(namespace))?.slice(0, 16) ?? (await getAssetVersion(c.env, namespace));
 
   // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
   // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。
@@ -176,7 +193,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
     return res;
   }
 
-  const recipeData = await getRecipe(`${namespace}:${id}`, c.env);
+  const recipeData = await getRecipe(`${namespace}:${id}`, c.env, src);
   if (!recipeData) {
     // 404 もキャッシュする。壊れたリンクや古いIDは、そうしないと毎回 D1 と R2 を叩き続ける。
     const miss = new Response('Recipe not found', {
@@ -189,11 +206,11 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
 
   let body: Uint8Array;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, 5, scale); // 5フレーム
+    body = await renderRecipeGif(recipeData, c.env, 5, scale, src); // 5フレーム
   } else if (ext === 'jpg' || ext === 'jpeg') {
-    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale);
+    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src);
   } else {
-    body = await renderRecipePng(recipeData, c.env, tagOffset, scale);
+    body = await renderRecipePng(recipeData, c.env, tagOffset, scale, src);
   }
 
   const response = new Response(body, {

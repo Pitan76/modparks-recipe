@@ -2,6 +2,7 @@
  * @fileoverview 複数レシピをまとめて画像化する処理。POST/GET 両方のバッチエンドポイントで共有します。
  */
 
+import { AssetSource, legacyAssetSource } from './build/asset-source';
 import { Env, getRecipe } from './minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg } from './image-generator';
 import { bytesToBase64 } from './http';
@@ -30,13 +31,14 @@ function rendererFor(
   ext: string,
   env: Env,
   scale: number,
-  tagOffset: number
+  tagOffset: number,
+  src: AssetSource
 ): { mime: string; render: (recipe: any) => Promise<Uint8Array> } {
-  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale) };
+  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale, src) };
   if (ext === 'jpg' || ext === 'jpeg') {
-    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale) };
+    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src) };
   }
-  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale) };
+  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale, src) };
 }
 
 /**
@@ -49,10 +51,11 @@ function rendererFor(
 async function renderOrNull(
   render: (recipe: any) => Promise<Uint8Array>,
   fullId: string,
-  env: Env
+  env: Env,
+  src: AssetSource
 ): Promise<Uint8Array | null> {
   try {
-    const recipe = await getRecipe(fullId, env);
+    const recipe = await getRecipe(fullId, env, src);
     if (!recipe) return null;
     return await render(recipe);
   } catch (err) {
@@ -77,9 +80,10 @@ export async function renderBatch(
   ids: string[],
   ext: string,
   scale: number,
-  tagOffset: number
+  tagOffset: number,
+  src: AssetSource = legacyAssetSource(env)
 ): Promise<BatchResult> {
-  const { mime, render } = rendererFor(ext, env, scale, tagOffset);
+  const { mime, render } = rendererFor(ext, env, scale, tagOffset, src);
 
   const images: Record<string, string | null> = {};
   const missing: string[] = [];
@@ -87,7 +91,7 @@ export async function renderBatch(
     const fullId = String(rawId).includes(':') ? String(rawId) : `${namespace}:${rawId}`;
     // 1件の失敗でバッチ全体を落とさない。壊れた1レシピのために
     // 残り199件の再レンダリングをやり直させる方が高くつく。
-    const bytes = await renderOrNull(render, fullId, env);
+    const bytes = await renderOrNull(render, fullId, env, src);
     if (!bytes) {
       images[rawId] = null;
       missing.push(rawId);

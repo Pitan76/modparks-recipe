@@ -10,6 +10,7 @@
  */
 
 import type { Env } from './minecraft';
+import { AssetSource, legacyAssetSource } from './build/asset-source';
 import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { ensureWasm, svgToPng } from './wasm';
@@ -27,8 +28,13 @@ const ICON_SIZE = 128;
  * @param path ブロックのパス
  * @returns PNGのバイナリ、または null
  */
-export async function renderBlockIconPng(env: Env, ns: string, path: string): Promise<Uint8Array | null> {
-  const svg = await renderBlockIconSvg(env, ns, path);
+export async function renderBlockIconPng(
+  env: Env,
+  ns: string,
+  path: string,
+  src: AssetSource = legacyAssetSource(env)
+): Promise<Uint8Array | null> {
+  const svg = await renderBlockIconSvg(env, ns, path, src);
   if (!svg) return null;
   await ensureWasm();
   // ピクセルアート：アンチエイリアシングは一切適用しません。
@@ -48,9 +54,14 @@ export async function renderBlockIconPng(env: Env, ns: string, path: string): Pr
  * @param path ブロックのパス
  * @returns SVG文字列、または null
  */
-export async function renderBlockIconSvg(env: Env, ns: string, path: string): Promise<string | null> {
-  const getModel = (id: string) => modelJson(env, id);
-  const getTexture = (ref: string) => textureDataUrl(env, ns, ref);
+export async function renderBlockIconSvg(
+  env: Env,
+  ns: string,
+  path: string,
+  src: AssetSource = legacyAssetSource(env)
+): Promise<string | null> {
+  const getModel = (id: string) => modelJson(env, src, id);
+  const getTexture = (ref: string) => textureDataUrl(env, src, ns, ref);
 
   // アイテムモデルを唯一の判断基準にします。バニラの `items/<name>.json` が指すモデルを起点に、
   // 親チェーンを辿った結果でそのまま描き分けます:
@@ -139,10 +150,10 @@ async function memoized<T>(env: Env, ns: string, key: string, load: () => Promis
  * @param id モデルID
  * @returns モデルJSONデータ、または null
  */
-function modelJson(env: Env, id: string): Promise<any | null> {
+function modelJson(env: Env, src: AssetSource, id: string): Promise<any | null> {
   const { ns, path } = split(id);
   return memoized(env, ns, `models/${path}`, async () => {
-    const obj = await env.BUCKET.get(`assets/${ns}/models/${path}.json`);
+    const obj = await src.get(ns, `models/${path}.json`);
     if (!obj) return null;
     try {
       return JSON.parse(await obj.text());
@@ -159,14 +170,14 @@ function modelJson(env: Env, id: string): Promise<any | null> {
  * @param ref テクスチャ参照（#から始まるキー、またはファイルパス）
  * @returns テクスチャ画像のbase64データURL、または null
  */
-function textureDataUrl(env: Env, defaultNs: string, ref: string): Promise<string | null> {
+function textureDataUrl(env: Env, src: AssetSource, defaultNs: string, ref: string): Promise<string | null> {
   const { ns, path } = split(ref, defaultNs);
   // 読み取りがバニラにフォールバックする場合でも、要求元のネームスペースのバージョンをキーにします。
   // これにより、`minecraft` だけのアップロードでModのエントリが無効化されるのを防ぎます。
   // これは再アップロードされたバニラテクスチャにおいてのみ意味を持ち、オフラインパイプラインはいずれにせよバージョンごとに1回だけ書き込みを行います。
   return memoized(env, ns, `textures/${path}`, async () => {
-    let obj = await env.BUCKET.get(`assets/${ns}/textures/${path}.png`);
-    if (!obj && ns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${path}.png`);
+    let obj = await src.get(ns, `textures/${path}.png`);
+    if (!obj && ns !== 'minecraft') obj = await src.get('minecraft', `textures/${path}.png`);
     if (!obj) return null;
     return `data:image/png;base64,${bytesToBase64(new Uint8Array(await obj.arrayBuffer()))}`;
   });

@@ -9,6 +9,7 @@ import { bytesToBase64 } from '../http';
 import { getIcon, setIcon, noteVersion } from '../icon-memo';
 import { getAssetVersion } from '../cache-version';
 import { rendererVersion } from '../render-version';
+import { AssetSource, legacyAssetSource } from '../build/asset-source';
 
 /**
  * ArrayBufferをbase64のdataURLに変換します。
@@ -21,12 +22,12 @@ function pngDataUrl(buffer: ArrayBuffer): string {
 /**
  * リソースID（例: "ns:item/foo"）に対応するテクスチャPNGをR2から取得し、データURLとして返します。
  */
-async function textureDataUrl(texId: string, defaultNs: string, env: Env): Promise<string | null> {
+async function textureDataUrl(texId: string, defaultNs: string, src: AssetSource): Promise<string | null> {
   const tns = texId.includes(':') ? texId.split(':')[0] : defaultNs;
   const tpath = texId.includes(':') ? texId.split(':').slice(1).join(':') : texId;
-  let obj = await env.BUCKET.get(`assets/${tns}/textures/${tpath}.png`);
+  let obj = await src.get(tns, `textures/${tpath}.png`);
   // プレフィックスのない参照はデフォルトで minecraft になります。Modのネームスペースで見つからない場合は minecraft も試します。
-  if (!obj && tns !== 'minecraft') obj = await env.BUCKET.get(`assets/minecraft/textures/${tpath}.png`);
+  if (!obj && tns !== 'minecraft') obj = await src.get('minecraft', `textures/${tpath}.png`);
   if (!obj) return null;
   return pngDataUrl(await obj.arrayBuffer());
 }
@@ -37,14 +38,14 @@ async function textureDataUrl(texId: string, defaultNs: string, env: Env): Promi
 async function mergedModelTextures(
   ns: string,
   modelPath: string,
-  env: Env,
+  src: AssetSource,
   seen: Set<string>
 ): Promise<Record<string, string>> {
   const key = `${ns}:${modelPath}`;
   if (seen.has(key) || seen.size > 12) return {};
   seen.add(key);
 
-  const obj = await env.BUCKET.get(`assets/${ns}/models/${modelPath}.json`);
+  const obj = await src.get(ns, `models/${modelPath}.json`);
   if (!obj) return {};
   let model: any;
   try { model = JSON.parse(await obj.text()); } catch { return {}; }
@@ -54,7 +55,7 @@ async function mergedModelTextures(
     const p = model.parent;
     const pns = p.includes(':') ? p.split(':')[0] : ns;
     const pPath = p.includes(':') ? p.split(':').slice(1).join(':') : p;
-    base = await mergedModelTextures(pns, pPath, env, seen);
+    base = await mergedModelTextures(pns, pPath, src, seen);
   }
   return { ...base, ...(model.textures || {}) };
 }
@@ -77,12 +78,12 @@ function pickModelTexture(textures: Record<string, string>): string | null {
 /**
  * アイテム/ブロックのモデルJSONを介して、そのテクスチャパスを解決します（IDとテクスチャのファイル名が異なるアイテム用）。
  */
-async function resolveViaModel(namespace: string, path: string, env: Env): Promise<string | null> {
+async function resolveViaModel(namespace: string, path: string, src: AssetSource): Promise<string | null> {
   for (const kind of ['item', 'block']) {
-    const textures = await mergedModelTextures(namespace, `${kind}/${path}`, env, new Set());
+    const textures = await mergedModelTextures(namespace, `${kind}/${path}`, src, new Set());
     const texId = pickModelTexture(textures);
     if (texId) {
-      const url = await textureDataUrl(texId, namespace, env);
+      const url = await textureDataUrl(texId, namespace, src);
       if (url) return url;
     }
   }
@@ -99,13 +100,18 @@ export const TRANSPARENT_PNG =
  * L1/L0 のおかげで、温まったアイソレートや2回目以降の冷レンダリングでは、あの多段探索
  * （失敗時 1秒超）を R2 GET 1回、あるいは往復ゼロに畳み込めます。
  */
-export async function getItemImageBase64(id: string, env: Env): Promise<string | null> {
+export async function getItemImageBase64(
+  id: string,
+  env: Env,
+  src: AssetSource = legacyAssetSource(env)
+): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
   // L0 と L1 で同じ世代を使う。ここで実バージョンを引くため、`?v=` の有無や
   // 経路（個別画像 / batch / sprite）に関わらずメモの世代が揃う。
   // アイソレート内でメモされるため、通常は R2 往復を伴わない。
-  const version = await getAssetVersion(env, namespace);
+  // build を持つ ns では build ID がそのまま世代になる（内容ハッシュなので取り違えが起きない）。
+  const version = await generationOf(env, src, namespace);
   noteVersion(namespace, version);
 
   const memoized = getIcon(namespace, version, path);
@@ -121,7 +127,7 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
     return dataUrl;
   }
 
-  const resolved = await resolveItemImage(namespace, path, env);
+  const resolved = await resolveItemImage(namespace, path, env, src);
   setIcon(namespace, version, path, resolved);
 
   // 解決失敗（透明フォールバック）は永続化しない。テクスチャ未着の投入中に固定してしまうのを防ぐ。
@@ -129,6 +135,21 @@ export async function getItemImageBase64(id: string, env: Env): Promise<string |
     await env.BUCKET.put(l1Key, resolved, { httpMetadata: { contentType: 'text/plain' } }).catch(() => {});
   }
   return resolved;
+}
+
+/**
+ * アイコンキャッシュの世代を決めます。
+ *
+ * build を持つネームスペースでは build ID（内容ハッシュ）をそのまま使います。内容が同じなら
+ * 世代も同じになるため、mod のバージョンを上げただけでアイコンを作り直す無駄が消えます。
+ * build を持たない移行前のネームスペースは従来のアセットバージョンに落ちます。
+ * @param env 環境変数
+ * @param src アセット読み出し口
+ * @param ns ネームスペース
+ */
+async function generationOf(env: Env, src: AssetSource, ns: string): Promise<string> {
+  const buildId = await src.buildOf(ns);
+  return buildId ? buildId.slice(0, 16) : getAssetVersion(env, ns);
 }
 
 /**
@@ -141,14 +162,14 @@ function iconCacheKey(env: Env, ns: string, version: string, path: string): stri
 /**
  * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
  */
-async function resolveItemImage(namespace: string, path: string, env: Env): Promise<string> {
-  let obj = await env.BUCKET.get(`assets/${namespace}/textures/render3d/${path}.png`);
+async function resolveItemImage(namespace: string, path: string, env: Env, src: AssetSource): Promise<string> {
+  let obj = await src.get(namespace, `textures/render3d/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
-  obj = await env.BUCKET.get(`assets/${namespace}/textures/item/${path}.png`);
+  obj = await src.get(namespace, `textures/item/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
-  const icon = await renderBlockIconPng(env, namespace, path).catch(() => null);
+  const icon = await renderBlockIconPng(env, namespace, path, src).catch(() => null);
   if (icon) {
     await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
       httpMetadata: { contentType: 'image/png' },
@@ -156,10 +177,10 @@ async function resolveItemImage(namespace: string, path: string, env: Env): Prom
     return `data:image/png;base64,${bytesToBase64(icon)}`;
   }
 
-  obj = await env.BUCKET.get(`assets/${namespace}/textures/block/${path}.png`);
+  obj = await src.get(namespace, `textures/block/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
-  const viaModel = await resolveViaModel(namespace, path, env);
+  const viaModel = await resolveViaModel(namespace, path, src);
   if (viaModel) return viaModel;
 
   return TRANSPARENT_PNG;

@@ -10,6 +10,7 @@
  */
 
 import type { Env } from './minecraft';
+import { AssetSource, legacyAssetSource } from './build/asset-source';
 import { parseNamespacedId } from './minecraft';
 
 /**
@@ -77,8 +78,13 @@ export async function putLang(env: Env, namespace: string, locale: string, body:
  * @param locale ロケール名
  * @returns 翻訳表。未登録なら null
  */
-export async function readLang(env: Env, namespace: string, locale: string): Promise<LangMap | null> {
-  const obj = await env.BUCKET.get(langKey(namespace, locale));
+export async function readLang(
+  env: Env,
+  namespace: string,
+  locale: string,
+  src: AssetSource = legacyAssetSource(env)
+): Promise<LangMap | null> {
+  const obj = await src.get(namespace, `lang/${locale}.json`);
   if (!obj) return null;
 
   try {
@@ -126,7 +132,12 @@ export function lookupName(lang: LangMap, namespace: string, path: string): stri
  * @param locale ロケール名
  * @returns アイテムID -> 表示名
  */
-export async function resolveNames(env: Env, ids: string[], locale: string): Promise<Record<string, string>> {
+export async function resolveNames(
+  env: Env,
+  ids: string[],
+  locale: string,
+  src: AssetSource = legacyAssetSource(env)
+): Promise<Record<string, string>> {
   const byNamespace = new Map<string, { id: string; path: string }[]>();
   for (const id of ids) {
     const { namespace, path } = parseNamespacedId(id);
@@ -138,7 +149,7 @@ export async function resolveNames(env: Env, ids: string[], locale: string): Pro
   const names: Record<string, string> = {};
   await Promise.all(
     Array.from(byNamespace, async ([namespace, entries]) => {
-      const lang = await readLang(env, namespace, locale);
+      const lang = await readLang(env, namespace, locale, src);
       if (!lang) return;
       for (const { id, path } of entries) {
         const name = lookupName(lang, namespace, path);

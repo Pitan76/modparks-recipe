@@ -2,6 +2,7 @@
  * @fileoverview GIF生成処理。
  */
 
+import { AssetSource, legacyAssetSource } from '../build/asset-source';
 import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { encodeGif } from '../gif-encoder';
@@ -27,12 +28,12 @@ function samePixels(a: Uint8Array, b: Uint8Array): boolean {
  * 1枚目と同じ絵に戻ります。そこで打ち切らないと、同じ絵のラスタライズを
  * 最大5回繰り返したうえで、静止画を無駄に5フレームのGIFとして配ることになります。
  */
-export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE): Promise<Uint8Array> {
+export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE, src: AssetSource = legacyAssetSource(env)): Promise<Uint8Array> {
   await ensureWasm();
   const frames = [];
 
   for (let i = 0; i < maxFrames; i++) {
-    const svg = await generateRecipeSvg(recipeData, env, i);
+    const svg = await generateRecipeSvg(recipeData, env, i, src);
     const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
     const rendered = resvg.render();
     if (i > 0 && samePixels(rendered.pixels, frames[0].pixels)) break;

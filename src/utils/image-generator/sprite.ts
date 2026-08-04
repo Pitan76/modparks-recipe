@@ -2,6 +2,7 @@
  * @fileoverview スプライトシート生成処理。
  */
 
+import { AssetSource, legacyAssetSource } from '../build/asset-source';
 import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { ensureWasm } from '../wasm';
@@ -53,9 +54,9 @@ export interface SpriteSheet {
  * @param env 環境変数
  * @param scale スケール倍率
  */
-async function renderTile(recipe: any, env: Env, scale: number): Promise<Uint8Array | null> {
+async function renderTile(recipe: any, env: Env, scale: number, src: AssetSource): Promise<Uint8Array | null> {
   try {
-    return await renderRecipePng(recipe, env, 0, scale);
+    return await renderRecipePng(recipe, env, 0, scale, src);
   } catch (err) {
     console.error('sprite tile render failed', err);
     return null;
@@ -69,7 +70,8 @@ export async function renderRecipeSpriteSheet(
   entries: Array<{ id: string; recipe: any | null }>,
   env: Env,
   columns: number = 8,
-  scale: number = DEFAULT_SCALE
+  scale: number = DEFAULT_SCALE,
+  src: AssetSource = legacyAssetSource(env)
 ): Promise<SpriteSheet> {
   await ensureWasm();
 
@@ -88,7 +90,7 @@ export async function renderRecipeSpriteSheet(
     const y = Math.floor(i / cols) * tileHeight;
     // 1タイルの失敗でシート全体を落とさない。落とすと残りのタイルも
     // 再取得させることになり、そのシートは永久に描けなくなる。
-    const png = entry.recipe ? await renderTile(entry.recipe, env, scale) : null;
+    const png = entry.recipe ? await renderTile(entry.recipe, env, scale, src) : null;
     if (!png) {
       order[i] = null;
       missing.push(entry.id);
