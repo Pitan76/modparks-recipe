@@ -10,20 +10,47 @@ import { Env } from '../utils/minecraft';
 import { authorized } from '../utils/http';
 import { upsertIndexEntries, type IndexEntry } from '../utils/recipe-store';
 import { bumpAssetVersion } from '../utils/cache-version';
-import { beginIngest, isIngestOpen, collectStaged, cleanupIngest } from '../utils/ingest';
+import { beginIngest, readIngestMeta, collectStaged, cleanupIngest, type IngestBuildInfo } from '../utils/ingest';
 import { isValidNamespace } from '../utils/asset-path';
+import { toChannels } from '../utils/build/mc-version';
+import { finalizeBuild } from '../utils/build/commit';
 
 export const ingestRoutes = new Hono<{ Bindings: Env }>();
 
 // 取り込みセッションを開始します。以降の bulk は ?session= を付けて送り、最後に commit します。
+// ボディで対象MCバージョンなどを渡すと、commit 時に build として確定します（省略時は旧来の取り込み）。
 ingestRoutes.post('/api/:namespace/ingest/begin', async (c) => {
   if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
 
-  const session = await beginIngest(c.env, namespace);
-  return c.json({ ok: true, namespace, session });
+  const body = await c.req.json().catch(() => null);
+  const build = buildInfoOf(body);
+  const session = await beginIngest(c.env, namespace, build);
+  return c.json({ ok: true, namespace, session, build: build ?? null });
 });
+
+/**
+ * begin のボディから build の素性を組み立てます。
+ *
+ * 解釈できるMCバージョンが1つも無ければ build を作りません。チャネルに載せられない build は
+ * 誰からも解決されず、ストレージを消費するだけになるためです。
+ * @param body リクエストボディ
+ * @returns build の素性。作らない場合は undefined
+ */
+function buildInfoOf(body: any): IngestBuildInfo | undefined {
+  const mcChannels = toChannels(Array.isArray(body?.mcVersions) ? body.mcVersions.map(String) : []);
+  if (mcChannels.length === 0) return undefined;
+
+  return {
+    mcChannels,
+    modVersion: typeof body.modVersion === 'string' ? body.modVersion : null,
+    loader: typeof body.loader === 'string' ? body.loader : null,
+    trust: body.trust === 'unverified' ? 'unverified' : 'verified',
+    source: typeof body.source === 'string' ? body.source : null,
+    full: body.full !== false,
+  };
+}
 
 // 取り込みセッションを確定します。ステージング分をインデックスへ1回でマージし、バージョンを1回だけ上げます。
 ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
@@ -33,9 +60,13 @@ ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
 
   const session = c.req.query('session');
   if (!session) return c.text('Missing session', 400);
-  if (!(await isIngestOpen(c.env, namespace, session))) {
-    return c.text('Unknown or expired ingest session', 409);
-  }
+
+  const meta = await readIngestMeta(c.env, namespace, session);
+  if (!meta) return c.text('Unknown or expired ingest session', 409);
+
+  // build は索引より先に確定させる。索引だけ進んで build が失敗すると、
+  // 一覧に出るのに描画できないレシピが残るため。
+  const build = meta.build ? await finalizeBuild(c.env, namespace, session, meta.build) : null;
 
   const staged = await collectStaged(c.env, namespace, session);
   // `!!e` なのは、デプロイを跨いだセッションに旧形式の断片が残りうるため。
@@ -45,7 +76,7 @@ ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
   await bumpAssetVersion(c.env, namespace);
   await cleanupIngest(c.env, namespace, session);
 
-  return c.json({ ok: true, namespace, committed: staged.length, indexed: indexed.length });
+  return c.json({ ok: true, namespace, committed: staged.length, indexed: indexed.length, build });
 });
 
 // 取り込みセッションを破棄します（ステージング分を捨て、インデックスもバージョンも変更しません）。

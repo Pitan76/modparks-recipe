@@ -24,8 +24,24 @@ export type StagedEntry = { id: string; entry: IndexEntry | null };
 
 const SESSION_PREFIX = 'meta/ingest';
 
+/**
+ * このセッションが確定する build の素性。
+ *
+ * commit 時に決めるのでは遅すぎます。どの build を作るかは投入側しか知らず、
+ * 分割送信の途中でそれが変わることは無いため、セッション開始時に固定します。
+ */
+export type IngestBuildInfo = {
+  mcChannels: string[];
+  modVersion: string | null;
+  loader: string | null;
+  trust: 'verified' | 'unverified';
+  source: string | null;
+  /** jar 1本を丸ごと入れる取り込みなら true。親にあって今回来なかったものを削除として扱います。 */
+  full: boolean;
+};
+
 /** セッションのメタ情報（存在確認と失効判定に使う）。 */
-type SessionMeta = { session: string; ns: string; startedAt: string };
+export type SessionMeta = { session: string; ns: string; startedAt: string; build?: IngestBuildInfo };
 
 /** セッションが有効とみなされる最大経過時間（ミリ秒）。クラッシュしたセッションを放置しないため。 */
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -34,11 +50,12 @@ const SESSION_TTL_MS = 30 * 60 * 1000;
  * 新しい取り込みセッションを開始します。
  * @param env 環境変数
  * @param ns ネームスペース
+ * @param build 確定する build の素性（省略時は build を作らない旧来の取り込み）
  * @returns 生成されたセッションID
  */
-export async function beginIngest(env: Env, ns: string): Promise<string> {
+export async function beginIngest(env: Env, ns: string, build?: IngestBuildInfo): Promise<string> {
   const session = crypto.randomUUID();
-  const meta: SessionMeta = { session, ns, startedAt: new Date().toISOString() };
+  const meta: SessionMeta = { session, ns, startedAt: new Date().toISOString(), build };
   await env.BUCKET.put(metaKey(ns, session), JSON.stringify(meta), {
     httpMetadata: { contentType: 'application/json' },
   });
@@ -52,13 +69,25 @@ export async function beginIngest(env: Env, ns: string): Promise<string> {
  * @param session セッションID
  */
 export async function isIngestOpen(env: Env, ns: string, session: string): Promise<boolean> {
+  return (await readIngestMeta(env, ns, session)) !== null;
+}
+
+/**
+ * 有効なセッションのメタ情報を読みます。失効・不在・破損はすべて null になります。
+ * @param env 環境変数
+ * @param ns ネームスペース
+ * @param session セッションID
+ */
+export async function readIngestMeta(env: Env, ns: string, session: string): Promise<SessionMeta | null> {
   const obj = await env.BUCKET.get(metaKey(ns, session));
-  if (!obj) return false;
+  if (!obj) return null;
+
   try {
     const meta = await obj.json<SessionMeta>();
-    return Date.now() - new Date(meta.startedAt).getTime() < SESSION_TTL_MS;
+    if (Date.now() - new Date(meta.startedAt).getTime() >= SESSION_TTL_MS) return null;
+    return meta;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -111,7 +140,8 @@ export async function collectStaged(env: Env, ns: string, session: string): Prom
  * @param session セッションID
  */
 export async function cleanupIngest(env: Env, ns: string, session: string): Promise<void> {
-  const prefix = `${dataPrefix(ns, session)}/`;
+  // 索引エントリと build 材料でプレフィックスが分かれているため、セッション配下をまとめて消します。
+  const prefix = `${SESSION_PREFIX}/${ns}/${session}/`;
   let cursor: string | undefined = undefined;
   do {
     const listed = await env.BUCKET.list({ prefix, cursor, limit: 1000 });

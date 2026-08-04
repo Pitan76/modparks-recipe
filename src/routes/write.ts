@@ -9,7 +9,8 @@ import { storeRecipe, putRecipeBody, updateIndexMany, indexEntryOf } from '../ut
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
-import { isIngestOpen, stageEntries, type StagedEntry } from '../utils/ingest';
+import { isIngestOpen, readIngestMeta, stageEntries, type StagedEntry } from '../utils/ingest';
+import { PatchCollector, stagePatch } from '../utils/build/staging';
 import { runPool } from '../utils/pool';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
 
@@ -172,9 +173,11 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
 
   // セッション付きの bulk はインデックスを触らず、追加分をステージングして commit でまとめる。
   const session = c.req.query('session');
-  if (session && !(await isIngestOpen(c.env, namespace, session))) {
-    return c.text('Unknown or expired ingest session', 409);
-  }
+  const meta = session ? await readIngestMeta(c.env, namespace, session) : null;
+  if (session && !meta) return c.text('Unknown or expired ingest session', 409);
+
+  // build を作るセッションでは、同じ内容を blob にも積む。commit で build マニフェストに畳まれる。
+  const collector = meta?.build ? new PatchCollector(c.env) : null;
 
   const indexEntries: { fullId: string; data: any }[] = [];
   const staged: StagedEntry[] = [];
@@ -192,6 +195,10 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     try { data = JSON.parse(body); } catch { skipped++; continue; }
     await putRecipeBody(c.env, namespace, id, body);
     const fullId = `${namespace}:${id}`;
+    if (collector) {
+      await collector.addText(`recipe/${id}.json`, body);
+      collector.addRecipe(fullId, isCraftingType(data?.type) ? indexEntryOf(fullId, data) : null);
+    }
     if (session) {
       staged.push({ id: fullId, entry: isCraftingType(data?.type) ? indexEntryOf(fullId, data) : null });
     } else {
@@ -215,6 +222,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
       httpMetadata: { contentType: 'application/json' },
     });
     await c.env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
+    if (collector) await collector.addText(`tags/${id}.json`, body);
     tags++;
   }
 
@@ -224,9 +232,11 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
       return;
     }
     const key = `assets/${namespace}/textures/${path}`;
-    await c.env.BUCKET.put(key, decodeBase64(b64), {
+    const bytes = decodeBase64(b64);
+    await c.env.BUCKET.put(key, bytes, {
       httpMetadata: { contentType: contentTypeForKey(key) },
     });
+    if (collector) await collector.addBinary(`textures/${path}`, bytes, contentTypeForKey(key));
     textures++;
   });
 
@@ -240,6 +250,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
       httpMetadata: { contentType: 'application/json' },
     });
+    if (collector) await collector.addText(`models/${rel}.json`, json);
     models++;
   });
 
@@ -250,8 +261,11 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
       continue;
     }
     await putLang(c.env, namespace, locale, body);
+    if (collector) await collector.addText(`lang/${locale}.json`, body);
     langs++;
   }
+
+  if (collector && !collector.isEmpty) await stagePatch(c.env, namespace, session!, collector.toPatch());
 
   // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
   if (!session) await bumpAssetVersion(c.env, namespace);
