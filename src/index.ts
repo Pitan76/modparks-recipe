@@ -9,6 +9,7 @@ import { langRoutes } from './routes/lang';
 import { listRoutes } from './routes/list';
 import { migrateRoutes } from './routes/migrate';
 import { authRoutes } from './routes/auth';
+import { uploadRoutes } from './routes/upload';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -24,6 +25,8 @@ app.route('/', ingestRoutes);
 // ログインと namespace の所有権API。画像APIの `/api/:namespace/:filename` に
 // `claim` や `owner.json` を拾われないよう、先に登録します。
 app.route('/', authRoutes);
+// 外部 jar の投稿ポータル。`/api/upload` は namespace 付きのパスより先に登録します。
+app.route('/', uploadRoutes);
 // レシピ索引API（全体版とネームスペース版）。
 // 画像APIの `/api/:namespace/:filename` が `/api/:namespace/list.json` を拾わないよう、先に登録します。
 app.route('/', listRoutes);
