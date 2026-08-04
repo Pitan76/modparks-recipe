@@ -28,6 +28,13 @@ gcRoutes.get('/admin/gc/namespaces', async (c) => {
   return c.json({ namespaces: await listNamespaces(c.env) });
 });
 
+// 参照されない blob の掃除。全ネームスペースを見るため、ネームスペース単位の掃除の後に1回だけ回します。
+// `:namespace` より先に登録すること。後に置くと `blobs` がネームスペース名として食われる。
+gcRoutes.post('/admin/gc/blobs', async (c) => {
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  return c.json({ ok: true, blobs: await sweepBlobs(c.env) });
+});
+
 // 1ネームスペース分の掃除。unverified は別名表を直近5版へ切り詰めてから走らせます。
 gcRoutes.post('/admin/gc/:namespace', async (c) => {
   if (!isAdmin(c)) return c.text('Unauthorized', 401);
@@ -39,10 +46,4 @@ gcRoutes.post('/admin/gc/:namespace', async (c) => {
   const builds = await sweepBuilds(c.env, namespace);
 
   return c.json({ ok: true, namespace, prunedVersions: pruned, builds });
-});
-
-// 参照されない blob の掃除。全ネームスペースを見るため、ネームスペース単位の掃除の後に1回だけ回します。
-gcRoutes.post('/admin/gc/blobs', async (c) => {
-  if (!isAdmin(c)) return c.text('Unauthorized', 401);
-  return c.json({ ok: true, blobs: await sweepBlobs(c.env) });
 });

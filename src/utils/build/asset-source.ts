@@ -10,7 +10,8 @@
 
 import type { Env } from '../minecraft';
 import { getBlob } from './blob';
-import { resolveBuild } from './channels';
+import { readChannels } from './channels';
+import { resolveChannel } from './mc-version';
 import { foldBuild } from './manifest';
 
 /** 論理パスの接頭辞と、従来のフラットなキーの対応。 */
@@ -30,6 +31,8 @@ const LEGACY_ROOTS: Record<string, (ns: string) => string> = {
  */
 export class AssetSource {
   private readonly builds = new Map<string, string | null>();
+  /** build を1つも持たないネームスペース。ここだけが従来のフラット配置へ落ちてよい。 */
+  private readonly unmigrated = new Set<string>();
 
   /**
    * @param env 環境変数
@@ -46,10 +49,26 @@ export class AssetSource {
     const memoized = this.builds.get(ns);
     if (memoized !== undefined) return memoized;
 
-    const resolved = await resolveBuild(this.env, ns, this.mc);
-    const buildId = resolved?.buildId ?? null;
+    const channels = await readChannels(this.env, ns);
+    const available = Object.keys(channels);
+    if (available.length === 0) this.unmigrated.add(ns);
+
+    const channel = resolveChannel(this.mc, available);
+    const buildId = channel ? channels[channel] : null;
     this.builds.set(ns, buildId);
     return buildId;
+  }
+
+  /**
+   * このネームスペースが build を1つも持たないか（＝従来経路へ落としてよいか）を返します。
+   *
+   * build を持つのに要求されたMCに対応する版が無い場合は「無い」が正解です。フラット配置へ
+   * 落とすと、対応していないMCで全チャネルの合併を配ってしまいます。
+   * @param ns ネームスペース
+   */
+  async isUnmigrated(ns: string): Promise<boolean> {
+    await this.buildOf(ns);
+    return this.unmigrated.has(ns);
   }
 
   /**
@@ -65,6 +84,7 @@ export class AssetSource {
       const hash = folded?.files[logicalPath];
       if (hash) return getBlob(this.env, hash);
     }
+    if (!this.unmigrated.has(ns)) return null;
     return this.env.BUCKET.get(legacyKey(ns, logicalPath));
   }
 }

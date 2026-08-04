@@ -114,6 +114,10 @@ async function namespaceListing(
     };
   }
 
+  // build を持つのに要求MCで解決できなかった場合、従来索引へ落とすと全チャネルの合併を
+  // 返してしまう。対応していないMCには何も返さないのが正しい。
+  if (!(await src.isUnmigrated(ns))) return { version: '0', mc: null, channels, recipes: [] };
+
   const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
   return { version, mc: null, channels, recipes: all.filter((r) => r.id.startsWith(`${ns}:`)) };
 }
