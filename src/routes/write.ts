@@ -4,7 +4,8 @@
 
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
-import { authorized, decodeBase64, contentTypeForKey, plainEntries } from '../utils/http';
+import { decodeBase64, contentTypeForKey, plainEntries } from '../utils/http';
+import { requireWrite } from '../utils/auth/guard';
 import { storeRecipe, putRecipeBody, updateIndexMany, indexEntryOf } from '../utils/recipe-store';
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
@@ -20,11 +21,14 @@ import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-
 
 export const writeRoutes = new Hono<{ Bindings: Env }>();
 
+
 // 単一のレシピJSONをアップロードします。リクエストボディ = レシピのJSONデータ。
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
   if (!isSafeAssetTarget(namespace, id)) return c.text('Invalid namespace or id', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const body = await c.req.text();
   let data: any;
@@ -37,9 +41,11 @@ writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
 // assets/<ns>/textures/<path> 配下にテクスチャ（または任意のアセット）をアップロードします。
 // 例: PUT /api/mymod/texture/item/gadget.png (リクエストボディ = PNGのバイナリデータ)
 writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
   if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const key = `assets/${namespace}/textures/${path}`;
   const bytes = new Uint8Array(await c.req.arrayBuffer());
@@ -51,9 +57,11 @@ writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
 // assets/<ns>/models/<path>.json 配下にモデルJSONをアップロードします（例: "item/gadget" や "block/machine"）。
 // レンダラーはモデルの textures/parent チェーンをたどることで、テクスチャのファイル名がIDと異なるアイテムを解決できます。
 writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
   if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
@@ -67,9 +75,11 @@ writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
 
 // data/<ns>/tags/<path>.json 配下にタグJSONをアップロードします（例: "item/planks"）。
 writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, path } = c.req.param();
   if (!isSafeAssetTarget(namespace, path)) return c.text('Invalid namespace or path', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
@@ -85,9 +95,11 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
 // assets/<ns>/lang/<locale>.json に言語ファイルをアップロードします（リクエストボディ = 素の Minecraft lang JSON）。
 // 対応ロケールはAPI側で固定していないため、新しい言語は取り込み側で指定するだけで増やせます。
 writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const locale = c.req.param('locale').replace(/\.json$/, '');
   if (!isValidLocale(locale)) return c.text('Invalid locale', 400);
@@ -105,9 +117,11 @@ writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
 // { "recipe": {...}, "textures": { "item/foo.png": "<base64>", ... } }
 // テクスチャのキーは assets/<ns>/textures/ 配下のパスです（例: "item/foo.png", "block/bar.png"、あるいは事前レンダリングされた3Dアイコンの場合は "render3d/baz.png"）。
 writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace, id } = c.req.param();
   if (!isSafeAssetTarget(namespace, id)) return c.text('Invalid namespace or id', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   let payload: any;
   try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
@@ -164,9 +178,11 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
 //     "models":  { "<path>": <json|string>, ... },  // 例: "item/foo"
 //     "langs":   { "<locale>": <json|string>, ... } } // 例: "ja_jp"
 writeRoutes.post('/api/:namespace/bulk', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   let p: any;
   try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }

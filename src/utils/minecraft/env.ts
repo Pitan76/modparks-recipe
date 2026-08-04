@@ -10,4 +10,8 @@ export interface Env {
   UPLOAD_SECRET?: string;
   // レンダラー版の上書き（CI がレンダリング系ソースのハッシュを注入する運用に備えたもの）。
   RENDERER_VERSION?: string;
+  // ModParks アカウントでログインさせる場合のみ設定します。3つ揃わなければプロバイダごと無効になります。
+  MODPARKS_URL?: string;
+  MODPARKS_CLIENT_ID?: string;
+  MODPARKS_CLIENT_SECRET?: string;
 }

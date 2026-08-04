@@ -7,7 +7,7 @@
 
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
-import { authorized } from '../utils/http';
+import { requireWrite } from '../utils/auth/guard';
 import { upsertIndexEntries, type IndexEntry } from '../utils/recipe-store';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { beginIngest, readIngestMeta, collectStaged, cleanupIngest, type IngestBuildInfo } from '../utils/ingest';
@@ -17,15 +17,19 @@ import { finalizeBuild } from '../utils/build/commit';
 
 export const ingestRoutes = new Hono<{ Bindings: Env }>();
 
+
 // 取り込みセッションを開始します。以降の bulk は ?session= を付けて送り、最後に commit します。
 // ボディで対象MCバージョンなどを渡すと、commit 時に build として確定します（省略時は旧来の取り込み）。
 ingestRoutes.post('/api/:namespace/ingest/begin', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
 
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
+
   const body = await c.req.json().catch(() => null);
-  const build = buildInfoOf(body);
+  // trust は投入側の申告ではなく認証結果で決める。自己申告を信じると unverified が verified を名乗れる。
+  const build = buildInfoOf(body, grant.trust);
   const session = await beginIngest(c.env, namespace, build);
   return c.json({ ok: true, namespace, session, build: build ?? null });
 });
@@ -36,9 +40,10 @@ ingestRoutes.post('/api/:namespace/ingest/begin', async (c) => {
  * 解釈できるMCバージョンが1つも無ければ build を作りません。チャネルに載せられない build は
  * 誰からも解決されず、ストレージを消費するだけになるためです。
  * @param body リクエストボディ
+ * @param trust 認証結果から決まる信頼度
  * @returns build の素性。作らない場合は undefined
  */
-function buildInfoOf(body: any): IngestBuildInfo | undefined {
+function buildInfoOf(body: any, trust: IngestBuildInfo['trust']): IngestBuildInfo | undefined {
   const mcChannels = toChannels(Array.isArray(body?.mcVersions) ? body.mcVersions.map(String) : []);
   if (mcChannels.length === 0) return undefined;
 
@@ -46,7 +51,7 @@ function buildInfoOf(body: any): IngestBuildInfo | undefined {
     mcChannels,
     modVersion: typeof body.modVersion === 'string' ? body.modVersion : null,
     loader: typeof body.loader === 'string' ? body.loader : null,
-    trust: body.trust === 'unverified' ? 'unverified' : 'verified',
+    trust,
     source: typeof body.source === 'string' ? body.source : null,
     full: body.full !== false,
   };
@@ -54,9 +59,11 @@ function buildInfoOf(body: any): IngestBuildInfo | undefined {
 
 // 取り込みセッションを確定します。ステージング分をインデックスへ1回でマージし、バージョンを1回だけ上げます。
 ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const session = c.req.query('session');
   if (!session) return c.text('Missing session', 400);
@@ -81,9 +88,11 @@ ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
 
 // 取り込みセッションを破棄します（ステージング分を捨て、インデックスもバージョンも変更しません）。
 ingestRoutes.post('/api/:namespace/ingest/abort', async (c) => {
-  if (!authorized(c)) return c.text('Unauthorized', 401);
   const { namespace } = c.req.param();
   if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
+  const grant = await requireWrite(c, namespace);
+  if (grant instanceof Response) return grant;
 
   const session = c.req.query('session');
   if (!session) return c.text('Missing session', 400);

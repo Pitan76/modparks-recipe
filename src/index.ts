@@ -8,6 +8,7 @@ import { adminRoutes } from './routes/admin';
 import { langRoutes } from './routes/lang';
 import { listRoutes } from './routes/list';
 import { migrateRoutes } from './routes/migrate';
+import { authRoutes } from './routes/auth';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -20,6 +21,9 @@ app.get('/', (c) => {
 app.route('/', writeRoutes);
 // 取り込みセッションAPI（begin/commit/abort）— 認証が必要。
 app.route('/', ingestRoutes);
+// ログインと namespace の所有権API。画像APIの `/api/:namespace/:filename` に
+// `claim` や `owner.json` を拾われないよう、先に登録します。
+app.route('/', authRoutes);
 // レシピ索引API（全体版とネームスペース版）。
 // 画像APIの `/api/:namespace/:filename` が `/api/:namespace/list.json` を拾わないよう、先に登録します。
 app.route('/', listRoutes);
