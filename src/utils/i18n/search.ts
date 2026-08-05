@@ -33,6 +33,9 @@ const JA = {
   download: 'ダウンロード',
   showImages: 'すべてのレシピを表示',
   loadMore: 'もっと読み込む',
+  clear: '検索条件をクリア',
+  noResults: '該当するアイテムがありません。',
+  openImage: '画像を原寸で開く',
 } as const;
 
 const EN: SearchMessages = {
@@ -55,6 +58,9 @@ const EN: SearchMessages = {
   download: 'Download',
   showImages: 'Show all recipes',
   loadMore: 'Load more',
+  clear: 'Clear search',
+  noResults: 'No matching items.',
+  openImage: 'Open the image at full size',
 };
 
 const TABLES: Record<string, SearchMessages> = { ja: JA, en: EN };

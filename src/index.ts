@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from './utils/minecraft';
-import { searchPage } from './utils/page';
+import { searchPage } from './utils/search/page';
 import { pickLocale } from './utils/i18n/locale';
 import { SEARCH_LOCALES } from './utils/i18n/search';
 import { writeRoutes } from './routes/write';
