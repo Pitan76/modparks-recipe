@@ -46,7 +46,9 @@ export function searchParts(toggle: LangToggle): string {
   function AppBar(props) {
     return e('header', { className: 'app-bar' },
       e('div', { className: 'app-bar-inner' },
-        e('div', { className: 'app-title' }, t.title),
+        e('a', { className: 'app-brand', href: '/' },
+          e('img', { src: '/icon.svg', alt: 'ModParks', width: 32, height: 32 }),
+          e('span', { className: 'app-title' }, t.title)),
         e('nav', { className: 'app-nav' },
           e('a', { href: '/?lang=${toggle.lang}' + (props.selected ? '&id=' + encodeURIComponent(props.selected) : '') }, '${toggle.label}'),
           e('a', { href: '/upload' }, t.publish),

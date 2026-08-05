@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <polygon points="250,50 423.2,150 423.2,350 250,450 76.8,350 76.8,150" fill="#2478D2" stroke="#2478D2" stroke-width="12" stroke-linejoin="round"/>
+  <g transform="matrix(0.866, -0.5, 0.866, 0.5, 76.8, 150)">
+    <path d="M 15 15 L 50 15 L 50 150 L 85 150 L 85 15 L 185 15 L 185 185 L 150 185 L 150 50 L 115 50 L 115 185 L 15 185 Z" fill="#B8FBC0" stroke="#B8FBC0" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <!-- M: 谷を浅く(100,115→100,80)、内側縦棒を太く(60/140→50/150) -->
+  <g transform="matrix(0.866, 0.5, 0, 1, 76.8, 150)">
+    <path d="M 15 185 L 15 15 L 100 80 L 185 15 L 185 185 L 150 185 L 150 70 L 100 105 L 50 70 L 50 185 Z" fill="#BDE0FE" stroke="#BDE0FE" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g transform="matrix(0.866, -0.5, 0, 1, 250, 250)">
+    <path d="M 15 185 L 15 15 L 185 15 L 185 115 L 60 115 L 60 185 Z M 60 55 L 60 80 L 140 80 L 140 55 Z" fill="#FFC8DD" stroke="#FFC8DD" stroke-width="3" stroke-linejoin="round" fill-rule="evenodd"/>
+  </g>
+</svg>

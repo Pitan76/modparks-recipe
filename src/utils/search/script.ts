@@ -33,6 +33,9 @@ export function searchScript(locale: string): string {
   ${SEARCH_THEME}
   ${searchParts({ lang: toggleLang, label: toggleLabel })}
 
+  /** 初期表示のURLパラメータ。同期エフェクトが書き換える前の値を読む必要がある。 */
+  const INITIAL_PARAMS = new URLSearchParams(window.location.search);
+
   function App() {
     const [recipes, setRecipes] = React.useState(null);
     const [q, setQ] = React.useState('');
@@ -41,8 +44,8 @@ export function searchScript(locale: string): string {
     const [nonce, setNonce] = React.useState(0);
     const [names, setNames] = React.useState({});
     const [copiedId, setCopiedId] = React.useState(null);
-    const [selNs, setSelNs] = React.useState('all');
-    const [showImg, setShowImg] = React.useState(false);
+    const [selNs, setSelNs] = React.useState(() => INITIAL_PARAMS.get('ns') || 'all');
+    const [showImg, setShowImg] = React.useState(() => INITIAL_PARAMS.get('view') === 'img');
     const [page, setPage] = React.useState(1);
     const [itemPage, setItemPage] = React.useState(1);
 
@@ -77,10 +80,8 @@ export function searchScript(locale: string): string {
 
     React.useEffect(() => {
       if (!recipes) return;
-      const p = new URLSearchParams(window.location.search);
-      if (p.get('ns')) setSelNs(p.get('ns'));
-      if (p.get('view') === 'img') setShowImg(true);
-      if (p.get('id') && groups[p.get('id')]) select(p.get('id'));
+      const id = INITIAL_PARAMS.get('id');
+      if (id && groups[id]) select(id);
     }, [recipes]);
 
     React.useEffect(() => { replaceQuery(p => selNs === 'all' ? p.delete('ns') : p.set('ns', selNs)); }, [selNs]);
