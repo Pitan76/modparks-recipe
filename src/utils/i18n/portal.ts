@@ -14,14 +14,14 @@ export type Messages = Record<MessageKey, string>;
 export type MessageKey = keyof typeof JA;
 
 const JA = {
-  title: 'レシピ投稿',
-  lead: 'レシピ作成のため、jarファイルからデータを抽出します。',
+  title: 'レシピ抽出',
+  lead: 'jarファイルからレシピを組み立てるためのアセットやデータを抽出します。',
   signInWith: '{provider}でログイン',
   signInLead: '',
   signOut: 'ログアウト',
   noProviders: 'ログイン手段がありません。',
   signedInAs: '',
-  remaining: '残り {remaining} 回',
+  remaining: '残り{remaining}回',
   chooseFile: '',
   upload: '',
   uploading: '処理中…',
