@@ -45,6 +45,9 @@ app.route('/', migrateRoutes);
 app.route('/', gcRoutes);
 
 import { serveStatic } from 'hono/cloudflare-workers';
-app.use('/*', serveStatic({}));
+// @ts-ignore
+import manifest from '__STATIC_CONTENT_MANIFEST';
+
+app.use('/*', serveStatic({ manifest }));
 
 export default app;
