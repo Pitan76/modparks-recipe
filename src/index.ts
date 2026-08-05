@@ -48,6 +48,12 @@ import { serveStatic } from 'hono/cloudflare-workers';
 // @ts-ignore
 import manifest from '__STATIC_CONTENT_MANIFEST';
 
-app.use('/*', serveStatic({ manifest }));
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.text(`Internal Server Error: ${err.message}\n${err.stack}`, 500);
+});
+
+const manifestObj = typeof manifest === 'string' ? JSON.parse(manifest) : manifest;
+app.use('/*', serveStatic({ manifest: manifestObj }));
 
 export default app;
