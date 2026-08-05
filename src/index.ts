@@ -18,8 +18,9 @@ const app = new Hono<{ Bindings: Env }>();
 
 /** レシピ検索ページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
 app.get('/', (c) => {
-  const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null, SEARCH_LOCALES);
-  return c.html(searchPage(locale));
+  const url = new URL(c.req.url);
+  const locale = pickLocale(url, c.req.header('Accept-Language') ?? null, SEARCH_LOCALES);
+  return c.html(searchPage(locale, url.origin));
 });
 
 // 書き込みAPI（レシピ/テクスチャ/モデル/タグ/言語ファイルのPUT、バンドルのPOST）— 認証が必要。

@@ -12,6 +12,7 @@
 import type { Env } from './minecraft';
 import { resultItemOf, isCraftingType } from './minecraft';
 import type { IndexEntry } from './recipe-store';
+import { rebuildNameIndexes } from './name-index';
 
 const INDEX_KEY = 'index/recipes.json';
 
@@ -126,6 +127,8 @@ export async function reindexStep(env: Env, cursor: string | undefined, batch: n
 
   recipes.sort((a, b) => a.id.localeCompare(b.id));
   await putJson(env, INDEX_KEY, { count: recipes.length, generatedAt: new Date().toISOString(), recipes });
+  // 一覧に出るのは完成品アイテム。表示名の索引もここで揃えないと、名前だけ古い状態が残る
+  await rebuildNameIndexes(env, recipes.map((r) => r.result ?? r.id));
   await env.BUCKET.delete(BUILDING_KEY);
   return { done: true, scanned: keys.length, count: recipes.length };
 }

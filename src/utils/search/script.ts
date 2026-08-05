@@ -56,6 +56,19 @@ export function searchScript(locale: string): string {
     const [page, setPage] = React.useState(1);
     const [itemPage, setItemPage] = React.useState(1);
 
+    const requested = React.useRef(new Set());
+
+    React.useEffect(() => {
+      fetch('/api/names.json?lang=' + MC_LOCALE)
+        .then(r => r.ok ? r.json() : { names: {} })
+        .then(d => {
+          const loaded = d.names || {};
+          Object.keys(loaded).forEach(id => requested.current.add(id));
+          setNames(prev => Object.assign({}, loaded, prev));
+        })
+        .catch(err => console.error(err));
+    }, []);
+
     React.useEffect(() => {
       fetch('/api/list.json').then(r => r.ok ? r.json() : {}).then(d => {
         setVersions(d.versions || null);
@@ -117,8 +130,6 @@ export function searchScript(locale: string): string {
       [filteredRecipes, page]
     );
     const visibleItems = showImg ? gridItems : pagedItems;
-
-    const requested = React.useRef(new Set());
 
     /** まだ引いていないIDの表示名を取りに行きます。同じIDは二度要求しません。 */
     function requestNames(ids) {

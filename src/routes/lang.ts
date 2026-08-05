@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../utils/minecraft';
 import { readLang, resolveNames, isValidLocale } from '../utils/lang-store';
+import { nameIndexKey } from '../utils/name-index';
 
 export const langRoutes = new Hono<{ Bindings: Env }>();
 
@@ -66,6 +67,28 @@ langRoutes.get('/api/:namespace/lang/:locale{[^/]+\\.json}', async (c) => {
   if (!lang) return c.text('Not found', 404);
 
   return c.json(lang, 200, { 'Cache-Control': cacheControlOf(c) });
+});
+
+/**
+ * 表示名の静的索引を丸ごと返します。索引はレシピ索引の再構築時に作られます。
+ *
+ * 一覧の表示名をこれ1回で賄えるため、`/api/names` をページ送りのたびに叩かずに済みます。
+ * 索引が未生成のときは空を返し、呼び出し側は `/api/names` にフォールバックできます。
+ *
+ * 例: GET /api/names.json?lang=ja_jp
+ */
+langRoutes.get('/api/names.json', async (c) => {
+  const locale = c.req.query('lang');
+  if (!locale) return c.text('Missing lang', 400);
+  if (!isValidLocale(locale)) return c.text('Invalid locale', 400);
+
+  const cacheControl = { 'Cache-Control': cacheControlOf(c) };
+  const obj = await c.env.BUCKET.get(nameIndexKey(locale));
+  if (!obj) return c.json({ lang: locale, names: {} }, 200, cacheControl);
+
+  return new Response(obj.body, {
+    headers: { 'Content-Type': 'application/json', ...cacheControl },
+  });
 });
 
 /**
