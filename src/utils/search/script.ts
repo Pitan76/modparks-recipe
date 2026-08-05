@@ -163,7 +163,7 @@ export function searchScript(locale: string): string {
     }
 
     const selName = sel ? (names[sel.label] || sel.label) : '';
-    const itemPager = itemPageCount > 1 && e(Box, { sx: { my: 0.5, display: 'flex', justifyContent: 'center' } },
+    const itemPager = itemPageCount > 1 && e(Box, { sx: { my: 1, display: 'flex', justifyContent: 'center' } },
       e(Pagination, { count: itemPageCount, page: itemPage, onChange: (ev, val) => setItemPage(val), size: 'small', siblingCount: 0, color: 'primary' }));
     const listBody = recipes === null
       ? e(Box, { sx: { p: 2, textAlign: 'center' } }, e(CircularProgress, { size: 20 }))
@@ -180,7 +180,7 @@ export function searchScript(locale: string): string {
 
     return e(React.Fragment, null,
       e(AppBar, { selected: sel ? sel.label : null }),
-      e(Container, { maxWidth: false, disableGutters: true, sx: { px: 1.5, py: 1.5 } },
+      e(Container, { maxWidth: false, disableGutters: true, sx: { px: 3, py: 2.5 } },
         e(SearchForm, { q: q, setQ: setQ, selNs: selNs, setSelNs: setSelNs, fmt: fmt, setFmt: changeFmt, nss: nss, nsCounts: nsCounts, onSubmit: submit }),
         e('div', { className: 'app-layout' },
           e('div', { className: 'side-panel' },

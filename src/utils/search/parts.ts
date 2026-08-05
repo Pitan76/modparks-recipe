@@ -61,7 +61,7 @@ export function searchParts(toggle: LangToggle): string {
             e('i', { className: 'fa-solid fa-xmark', style: { fontSize: 13 } })))
       : null;
     return e('form', { onSubmit: props.onSubmit },
-      e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1, alignItems: { sm: 'center' }, sx: { mb: 1.5 } },
+      e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, alignItems: { sm: 'center' }, sx: { mb: 2.5 } },
         e(TextField, {
           label: t.search, value: props.q, onChange: x => props.setQ(x.target.value), autoFocus: true, fullWidth: true, size: 'small',
           placeholder: 'namespace:id', InputProps: { endAdornment: clearAdornment },

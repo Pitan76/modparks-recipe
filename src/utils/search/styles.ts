@@ -36,39 +36,39 @@ export const SEARCH_STYLES = /* css */ `
     border-bottom: 1px solid ${TOKENS.border};
   }
   .app-bar-inner {
-    padding: 6px 12px;
+    padding: 10px 24px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
   .app-title { font-size: 18px; font-weight: 500; color: ${TOKENS.text}; }
-  .app-nav { display: flex; align-items: center; gap: 16px; font-size: 14px; color: ${TOKENS.muted}; }
+  .app-nav { display: flex; align-items: center; gap: 20px; font-size: 14px; color: ${TOKENS.muted}; }
   .app-nav a { color: ${TOKENS.muted}; text-decoration: none; }
   .app-nav a:hover { color: ${TOKENS.primary}; }
 
-  .app-layout { display: flex; gap: 12px; align-items: flex-start; }
+  .app-layout { display: flex; gap: 20px; align-items: flex-start; }
   @media (max-width: 900px) { .app-layout { flex-direction: column; } }
-  .side-panel { width: 300px; flex-shrink: 0; }
+  .side-panel { width: 320px; flex-shrink: 0; }
   @media (max-width: 900px) { .side-panel { width: 100%; } }
   .main-panel { flex-grow: 1; min-width: 0; }
 
   .list-box { max-height: 64vh; overflow-y: auto; border-top: 1px solid ${TOKENS.border}; }
   .item-row {
-    position: relative; padding: 3px 72px 3px 8px;
+    position: relative; padding: 6px 76px 6px 10px;
     border-bottom: 1px solid ${TOKENS.border}; cursor: pointer;
   }
   .item-row:hover { background: ${TOKENS.hover}; }
   .item-row.selected { background: ${TOKENS.hover}; box-shadow: inset 2px 0 0 ${TOKENS.primary}; }
-  .item-row .MuiTypography-root { line-height: 1.3; }
+  .item-row .MuiTypography-root { line-height: 1.35; }
   .item-actions { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
 
-  .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-  .recipe-item { text-align: center; padding: 4px; min-width: 0; }
-  .recipe-img { image-rendering: pixelated; max-width: 100%; height: auto; cursor: pointer; display: block; margin: 0 auto 4px; }
+  .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; max-width: 1700px; }
+  .recipe-item { text-align: center; padding: 8px 4px; min-width: 0; }
+  .recipe-img { image-rendering: pixelated; width: auto; max-width: 100%; height: auto; cursor: pointer; display: block; margin: 0 auto 6px; }
   .recipe-name { font-size: 13px; color: ${TOKENS.text}; line-height: 1.3; }
   .recipe-label { font-size: 11px; color: ${TOKENS.muted}; font-family: monospace; }
 
   .section-head {
-    display: flex; align-items: center; gap: 6px;
-    padding-bottom: 4px; border-bottom: 1px solid ${TOKENS.border}; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 6px; border-bottom: 1px solid ${TOKENS.border}; margin-bottom: 10px;
   }
   .empty-state { display: flex; align-items: center; justify-content: center; min-height: 240px; color: ${TOKENS.muted}; }
 `;
