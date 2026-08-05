@@ -14,6 +14,7 @@ import { getIdentity, linksOf, resolveIdentity } from '../utils/auth/identity';
 import { issueToken, verifyToken } from '../utils/auth/tokens';
 import { claimNamespace, getOwnership, type Trust } from '../utils/auth/ownership';
 import { remainingUploads } from '../utils/auth/quota';
+import { listUploads } from '../utils/audit';
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -91,6 +92,21 @@ authRoutes.get('/auth/me', async (c) => {
   if (!identity) return c.text('Unauthorized', 401);
 
   return c.json({ displayName: identity.displayName, remaining: await remainingUploads(c.env, grant.identityId) });
+});
+
+/**
+ * 本人が投入したものの履歴を新しい順に返します。
+ *
+ * 管理用の `/admin/uploads` と違い、自分の分しか見えません。
+ * 何を上げたかを本人が確認できないと、消し忘れや誤投入に気付けないためです。
+ */
+authRoutes.get('/auth/me/uploads', async (c) => {
+  const grant = await verifyToken(c.env, bearerOf(c));
+  if (!grant) return c.text('Unauthorized', 401);
+
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '30', 10) || 30, 1), 100);
+  const uploads = await listUploads(c.env, { identityId: grant.identityId, limit });
+  return c.json({ uploads });
 });
 
 // namespace の所有権を主張します。ModParks 側で所有が確認できれば verified になります。

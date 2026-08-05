@@ -37,6 +37,12 @@ const JA = {
   errorLimit: '本日の上限に達しました。',
   errorOwned: '他のユーザーが所有しています。',
   errorGeneric: 'エラーが発生しました。',
+  historyTitle: '投稿履歴',
+  historyEmpty: 'まだ投稿はありません。',
+  historyItems: '{count}件',
+  sourceJar: 'jar',
+  sourceBulk: '一括API',
+  sourceCommit: '取り込み確定',
 } as const;
 
 const EN: Messages = {
@@ -63,6 +69,12 @@ const EN: Messages = {
   errorLimit: 'Limit reached.',
   errorOwned: 'Owned by someone else.',
   errorGeneric: 'An error occurred.',
+  historyTitle: 'Your uploads',
+  historyEmpty: 'No uploads yet.',
+  historyItems: '{count} items',
+  sourceJar: 'jar',
+  sourceBulk: 'Bulk API',
+  sourceCommit: 'Ingest commit',
 };
 
 const TABLES: Record<string, Messages> = { ja: JA, en: EN };
