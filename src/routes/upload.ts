@@ -13,6 +13,7 @@ import { Env } from '../utils/minecraft';
 import { verifyToken } from '../utils/auth/tokens';
 import { consumeUploadQuota, remainingUploads } from '../utils/auth/quota';
 import { portalPage } from '../utils/portal/page';
+import { recordUpload } from '../utils/audit';
 import { pickLocale } from '../utils/i18n/locale';
 import { PORTAL_LOCALES } from '../utils/i18n/portal';
 
@@ -42,6 +43,10 @@ uploadRoutes.post('/api/upload', async (c) => {
   const result = await delegate(c.env, c.req.url, jar, token!);
 
   if (!result) return c.text('Extraction failed', 502);
+  // jar は namespace を跨ぐことがあるので、namespace ごとに1行残す
+  for (const ns of result.namespaces) {
+    await recordUpload(c.env, { identityId: grant.identityId, ns, source: 'jar', items: result.count });
+  }
   return c.json({ ok: true, ...result, remaining: await remainingUploads(c.env, grant.identityId) });
 });
 

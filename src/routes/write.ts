@@ -13,6 +13,7 @@ import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
 import { readIngestMeta, stageEntries, type StagedEntry } from '../utils/ingest';
 import { PatchCollector, stagePatch } from '../utils/build/staging';
 import { runPool } from '../utils/pool';
+import { recordUpload } from '../utils/audit';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
@@ -285,5 +286,10 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
 
   // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
   if (!session) await bumpAssetVersion(c.env, namespace);
+  // 誰が入れたかを残す。所有権は移りうるので、投入時点の主体を別に持っておく必要がある。
+  await recordUpload(c.env, {
+    identityId: grant.identityId, ns: namespace, source: 'bulk',
+    items: recipes + tags + textures + models + langs,
+  });
   return c.json({ ok: true, namespace, recipes, tags, textures, models, langs, skipped, session: session ?? null });
 });

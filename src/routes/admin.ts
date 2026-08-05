@@ -8,8 +8,26 @@ import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion, ensureAssetVersions, getAllVersions } from '../utils/cache-version';
 import { sweepStaleIngests } from '../utils/ingest';
 import { reindexStep, normalizeBatch } from '../utils/reindex';
+import { listUploads } from '../utils/audit';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
+
+/**
+ * 投入履歴の照会。問題のあるデータが入ったときに、誰がいつ入れたかを辿るためのものです。
+ * 例: GET /admin/uploads?secret=...&ns=itemalchemy&limit=50
+ */
+adminRoutes.get('/admin/uploads', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) return c.text('Unauthorized', 401);
+
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 500);
+  const uploads = await listUploads(c.env, {
+    ns: c.req.query('ns') || undefined,
+    identityId: c.req.query('identity') || undefined,
+    limit,
+  });
+  return c.json({ count: uploads.length, uploads });
+});
 
 /**
  * R2内の古いゴミファイルをクリーンアップするための管理者用エンドポイント（再アップロード前などに使用）。

@@ -14,6 +14,7 @@ import { beginIngest, readIngestMeta, collectStaged, cleanupIngest, type IngestB
 import { isValidNamespace } from '../utils/asset-path';
 import { toChannels } from '../utils/build/mc-version';
 import { finalizeBuild } from '../utils/build/commit';
+import { recordUpload } from '../utils/audit';
 
 export const ingestRoutes = new Hono<{ Bindings: Env }>();
 
@@ -82,6 +83,10 @@ ingestRoutes.post('/api/:namespace/ingest/commit', async (c) => {
   await upsertIndexEntries(c.env, staged.map((s) => s.id), indexed);
   await bumpAssetVersion(c.env, namespace);
   await cleanupIngest(c.env, namespace, session);
+  await recordUpload(c.env, {
+    identityId: grant.identityId, ns: namespace, source: 'commit',
+    items: staged.length, buildId: build?.buildId ?? null,
+  });
 
   return c.json({ ok: true, namespace, committed: staged.length, indexed: indexed.length, build });
 });
