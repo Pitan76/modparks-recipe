@@ -15,7 +15,7 @@ export type SearchMessageKey = keyof typeof JA;
 
 const JA = {
   title: 'ModParks Recipe',
-  lead: 'レシピIDを入力してレシピを表示します。',
+  lead: 'マイクラMODのレシピを検索、表示します。',
   search: '検索',
   format: '形式',
   show: '表示',
@@ -36,7 +36,7 @@ const JA = {
 
 const EN: SearchMessages = {
   title: 'ModParks Recipe',
-  lead: 'Enter a recipe ID to view the recipe.',
+  lead: 'Search and display recipes for Minecraft mods.',
   search: 'Search',
   format: 'Format',
   show: 'Show',
