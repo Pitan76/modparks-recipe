@@ -42,7 +42,9 @@ app.route('/', imageRoutes);
 app.route('/', adminRoutes);
 // 既存のフラットなアセットを build へ移行する管理用API。
 app.route('/', migrateRoutes);
-// 参照されなくなった build と blob の掃除。
 app.route('/', gcRoutes);
+
+import { serveStatic } from 'hono/cloudflare-workers';
+app.use('/*', serveStatic({}));
 
 export default app;

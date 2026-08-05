@@ -65,9 +65,8 @@ async function analyzeJar(zip) {
  */
 function bytesToBase64(bytes) {
   let binary = "";
-  const chunk = 0x8000; // スタック上限を避けるため分割処理
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
 }
