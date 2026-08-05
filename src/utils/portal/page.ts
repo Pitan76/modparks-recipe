@@ -43,6 +43,8 @@ export function portalPage(locale: string): string {
   li { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; border-top: 1px solid #1e293b; }
   code { font-family: ui-monospace, monospace; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="/extractor.js"></script>
 </head>
 <body>
 <main>
@@ -131,8 +133,57 @@ const PORTAL_SCRIPT = /* js */ `
     status.className = 'muted';
     status.textContent = t.uploading;
 
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        JSZip.loadAsync(e.target.result)
+          .then(function (zip) {
+            return analyzeJar(zip);
+          })
+          .then(function (result) {
+            if (result.namespaces.length === 0) throw new Error(t.errorGeneric);
+            var promises = result.namespaces.map(function (ns) {
+              return fetch('/api/' + ns + '/bulk', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify(result.data)
+              }).then(function (res) {
+                if (res.status === 429) throw new Error(t.errorLimit);
+                if (!res.ok) throw new Error(t.errorGeneric);
+                return res.json();
+              });
+            });
+            return Promise.all(promises).then(function (bodies) {
+              var totalCount = bodies.reduce(function (sum, b) {
+                return sum + (b.recipes || 0) + (b.textures || 0) + (b.models || 0) + (b.tags || 0) + (b.langs || 0);
+              }, 0);
+              return { count: totalCount, namespaces: result.namespaces };
+            });
+          })
+          .then(function (summary) {
+            resultView(summary);
+          })
+          .catch(function (err) {
+            console.warn('Client extraction failed, falling back to server side:', err);
+            fallbackToServer(file.files[0], submit, status);
+          });
+      } catch (err) {
+        fallbackToServer(file.files[0], submit, status);
+      }
+    };
+    reader.onerror = function () {
+      fallbackToServer(file.files[0], submit, status);
+    };
+    reader.readAsArrayBuffer(file.files[0]);
+  }
+
+  function fallbackToServer(fileBlob, submit, status) {
+    status.textContent = t.uploading + ' (サーバー処理中...)';
     var body = new FormData();
-    body.append('jar', file.files[0]);
+    body.append('jar', fileBlob);
     fetch('/api/upload', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: body })
       .then(function (res) {
         if (res.status === 429) throw new Error(t.errorLimit);
@@ -140,7 +191,9 @@ const PORTAL_SCRIPT = /* js */ `
         if (!res.ok) throw new Error(t.errorGeneric);
         return res.json();
       })
-      .then(function (result) { resultView(result); })
+      .then(function (result) {
+        resultView(result);
+      })
       .catch(function (err) {
         submit.disabled = false;
         status.className = 'error';

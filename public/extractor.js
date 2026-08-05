@@ -8,10 +8,10 @@
  */
 
 // アセットパス検出用の正規表現定義
-const RECIPE_PATH = /^data\/([^/]+)\/recipes?\/([^\/]+)\.json$/;
-const TAG_PATH = /^data\/([^/]+)\/tags?\/([^\/]+)\.json$/;
-const TEXTURE_PATH = /^assets\/([^/]+)\/textures\/((?:item|block)\/[^\/]+)\.png$/;
-const MODEL_PATH = /^assets\/([^/]+)\/models\/((?:item|block)\/[^\/]+)\.json$/;
+const RECIPE_PATH = /^data\/([^/]+)\/recipes?\/(.+)\.json$/;
+const TAG_PATH = /^data\/([^/]+)\/tags?\/(.+)\.json$/;
+const TEXTURE_PATH = /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/;
+const MODEL_PATH = /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/;
 const LANG_PATH = /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/;
 
 /**
