@@ -211,6 +211,14 @@ export function searchScript(locale: string): string {
       });
     }
 
+    function downloadRecipe(ev, rid) {
+      ev.stopPropagation();
+      const a = document.createElement('a');
+      a.href = imagePath(rid, fmt, versions);
+      a.download = splitId(rid).id + '.' + fmt;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+
     function changeFmt(next) { setFmt(next); writeStored('mpr_fmt', next); }
 
     // 一覧から選ぶと結果は下（モバイル）か右（PC）に出る。モバイルでは見えない位置なので送り届ける
@@ -262,40 +270,9 @@ export function searchScript(locale: string): string {
             itemPager),
           e('div', { className: 'main-panel', id: 'main-panel' }, e(MainPanel, {
             showImg: showImg, sel: sel, selName: selName, fmt: fmt, page: page, setPage: setPage,
-            filteredRecipes: filteredRecipes, copiedId: copiedId, copyFailedId: copyFailedId, names: names, versions: versions, onPick: pick, onCopy: copyId, onDownload: downloadItem
+            filteredRecipes: filteredRecipes, copiedId: copiedId, copyFailedId: copyFailedId, names: names, versions: versions,
+            onPick: pick, onCopy: copyId, onDownload: downloadItem, onDownloadRecipe: downloadRecipe
           })))));
-  }
-
-  function MainPanel(props) {
-    const { showImg, sel, filteredRecipes, page } = props;
-    if (showImg) {
-      const pageCount = Math.ceil(filteredRecipes.length / PAGE_SIZE);
-      const pager = pageCount > 1 && e(Box, { sx: { my: 1, display: 'flex', justifyContent: 'center' } },
-        e(Pagination, { count: pageCount, page: page, onChange: (ev, val) => props.setPage(val), color: 'primary' }));
-      return e(Box, null,
-        e('div', { className: 'section-head' },
-          e(Typography, { variant: 'subtitle2' }, t.showImages),
-          e(Chip, { size: 'small', variant: 'outlined', label: filteredRecipes.length })),
-        pager,
-        e('div', { className: 'recipe-grid' },
-          filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(({ rid, item }) =>
-            e(ImageTile, { key: rid, recipeId: rid, itemId: item, name: props.names[item], fmt: props.fmt, versions: props.versions, onClick: () => props.onPick(item) }))),
-        pager);
-    }
-    if (!sel) return e('div', { className: 'empty-state' }, e(Typography, { variant: 'body2' }, t.lead));
-    const openFullSize = rid => window.open(imagePath(rid, props.fmt, props.versions), '_blank', 'noopener');
-    return e(Box, null,
-      e('div', { className: 'section-head' },
-        e(Box, { sx: { flexGrow: 1, minWidth: 0 } },
-          e(Typography, { variant: 'h6' }, props.selName),
-          e(Typography, { variant: 'caption', color: 'text.secondary', sx: { fontFamily: 'monospace' } }, sel.label)),
-        e(Chip, { size: 'small', variant: 'outlined', label: sel.recipeIds.length + ' ' + t.recipeCount }),
-        e(IconButton, { size: 'small', onClick: ev => props.onCopy(ev, sel.label), title: copyTitle(props.copiedId === sel.label, props.copyFailedId === sel.label) },
-          e('i', { className: props.copiedId === sel.label ? 'fa-solid fa-check' : 'fa-regular fa-copy', style: { fontSize: 14 } })),
-        e(IconButton, { size: 'small', onClick: ev => props.onDownload(ev, sel.label), title: t.download },
-          e('i', { className: 'fa-solid fa-download', style: { fontSize: 14 } }))),
-      e('div', { className: 'recipe-grid' },
-        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, itemId: sel.label, name: props.names[sel.label], fmt: props.fmt, versions: props.versions, title: t.openImage, onClick: () => openFullSize(rid) }))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(e(ThemeProvider, { theme: theme }, e(App, null)));

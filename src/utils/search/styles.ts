@@ -70,6 +70,8 @@ export const SEARCH_STYLES = /* css */ `
   .recipe-name { font-size: 13px; color: ${TOKENS.text}; line-height: 1.3; overflow-wrap: anywhere; }
   .recipe-label { font-size: 11px; color: ${TOKENS.muted}; font-family: monospace; overflow-wrap: anywhere; }
 
+  .recipe-actions { display: flex; justify-content: center; gap: 2px; }
+
   .section-head {
     display: flex; align-items: center; gap: 8px;
     padding-bottom: 6px; border-bottom: 1px solid ${TOKENS.border}; margin-bottom: 10px;

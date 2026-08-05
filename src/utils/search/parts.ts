@@ -75,7 +75,12 @@ export function searchParts(toggle: LangToggle): string {
       }),
       st === 'ok' && e('div', { className: 'recipe-meta' },
         props.name && props.name !== props.itemId && e('div', { className: 'recipe-name' }, props.name),
-        e('div', { className: 'recipe-label' }, p.ns + ':' + p.id)));
+        e('div', { className: 'recipe-label' }, p.ns + ':' + p.id),
+        props.onCopy && e('div', { className: 'recipe-actions' },
+          e(IconButton, { size: 'small', onClick: props.onDownload, title: t.download },
+            e('i', { className: 'fa-solid fa-download', style: { fontSize: 11 } })),
+          e(IconButton, { size: 'small', onClick: props.onCopy, title: copyTitle(props.copied, props.failed) },
+            e('i', { className: props.copied ? 'fa-solid fa-check' : 'fa-regular fa-copy', style: { fontSize: 11 } })))));
   }
 
   function AppBar(props) {
@@ -110,6 +115,47 @@ export function searchParts(toggle: LangToggle): string {
         e(TextField, { label: t.format, select: true, value: props.fmt, onChange: x => props.setFmt(x.target.value), sx: { width: { sm: 110 } }, size: 'small' },
           e(MenuItem, { value: 'png' }, 'PNG'), e(MenuItem, { value: 'gif' }, 'GIF'), e(MenuItem, { value: 'jpg' }, 'JPG')),
         e(Button, { type: 'submit', variant: 'contained', sx: { px: 3, height: 40, minWidth: 88, flexShrink: 0 } }, t.show)));
+  }
+
+  function MainPanel(props) {
+    const { showImg, sel, filteredRecipes, page } = props;
+    if (showImg) {
+      const pageCount = Math.ceil(filteredRecipes.length / PAGE_SIZE);
+      const pager = pageCount > 1 && e(Box, { sx: { my: 1, display: 'flex', justifyContent: 'center' } },
+        e(Pagination, { count: pageCount, page: page, onChange: (ev, val) => props.setPage(val), color: 'primary' }));
+      return e(Box, null,
+        e('div', { className: 'section-head' },
+          e(Typography, { variant: 'subtitle2' }, t.showImages),
+          e(Chip, { size: 'small', variant: 'outlined', label: filteredRecipes.length })),
+        pager,
+        e('div', { className: 'recipe-grid' },
+          filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(({ rid, item }) =>
+            e(ImageTile, {
+              key: rid, recipeId: rid, itemId: item, name: props.names[item], fmt: props.fmt, versions: props.versions,
+              onClick: () => props.onPick(item), copied: props.copiedId === item, failed: props.copyFailedId === item,
+              onCopy: ev => props.onCopy(ev, item), onDownload: ev => props.onDownloadRecipe(ev, rid)
+            }))),
+        pager);
+    }
+    if (!sel) return e('div', { className: 'empty-state' }, e(Typography, { variant: 'body2' }, t.lead));
+    const openFullSize = rid => window.open(imagePath(rid, props.fmt, props.versions), '_blank', 'noopener');
+    return e(Box, null,
+      e('div', { className: 'section-head' },
+        e(Box, { sx: { flexGrow: 1, minWidth: 0 } },
+          e(Typography, { variant: 'h6' }, props.selName),
+          e(Typography, { variant: 'caption', color: 'text.secondary', sx: { fontFamily: 'monospace' } }, sel.label)),
+        e(Chip, { size: 'small', variant: 'outlined', label: sel.recipeIds.length + ' ' + t.recipeCount }),
+        e(IconButton, { size: 'small', onClick: ev => props.onCopy(ev, sel.label), title: copyTitle(props.copiedId === sel.label, props.copyFailedId === sel.label) },
+          e('i', { className: props.copiedId === sel.label ? 'fa-solid fa-check' : 'fa-regular fa-copy', style: { fontSize: 14 } })),
+        e(IconButton, { size: 'small', onClick: ev => props.onDownload(ev, sel.label), title: t.download },
+          e('i', { className: 'fa-solid fa-download', style: { fontSize: 14 } }))),
+      e('div', { className: 'recipe-grid' },
+        sel.recipeIds.map(rid => e(ImageTile, {
+          key: rid, recipeId: rid, itemId: sel.label, name: props.names[sel.label], fmt: props.fmt, versions: props.versions,
+          title: t.openImage, onClick: () => openFullSize(rid),
+          copied: props.copiedId === sel.label, failed: props.copyFailedId === sel.label,
+          onCopy: ev => props.onCopy(ev, sel.label), onDownload: ev => props.onDownloadRecipe(ev, rid)
+        }))));
   }
 
   function ItemRow(props) {
