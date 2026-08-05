@@ -149,7 +149,7 @@ const PORTAL_SCRIPT = /* js */ `
                   'Content-Type': 'application/json',
                   'Authorization': 'Bearer ' + token
                 },
-                body: JSON.stringify(result.data)
+                body: JSON.stringify(result.byNs[ns])
               }).then(function (res) {
                 if (res.status === 429) throw new Error(t.errorLimit);
                 if (!res.ok) throw new Error(t.errorGeneric);

@@ -15,51 +15,62 @@ const MODEL_PATH = /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/;
 const LANG_PATH = /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/;
 
 /**
- * 読み込んだ JSZip インスタンスからアセットを抽出し、bulk API 送信用のオブジェクトを組み立てます。
+ * 読み込んだ JSZip インスタンスからアセットを抽出し、名前空間別に分離したオブジェクトを組み立てます。
  * @param {object} zip JSZip のインスタンス
  * @returns {Promise<{
- *   data: { recipes: object, tags: object, textures: object, models: object, langs: object },
+ *   byNs: object,
  *   namespaces: string[],
  *   counts: { recipes: number, tags: number, textures: number, models: number, langs: number }
  * }>} 抽出されたデータとメタ情報
  */
 async function analyzeJar(zip) {
-  const data = { recipes: {}, tags: {}, textures: {}, models: {}, langs: {} };
+  const byNs = {};
+  const ensureNs = (ns) =>
+    (byNs[ns] ||= { recipes: {}, tags: {}, textures: {}, models: {}, langs: {} });
+
   const namespaces = new Set();
   const paths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
 
   for (const path of paths) {
     let m;
     if ((m = path.match(RECIPE_PATH))) {
-      namespaces.add(m[1]);
-      data.recipes[m[2]] = await zip.files[path].async('string');
+      const [, ns, id] = m;
+      namespaces.add(ns);
+      ensureNs(ns).recipes[id] = await zip.files[path].async('string');
     } else if ((m = path.match(TAG_PATH))) {
-      data.tags[m[2]] = await zip.files[path].async('string');
+      const [, ns, id] = m;
+      ensureNs(ns).tags[id] = await zip.files[path].async('string');
     } else if ((m = path.match(TEXTURE_PATH))) {
+      const [, ns, id] = m;
       const bytes = new Uint8Array(await zip.files[path].async('arraybuffer'));
-      data.textures[m[2] + '.png'] = bytesToBase64(bytes);
+      ensureNs(ns).textures[id + '.png'] = bytesToBase64(bytes);
     } else if ((m = path.match(MODEL_PATH))) {
-      data.models[m[2]] = await zip.files[path].async('string');
+      const [, ns, id] = m;
+      ensureNs(ns).models[id] = await zip.files[path].async('string');
     } else if ((m = path.match(LANG_PATH))) {
-      data.langs[m[2]] = await zip.files[path].async('string');
+      const [, ns, id] = m;
+      ensureNs(ns).langs[id] = await zip.files[path].async('string');
     }
   }
 
+  const counts = { recipes: 0, tags: 0, textures: 0, models: 0, langs: 0 };
+  for (const ns of Object.keys(byNs)) {
+    counts.recipes += Object.keys(byNs[ns].recipes).length;
+    counts.tags += Object.keys(byNs[ns].tags).length;
+    counts.textures += Object.keys(byNs[ns].textures).length;
+    counts.models += Object.keys(byNs[ns].models).length;
+    counts.langs += Object.keys(byNs[ns].langs).length;
+  }
+
   return {
-    data,
+    byNs,
     namespaces: Array.from(namespaces),
-    counts: {
-      recipes: Object.keys(data.recipes).length,
-      tags: Object.keys(data.tags).length,
-      textures: Object.keys(data.textures).length,
-      models: Object.keys(data.models).length,
-      langs: Object.keys(data.langs).length
-    }
+    counts
   };
 }
 
 /**
- * Uint8Array のバイナリデータを、スタックオーバーフローを避けて base64 にエンコードします。
+ * Uint8Array のバイナリデータを、ブラウザのスタック制限を避けて安全に base64 にエンコードします。
  * @param {Uint8Array} bytes 
  * @returns {string} base64文字列
  */
