@@ -32,13 +32,14 @@ export function searchParts(toggle: LangToggle): string {
     const [st, setSt] = React.useState('loading');
     const p = splitId(props.recipeId);
     return e('div', { className: 'recipe-item' },
-      st === 'loading' && e(CircularProgress, { size: 20, sx: { my: 2 } }),
+      st === 'loading' && e(CircularProgress, { size: 20, sx: { my: 1 } }),
       st === 'error' && e(Typography, { variant: 'caption', color: 'error' }, props.recipeId + ' ' + t.cannotDisplay),
       e('img', {
         src: imagePath(props.recipeId, props.fmt) + '?t=' + props.nonce, alt: props.recipeId, className: 'recipe-img',
         onLoad: () => setSt('ok'), onError: () => setSt('error'), onClick: props.onClick, title: props.title,
         style: { display: st === 'ok' ? 'block' : 'none' }
       }),
+      st === 'ok' && props.name && props.name !== props.recipeId && e('div', { className: 'recipe-name' }, props.name),
       st === 'ok' && e('div', { className: 'recipe-label' }, p.ns + ':' + p.id));
   }
 
@@ -60,7 +61,7 @@ export function searchParts(toggle: LangToggle): string {
             e('i', { className: 'fa-solid fa-xmark', style: { fontSize: 13 } })))
       : null;
     return e('form', { onSubmit: props.onSubmit },
-      e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1.5, alignItems: { sm: 'center' }, sx: { mb: 3 } },
+      e(Stack, { direction: { xs: 'column', sm: 'row' }, spacing: 1, alignItems: { sm: 'center' }, sx: { mb: 1.5 } },
         e(TextField, {
           label: t.search, value: props.q, onChange: x => props.setQ(x.target.value), autoFocus: true, fullWidth: true, size: 'small',
           placeholder: 'namespace:id', InputProps: { endAdornment: clearAdornment },
@@ -71,7 +72,7 @@ export function searchParts(toggle: LangToggle): string {
             (ns === 'all' ? 'All' : ns) + ' (' + props.nsCounts[ns] + ')'))),
         e(TextField, { label: t.format, select: true, value: props.fmt, onChange: x => props.setFmt(x.target.value), sx: { width: { sm: 110 } }, size: 'small' },
           e(MenuItem, { value: 'png' }, 'PNG'), e(MenuItem, { value: 'gif' }, 'GIF'), e(MenuItem, { value: 'jpg' }, 'JPG')),
-        e(Button, { type: 'submit', variant: 'contained', sx: { px: 3, height: 40, minWidth: 96, flexShrink: 0 } }, t.show)));
+        e(Button, { type: 'submit', variant: 'contained', sx: { px: 3, height: 40, minWidth: 88, flexShrink: 0 } }, t.show)));
   }
 
   function ItemRow(props) {

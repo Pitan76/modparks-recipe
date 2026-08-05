@@ -8,8 +8,11 @@
 import { SEARCH_THEME } from './theme';
 import { searchParts } from './parts';
 
-/** 1ページあたりの一覧表示件数。 */
+/** 1ページあたりのレシピ画像の表示枚数。 */
 const PAGE_SIZE = 48;
+
+/** 1ページあたりのアイテム一覧の表示件数。 */
+const ITEM_PAGE_SIZE = 50;
 
 /**
  * クライアントスクリプトを組み立てます。
@@ -23,6 +26,7 @@ export function searchScript(locale: string): string {
   const t = window.MPR_SEARCH_MESSAGES;
   const e = React.createElement;
   const PAGE_SIZE = ${PAGE_SIZE};
+  const ITEM_PAGE_SIZE = ${ITEM_PAGE_SIZE};
   const MC_LOCALE = '${mcLocale}';
   const { ThemeProvider, createTheme, Container, Box, Typography, TextField, MenuItem, Button, Stack, CircularProgress, Chip, IconButton, Checkbox, FormControlLabel, Pagination, InputAdornment } = MaterialUI;
 
@@ -40,6 +44,7 @@ export function searchScript(locale: string): string {
     const [selNs, setSelNs] = React.useState('all');
     const [showImg, setShowImg] = React.useState(false);
     const [page, setPage] = React.useState(1);
+    const [itemPage, setItemPage] = React.useState(1);
 
     React.useEffect(() => {
       fetch('/api/list.json').then(r => r.ok ? r.json() : {}).then(d => {
@@ -80,7 +85,14 @@ export function searchScript(locale: string): string {
 
     React.useEffect(() => { replaceQuery(p => selNs === 'all' ? p.delete('ns') : p.set('ns', selNs)); }, [selNs]);
     React.useEffect(() => { replaceQuery(p => showImg ? p.set('view', 'img') : p.delete('view')); setPage(1); }, [showImg]);
-    React.useEffect(() => { setPage(1); }, [filtered]);
+    React.useEffect(() => { setPage(1); setItemPage(1); }, [filtered]);
+
+    // 一覧はページ単位で描画する。全件をDOMに出すと重く、探している場所も見失いやすい
+    const itemPageCount = Math.max(1, Math.ceil(filtered.length / ITEM_PAGE_SIZE));
+    const pagedItems = React.useMemo(
+      () => filtered.slice((itemPage - 1) * ITEM_PAGE_SIZE, itemPage * ITEM_PAGE_SIZE),
+      [filtered, itemPage]
+    );
 
     const filteredRecipes = React.useMemo(() => {
       const res = [];
@@ -88,9 +100,16 @@ export function searchScript(locale: string): string {
       return res;
     }, [filtered, groups]);
 
+    // 画像一覧を見ているときはそちらに出ているアイテムの名前が要る
+    const gridItems = React.useMemo(
+      () => Array.from(new Set(filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(x => x.item))),
+      [filteredRecipes, page]
+    );
+    const visibleItems = showImg ? gridItems : pagedItems;
+
     React.useEffect(() => {
       if (!recipes) return;
-      const missing = filtered.slice(0, 300).filter(id => !names[id] && id.includes(':'));
+      const missing = visibleItems.filter(id => !names[id] && id.includes(':'));
       if (missing.length === 0) return;
       const placeholders = {}; missing.forEach(id => { placeholders[id] = id; });
       setNames(prev => Object.assign({}, prev, placeholders));
@@ -100,7 +119,7 @@ export function searchScript(locale: string): string {
           .then(d => { if (d.names) setNames(prev => Object.assign({}, prev, d.names)); })
           .catch(err => console.error(err));
       }
-    }, [filtered, recipes]);
+    }, [visibleItems, recipes]);
 
     function select(item) {
       setSel({ label: item, recipeIds: groups[item] || [item] });
@@ -144,27 +163,24 @@ export function searchScript(locale: string): string {
     }
 
     const selName = sel ? (names[sel.label] || sel.label) : '';
-    const hidden = filtered.length - Math.min(filtered.length, 300);
+    const itemPager = itemPageCount > 1 && e(Box, { sx: { my: 0.5, display: 'flex', justifyContent: 'center' } },
+      e(Pagination, { count: itemPageCount, page: itemPage, onChange: (ev, val) => setItemPage(val), size: 'small', siblingCount: 0, color: 'primary' }));
     const listBody = recipes === null
-      ? e(Box, { sx: { p: 4, textAlign: 'center' } }, e(CircularProgress, { size: 20 }))
+      ? e(Box, { sx: { p: 2, textAlign: 'center' } }, e(CircularProgress, { size: 20 }))
       : items.length === 0
-        ? e(Box, { sx: { p: 4, textAlign: 'center', color: 'text.secondary' } }, e(Typography, { variant: 'body2' }, t.listUnavailable))
+        ? e(Box, { sx: { p: 2, textAlign: 'center', color: 'text.secondary' } }, e(Typography, { variant: 'body2' }, t.listUnavailable))
         : filtered.length === 0
-          ? e(Box, { sx: { p: 4, textAlign: 'center', color: 'text.secondary' } }, e(Typography, { variant: 'body2' }, t.noResults))
-          : [
-              filtered.slice(0, 300).map(item => e(ItemRow, {
-                key: item, item: item, name: names[item] || item,
-                selected: !!sel && sel.label === item, copied: copiedId === item,
-                onSelect: () => pick(item),
-                onCopy: ev => copyId(ev, item), onDownload: ev => downloadItem(ev, item)
-              })),
-              hidden > 0 && e(Box, { key: 'more', sx: { p: 1.5, textAlign: 'center', color: 'text.secondary' } },
-                e(Typography, { variant: 'caption' }, t.moreRowsPrefix + hidden + t.moreRowsSuffix))
-            ];
+          ? e(Box, { sx: { p: 2, textAlign: 'center', color: 'text.secondary' } }, e(Typography, { variant: 'body2' }, t.noResults))
+          : pagedItems.map(item => e(ItemRow, {
+              key: item, item: item, name: names[item] || item,
+              selected: !!sel && sel.label === item, copied: copiedId === item,
+              onSelect: () => pick(item),
+              onCopy: ev => copyId(ev, item), onDownload: ev => downloadItem(ev, item)
+            }));
 
     return e(React.Fragment, null,
       e(AppBar, { selected: sel ? sel.label : null }),
-      e(Container, { maxWidth: 'lg', sx: { py: 3 } },
+      e(Container, { maxWidth: false, disableGutters: true, sx: { px: 1.5, py: 1.5 } },
         e(SearchForm, { q: q, setQ: setQ, selNs: selNs, setSelNs: setSelNs, fmt: fmt, setFmt: changeFmt, nss: nss, nsCounts: nsCounts, onSubmit: submit }),
         e('div', { className: 'app-layout' },
           e('div', { className: 'side-panel' },
@@ -176,27 +192,31 @@ export function searchScript(locale: string): string {
             e(FormControlLabel, {
               control: e(Checkbox, { size: 'small', disableRipple: true, checked: showImg, onChange: x => setShowImg(x.target.checked) }),
               label: t.showImages,
-              sx: { mb: 1, '& .MuiFormControlLabel-label': { fontSize: 13, color: 'text.secondary' } }
+              sx: { mb: 0, '& .MuiFormControlLabel-label': { fontSize: 13, color: 'text.secondary' } }
             }),
-            e('div', { className: 'list-box' }, listBody)),
+            e('div', { className: 'list-box' }, listBody),
+            itemPager),
           e('div', { className: 'main-panel', id: 'main-panel' }, e(MainPanel, {
             showImg: showImg, sel: sel, selName: selName, fmt: fmt, nonce: nonce, page: page, setPage: setPage,
-            filteredRecipes: filteredRecipes, copiedId: copiedId, onPick: pick, onCopy: copyId, onDownload: downloadItem
+            filteredRecipes: filteredRecipes, copiedId: copiedId, names: names, onPick: pick, onCopy: copyId, onDownload: downloadItem
           })))));
   }
 
   function MainPanel(props) {
     const { showImg, sel, filteredRecipes, page } = props;
     if (showImg) {
+      const pageCount = Math.ceil(filteredRecipes.length / PAGE_SIZE);
+      const pager = pageCount > 1 && e(Box, { sx: { my: 1, display: 'flex', justifyContent: 'center' } },
+        e(Pagination, { count: pageCount, page: page, onChange: (ev, val) => props.setPage(val), color: 'primary' }));
       return e(Box, null,
         e('div', { className: 'section-head' },
           e(Typography, { variant: 'subtitle2', sx: { flexGrow: 1 } }, t.showImages),
           e(Chip, { size: 'small', variant: 'outlined', label: filteredRecipes.length })),
+        pager,
         e('div', { className: 'recipe-grid' },
           filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(({ rid, item }) =>
-            e(ImageTile, { key: rid, recipeId: rid, fmt: props.fmt, nonce: props.nonce, onClick: () => props.onPick(item) }))),
-        filteredRecipes.length > PAGE_SIZE && e(Box, { sx: { mt: 3, display: 'flex', justifyContent: 'center' } },
-          e(Pagination, { count: Math.ceil(filteredRecipes.length / PAGE_SIZE), page: page, onChange: (ev, val) => props.setPage(val), color: 'primary' })));
+            e(ImageTile, { key: rid, recipeId: rid, name: props.names[item], fmt: props.fmt, nonce: props.nonce, onClick: () => props.onPick(item) }))),
+        pager);
     }
     if (!sel) return e('div', { className: 'empty-state' }, e(Typography, { variant: 'body2' }, t.lead));
     const openFullSize = rid => window.open(imagePath(rid, props.fmt), '_blank', 'noopener');
@@ -211,7 +231,7 @@ export function searchScript(locale: string): string {
         e(IconButton, { size: 'small', onClick: ev => props.onDownload(ev, sel.label), title: t.download },
           e('i', { className: 'fa-solid fa-download', style: { fontSize: 14 } }))),
       e('div', { className: 'recipe-grid' },
-        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, fmt: props.fmt, nonce: props.nonce, title: t.openImage, onClick: () => openFullSize(rid) }))));
+        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, name: props.selName, fmt: props.fmt, nonce: props.nonce, title: t.openImage, onClick: () => openFullSize(rid) }))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(e(ThemeProvider, { theme: theme }, e(App, null)));
