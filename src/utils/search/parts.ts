@@ -18,6 +18,38 @@ interface LangToggle {
  */
 export function searchParts(toggle: LangToggle): string {
   return /* js */ `
+  /** localStorage は環境によって参照自体が投げるため、失敗は既定値に倒す。 */
+  function readStored(key) {
+    try { return localStorage.getItem(key); } catch (err) { return null; }
+  }
+
+  function writeStored(key, value) {
+    try { localStorage.setItem(key, value); } catch (err) { /* 保存できなくても表示は続く */ }
+  }
+
+  /** clipboard API が使えないときの退避。成功したかを返す。 */
+  function legacyCopy(text) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    try {
+      return document.execCommand('copy');
+    } catch (err) {
+      return false;
+    } finally {
+      document.body.removeChild(area);
+    }
+  }
+
+  function copyTitle(copied, failed) {
+    if (failed) return t.copyFailed;
+    return copied ? t.copySuccess : t.copyLink;
+  }
+
   function splitId(full) {
     const i = full.indexOf(':');
     return i === -1 ? { ns: 'minecraft', id: full } : { ns: full.slice(0, i), id: full.slice(i + 1) };
@@ -42,7 +74,7 @@ export function searchParts(toggle: LangToggle): string {
         style: { display: st === 'ok' ? 'block' : 'none' }
       }),
       st === 'ok' && e('div', { className: 'recipe-meta' },
-        props.name && props.name !== props.recipeId && e('div', { className: 'recipe-name' }, props.name),
+        props.name && props.name !== props.itemId && e('div', { className: 'recipe-name' }, props.name),
         e('div', { className: 'recipe-label' }, p.ns + ':' + p.id)));
   }
 
@@ -56,7 +88,7 @@ export function searchParts(toggle: LangToggle): string {
           e('a', { href: '/?lang=${toggle.lang}' + (props.selected ? '&id=' + encodeURIComponent(props.selected) : '') }, '${toggle.label}'),
           e('a', { href: '/upload' }, t.publish),
           e('a', { href: 'https://github.com/Pitan76/modparks-recipe', target: '_blank', rel: 'noreferrer', 'aria-label': 'GitHub' },
-            e('i', { className: 'fa-brands fa-github', style: { fontSize: 18 } })))));
+            e('i', { className: 'fa-brands fa-github', style: { fontSize: 22 } })))));
   }
 
   function SearchForm(props) {
@@ -86,7 +118,7 @@ export function searchParts(toggle: LangToggle): string {
       e(Typography, { variant: 'caption', color: 'text.secondary', display: 'block', noWrap: true, sx: { fontFamily: 'monospace' } }, props.item),
       e('div', { className: 'item-actions' },
         e(IconButton, { size: 'small', onClick: props.onDownload, title: t.download }, e('i', { className: 'fa-solid fa-download', style: { fontSize: 11 } })),
-        e(IconButton, { size: 'small', onClick: props.onCopy, title: props.copied ? t.copySuccess : t.copyLink },
+        e(IconButton, { size: 'small', onClick: props.onCopy, title: copyTitle(props.copied, props.failed) },
           e('i', { className: props.copied ? 'fa-solid fa-check' : 'fa-regular fa-copy', style: { fontSize: 11 } }))));
   }
 `;

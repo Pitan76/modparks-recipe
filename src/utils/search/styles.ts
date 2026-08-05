@@ -43,7 +43,7 @@ export const SEARCH_STYLES = /* css */ `
   .app-brand img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
   .app-title { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: ${TOKENS.text}; }
   .app-nav { display: flex; align-items: center; gap: 20px; font-size: 14px; color: ${TOKENS.muted}; }
-  .app-nav a { color: ${TOKENS.muted}; text-decoration: none; }
+  .app-nav a { display: flex; align-items: center; height: 32px; line-height: 1; color: ${TOKENS.muted}; text-decoration: none; }
   .app-nav a:hover { color: ${TOKENS.primary}; }
 
   .app-layout { display: flex; gap: 20px; align-items: flex-start; }

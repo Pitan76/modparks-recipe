@@ -11,6 +11,9 @@ import { searchParts } from './parts';
 /** 1ページあたりのレシピ画像の表示枚数。 */
 const PAGE_SIZE = 48;
 
+/** 検索時に表示名を引きに行く上限件数。 */
+const SEARCH_NAME_LIMIT = 3000;
+
 /** 1ページあたりのアイテム一覧の表示件数。 */
 const ITEM_PAGE_SIZE = 50;
 
@@ -28,6 +31,9 @@ export function searchScript(locale: string): string {
   const PAGE_SIZE = ${PAGE_SIZE};
   const ITEM_PAGE_SIZE = ${ITEM_PAGE_SIZE};
   const MC_LOCALE = '${mcLocale}';
+  const NAME_BATCH = 50;
+  const NAME_CONCURRENCY = 6;
+  const SEARCH_NAME_LIMIT = ${SEARCH_NAME_LIMIT};
   const { ThemeProvider, createTheme, Container, Box, Typography, TextField, MenuItem, Button, Stack, CircularProgress, Chip, IconButton, Checkbox, FormControlLabel, Pagination, InputAdornment } = MaterialUI;
 
   ${SEARCH_THEME}
@@ -40,10 +46,11 @@ export function searchScript(locale: string): string {
     const [recipes, setRecipes] = React.useState(null);
     const [versions, setVersions] = React.useState(null);
     const [q, setQ] = React.useState('');
-    const [fmt, setFmt] = React.useState(() => localStorage.getItem('mpr_fmt') || 'png');
+    const [fmt, setFmt] = React.useState(() => readStored('mpr_fmt') || 'png');
     const [sel, setSel] = React.useState(null);
     const [names, setNames] = React.useState({});
     const [copiedId, setCopiedId] = React.useState(null);
+    const [copyFailedId, setCopyFailedId] = React.useState(null);
     const [selNs, setSelNs] = React.useState(() => INITIAL_PARAMS.get('ns') || 'all');
     const [showImg, setShowImg] = React.useState(() => INITIAL_PARAMS.get('view') !== 'list');
     const [page, setPage] = React.useState(1);
@@ -111,19 +118,50 @@ export function searchScript(locale: string): string {
     );
     const visibleItems = showImg ? gridItems : pagedItems;
 
-    React.useEffect(() => {
-      if (!recipes) return;
-      const missing = visibleItems.filter(id => !names[id] && id.includes(':'));
+    const requested = React.useRef(new Set());
+
+    /** まだ引いていないIDの表示名を取りに行きます。同じIDは二度要求しません。 */
+    function requestNames(ids) {
+      const missing = ids.filter(id => id.includes(':') && !requested.current.has(id));
       if (missing.length === 0) return;
-      const placeholders = {}; missing.forEach(id => { placeholders[id] = id; });
-      setNames(prev => Object.assign({}, prev, placeholders));
-      for (let i = 0; i < missing.length; i += 50) {
-        fetch('/api/names?lang=' + MC_LOCALE + '&ids=' + encodeURIComponent(missing.slice(i, i + 50).join(',')))
+      missing.forEach(id => requested.current.add(id));
+      const batches = [];
+      for (let i = 0; i < missing.length; i += NAME_BATCH) batches.push(missing.slice(i, i + NAME_BATCH));
+      runBatches(batches);
+    }
+
+    /** バッチを同時実行数の上限付きで流します。全件検索時に数十本を一斉に投げないためです。 */
+    function runBatches(batches) {
+      let next = 0;
+      const worker = () => {
+        if (next >= batches.length) return Promise.resolve();
+        const ids = batches[next++];
+        return fetch('/api/names?lang=' + MC_LOCALE + '&ids=' + encodeURIComponent(ids.join(',')))
           .then(r => r.ok ? r.json() : { names: {} })
           .then(d => { if (d.names) setNames(prev => Object.assign({}, prev, d.names)); })
-          .catch(err => console.error(err));
-      }
-    }, [visibleItems, recipes]);
+          .catch(err => console.error(err))
+          .then(worker);
+      };
+      for (let i = 0; i < Math.min(NAME_CONCURRENCY, batches.length); i++) worker();
+    }
+
+    React.useEffect(() => { if (recipes) requestNames(visibleItems); }, [visibleItems, recipes]);
+
+    // 名前で検索するには、表示中のページに無いアイテムの名前も要る。
+    // 常に全件引くとリクエストが増えるので、検索語が入ったときだけ絞り込み範囲を埋める。
+    const searchScope = React.useMemo(
+      () => selNs === 'all' ? items : items.filter(x => splitId(x).ns === selNs),
+      [items, selNs]
+    );
+    React.useEffect(() => {
+      if (!recipes || !query) return;
+      requestNames(searchScope.slice(0, SEARCH_NAME_LIMIT));
+    }, [query, searchScope, recipes]);
+
+    // 索引に無い namespace が ?ns= で来ると、選択肢に無い値のまま0件になる
+    React.useEffect(() => {
+      if (selNs !== 'all' && items.length > 0 && !nsCounts[selNs]) setSelNs('all');
+    }, [items, nsCounts, selNs]);
 
     function select(item) {
       setSel({ label: item, recipeIds: groups[item] || [item] });
@@ -134,8 +172,18 @@ export function searchScript(locale: string): string {
       ev.stopPropagation();
       const p = new URLSearchParams(window.location.search);
       p.set('id', id);
-      navigator.clipboard.writeText(window.location.origin + window.location.pathname + '?' + p.toString())
-        .then(() => { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); });
+      const url = window.location.origin + window.location.pathname + '?' + p.toString();
+      const done = ok => {
+        (ok ? setCopiedId : setCopyFailedId)(id);
+        setTimeout(() => { setCopiedId(null); setCopyFailedId(null); }, 2000);
+      };
+      // clipboard API は HTTPS でしか生えない。拒否されることもあるので必ず退避経路を持つ
+      try {
+        if (!navigator.clipboard) return done(legacyCopy(url));
+        navigator.clipboard.writeText(url).then(() => done(true)).catch(() => done(legacyCopy(url)));
+      } catch (err) {
+        done(legacyCopy(url));
+      }
     }
 
     function downloadItem(ev, item) {
@@ -148,7 +196,7 @@ export function searchScript(locale: string): string {
       });
     }
 
-    function changeFmt(next) { setFmt(next); localStorage.setItem('mpr_fmt', next); }
+    function changeFmt(next) { setFmt(next); writeStored('mpr_fmt', next); }
 
     // 一覧から選ぶと結果は下（モバイル）か右（PC）に出る。モバイルでは見えない位置なので送り届ける
     function pick(item) {
@@ -177,7 +225,7 @@ export function searchScript(locale: string): string {
           : pagedItems.map(item => e(ItemRow, {
               key: item, item: item, name: names[item] || item,
               selected: !!sel && sel.label === item, copied: copiedId === item,
-              onSelect: () => pick(item),
+              failed: copyFailedId === item, onSelect: () => pick(item),
               onCopy: ev => copyId(ev, item), onDownload: ev => downloadItem(ev, item)
             }));
 
@@ -199,7 +247,7 @@ export function searchScript(locale: string): string {
             itemPager),
           e('div', { className: 'main-panel', id: 'main-panel' }, e(MainPanel, {
             showImg: showImg, sel: sel, selName: selName, fmt: fmt, page: page, setPage: setPage,
-            filteredRecipes: filteredRecipes, copiedId: copiedId, names: names, versions: versions, onPick: pick, onCopy: copyId, onDownload: downloadItem
+            filteredRecipes: filteredRecipes, copiedId: copiedId, copyFailedId: copyFailedId, names: names, versions: versions, onPick: pick, onCopy: copyId, onDownload: downloadItem
           })))));
   }
 
@@ -216,7 +264,7 @@ export function searchScript(locale: string): string {
         pager,
         e('div', { className: 'recipe-grid' },
           filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(({ rid, item }) =>
-            e(ImageTile, { key: rid, recipeId: rid, name: props.names[item], fmt: props.fmt, versions: props.versions, onClick: () => props.onPick(item) }))),
+            e(ImageTile, { key: rid, recipeId: rid, itemId: item, name: props.names[item], fmt: props.fmt, versions: props.versions, onClick: () => props.onPick(item) }))),
         pager);
     }
     if (!sel) return e('div', { className: 'empty-state' }, e(Typography, { variant: 'body2' }, t.lead));
@@ -227,12 +275,12 @@ export function searchScript(locale: string): string {
           e(Typography, { variant: 'h6' }, props.selName),
           e(Typography, { variant: 'caption', color: 'text.secondary', sx: { fontFamily: 'monospace' } }, sel.label)),
         e(Chip, { size: 'small', variant: 'outlined', label: sel.recipeIds.length + ' ' + t.recipeCount }),
-        e(IconButton, { size: 'small', onClick: ev => props.onCopy(ev, sel.label), title: props.copiedId === sel.label ? t.copySuccess : t.copyLink },
+        e(IconButton, { size: 'small', onClick: ev => props.onCopy(ev, sel.label), title: copyTitle(props.copiedId === sel.label, props.copyFailedId === sel.label) },
           e('i', { className: props.copiedId === sel.label ? 'fa-solid fa-check' : 'fa-regular fa-copy', style: { fontSize: 14 } })),
         e(IconButton, { size: 'small', onClick: ev => props.onDownload(ev, sel.label), title: t.download },
           e('i', { className: 'fa-solid fa-download', style: { fontSize: 14 } }))),
       e('div', { className: 'recipe-grid' },
-        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, name: props.selName, fmt: props.fmt, versions: props.versions, title: t.openImage, onClick: () => openFullSize(rid) }))));
+        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, itemId: sel.label, name: props.names[sel.label], fmt: props.fmt, versions: props.versions, title: t.openImage, onClick: () => openFullSize(rid) }))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(e(ThemeProvider, { theme: theme }, e(App, null)));
