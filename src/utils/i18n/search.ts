@@ -26,6 +26,13 @@ const JA = {
   listUnavailable: '一覧を取得できませんでした（索引が未生成の可能性があります）。',
   moreRowsPrefix: '他 ',
   moreRowsSuffix: ' 件… 検索で絞り込んでください',
+  copySuccess: 'コピーしました',
+  copyFailed: 'コピーに失敗しました',
+  copied: 'コピー済み',
+  copyLink: 'リンクをコピー',
+  download: 'ダウンロード',
+  showImages: 'すべてのレシピを表示',
+  loadMore: 'もっと読み込む',
 } as const;
 
 const EN: SearchMessages = {
@@ -41,6 +48,13 @@ const EN: SearchMessages = {
   listUnavailable: 'The list could not be loaded (the index may not have been generated yet).',
   moreRowsPrefix: '',
   moreRowsSuffix: ' more… narrow it down with the search box',
+  copySuccess: 'Copied!',
+  copyFailed: 'Failed to copy',
+  copied: 'Copied',
+  copyLink: 'Copy Link',
+  download: 'Download',
+  showImages: 'Show all recipes',
+  loadMore: 'Load more',
 };
 
 const TABLES: Record<string, SearchMessages> = { ja: JA, en: EN };
