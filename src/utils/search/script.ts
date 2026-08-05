@@ -96,7 +96,11 @@ export function searchScript(locale: string): string {
     function replaceQuery(mutate) {
       const p = new URLSearchParams(window.location.search);
       mutate(p);
-      window.history.replaceState(null, '', window.location.pathname + '?' + p.toString());
+      const qs = p.toString();
+      const next = window.location.pathname + (qs ? '?' + qs : '');
+      // 変化が無いときに replaceState を呼ぶと、素のURLにも "?" だけが残る
+      if (next === window.location.pathname + window.location.search) return;
+      window.history.replaceState(null, '', next);
     }
 
     React.useEffect(() => {
