@@ -86,7 +86,9 @@ export function searchScript(locale: string): string {
 
     React.useEffect(() => { replaceQuery(p => selNs === 'all' ? p.delete('ns') : p.set('ns', selNs)); }, [selNs]);
     React.useEffect(() => { replaceQuery(p => showImg ? p.set('view', 'img') : p.delete('view')); setPage(1); }, [showImg]);
-    React.useEffect(() => { setPage(1); setItemPage(1); }, [filtered]);
+    // filtered は names の更新でも作り直されるため、絞り込み条件そのものを見る
+    // （ここで filtered を見ると、名前取得のたびに1ページ目へ戻ってしまう）
+    React.useEffect(() => { setPage(1); setItemPage(1); }, [query, selNs, items]);
 
     // 一覧はページ単位で描画する。全件をDOMに出すと重く、探している場所も見失いやすい
     const itemPageCount = Math.max(1, Math.ceil(filtered.length / ITEM_PAGE_SIZE));
@@ -187,8 +189,6 @@ export function searchScript(locale: string): string {
           e('div', { className: 'side-panel' },
             e('div', { className: 'section-head' },
               e(Typography, { variant: 'subtitle2' }, t.itemList),
-              selNs !== 'all' && e(Chip, { size: 'small', variant: 'outlined', label: selNs, onDelete: () => setSelNs('all') }),
-              e(Box, { sx: { flexGrow: 1 } }),
               recipes && e(Chip, { size: 'small', variant: 'outlined', label: filtered.length })),
             e(FormControlLabel, {
               control: e(Checkbox, { size: 'small', disableRipple: true, checked: showImg, onChange: x => setShowImg(x.target.checked) }),
@@ -211,7 +211,7 @@ export function searchScript(locale: string): string {
         e(Pagination, { count: pageCount, page: page, onChange: (ev, val) => props.setPage(val), color: 'primary' }));
       return e(Box, null,
         e('div', { className: 'section-head' },
-          e(Typography, { variant: 'subtitle2', sx: { flexGrow: 1 } }, t.showImages),
+          e(Typography, { variant: 'subtitle2' }, t.showImages),
           e(Chip, { size: 'small', variant: 'outlined', label: filteredRecipes.length })),
         pager,
         e('div', { className: 'recipe-grid' },
