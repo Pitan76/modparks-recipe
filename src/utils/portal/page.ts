@@ -14,6 +14,7 @@ import { messagesFor, type Messages } from '../i18n/portal';
  */
 export function portalPage(locale: string): string {
   const t: Messages = messagesFor(locale);
+  const leadHtml = t.lead ? `<p class="lead">${t.lead}</p>` : '';
   return /* html */ `<!DOCTYPE html>
 <html lang="${locale}">
 <head>
@@ -23,24 +24,25 @@ export function portalPage(locale: string): string {
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; background: #0f172a; color: #e2e8f0;
-         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 40rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
-  h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
-  p.lead { color: #94a3b8; margin: 0 0 2rem; line-height: 1.7; }
-  section { border: 1px solid #1e293b; border-radius: .5rem; padding: 1.25rem; margin-bottom: 1rem; }
-  button { background: #38bdf8; color: #0f172a; border: 0; border-radius: .375rem;
-           padding: .5rem 1rem; font-size: .9rem; font-weight: 600; cursor: pointer; }
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; padding: 2rem 1.25rem 4rem; }
+  main { max-width: 32rem; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
+  p.lead { color: #94a3b8; margin: 0 0 1.5rem; line-height: 1.6; font-size: 0.9rem; }
+  #app { margin-top: 1rem; }
+  button { background: #38bdf8; color: #0f172a; border: 0;
+           padding: .4rem .8rem; font-size: .85rem; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  button.ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
-  .row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+  button.ghost { background: transparent; color: #38bdf8; text-decoration: underline; padding: 0; }
+  button.text-btn { background: transparent; color: #38bdf8; text-decoration: underline; padding: 0; }
+  .row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
   .muted { color: #94a3b8; font-size: .85rem; }
-  .badge { font-size: .7rem; padding: .15rem .5rem; border-radius: 999px; border: 1px solid #334155; }
-  .badge.verified { color: #4ade80; border-color: #14532d; }
-  .badge.unverified { color: #fbbf24; border-color: #78350f; }
-  .error { color: #f87171; }
-  input[type=file] { color: #94a3b8; font-size: .85rem; }
-  ul { list-style: none; padding: 0; margin: .75rem 0 0; }
-  li { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; border-top: 1px solid #1e293b; }
+  .badge { font-size: .75rem; padding: .1rem .4rem; }
+  .badge.verified { color: #4ade80; background: #14532d33; }
+  .badge.unverified { color: #fbbf24; background: #78350f33; }
+  .error { color: #f87171; font-size: .85rem; }
+  input[type=file] { color: #e2e8f0; font-size: .85rem; }
+  ul { list-style: none; padding: 0; margin: 1rem 0 0; }
+  li { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; }
   code { font-family: ui-monospace, monospace; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -49,8 +51,8 @@ export function portalPage(locale: string): string {
 <body>
 <main>
   <h1>${t.title}</h1>
-  <p class="lead">${t.lead}</p>
-  <section id="app"></section>
+  ${leadHtml}
+  <div id="app"></div>
 </main>
 <script>
 window.MPR_MESSAGES = ${JSON.stringify(t)};
@@ -96,40 +98,43 @@ const PORTAL_SCRIPT = /* js */ `
 
   function signInView(providers) {
     clear();
-    app.appendChild(el('p', { class: 'muted' }, [t.signInLead]));
     if (providers.length === 0) {
       app.appendChild(el('p', { class: 'error' }, [t.noProviders]));
       return;
     }
+    var container = el('div', { class: 'row' }, []);
     providers.forEach(function (p) {
-      app.appendChild(el('button', {
+      container.appendChild(el('button', {
         onclick: function () { location.href = '/auth/' + p.id + '/start?redirect=/upload'; }
       }, [t.signInWith.replace('{provider}', p.name)]));
     });
+    app.appendChild(container);
   }
 
   function uploadView(me) {
     clear();
     app.appendChild(el('div', { class: 'row' }, [
-      el('span', { class: 'muted' }, [t.signedInAs + ': ' + me.displayName]),
-      el('span', { class: 'muted' }, [t.remaining + ': ' + me.remaining]),
-      el('button', { class: 'ghost', onclick: function () {
+      el('span', { class: 'muted' }, [me.displayName]),
+      el('span', { class: 'muted' }, ['(' + t.remaining.replace('{remaining}', me.remaining) + ')']),
+      el('button', { class: 'text-btn', onclick: function () {
         localStorage.removeItem(TOKEN_KEY); location.reload();
       } }, [t.signOut])
     ]));
 
     var file = el('input', { type: 'file', accept: '.jar' });
     var status = el('p', { class: 'muted' }, []);
-    var submit = el('button', { onclick: function () { send(file, submit, status); } }, [t.upload]);
 
-    app.appendChild(el('p', { class: 'muted' }, [t.chooseFile]));
-    app.appendChild(el('div', { class: 'row' }, [file, submit]));
+    file.addEventListener('change', function () {
+      send(file, status);
+    });
+
+    app.appendChild(el('div', { class: 'row' }, [file]));
     app.appendChild(status);
   }
 
-  function send(file, submit, status) {
+  function send(file, status) {
     if (!file.files || !file.files[0]) return;
-    submit.disabled = true;
+    file.disabled = true;
     status.className = 'muted';
     status.textContent = t.uploading;
 
@@ -164,24 +169,27 @@ const PORTAL_SCRIPT = /* js */ `
             });
           })
           .then(function (summary) {
+            file.disabled = false;
+            file.value = '';
+            status.textContent = '';
             resultView(summary);
           })
           .catch(function (err) {
             console.warn('Client extraction failed, falling back to server side:', err);
-            fallbackToServer(file.files[0], submit, status);
+            fallbackToServer(file.files[0], file, status);
           });
       } catch (err) {
-        fallbackToServer(file.files[0], submit, status);
+        fallbackToServer(file.files[0], file, status);
       }
     };
     reader.onerror = function () {
-      fallbackToServer(file.files[0], submit, status);
+      fallbackToServer(file.files[0], file, status);
     };
     reader.readAsArrayBuffer(file.files[0]);
   }
 
-  function fallbackToServer(fileBlob, submit, status) {
-    status.textContent = t.uploading + ' (サーバー処理中...)';
+  function fallbackToServer(fileBlob, file, status) {
+    status.textContent = t.uploading;
     var body = new FormData();
     body.append('jar', fileBlob);
     fetch('/api/upload', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: body })
@@ -192,25 +200,30 @@ const PORTAL_SCRIPT = /* js */ `
         return res.json();
       })
       .then(function (result) {
+        file.disabled = false;
+        file.value = '';
+        status.textContent = '';
         resultView(result);
       })
       .catch(function (err) {
-        submit.disabled = false;
+        file.disabled = false;
         status.className = 'error';
         status.textContent = err.message || t.errorGeneric;
       });
   }
 
   function resultView(result) {
-    var box = el('section', {}, [
+    var oldBox = document.getElementById('result-box');
+    if (oldBox) oldBox.remove();
+
+    var box = el('div', { id: 'result-box' }, [
       el('h2', {}, [t.resultTitle]),
       el('p', { class: 'muted' }, [t.extracted + ': ' + result.count])
     ]);
     var list = el('ul', {}, []);
     (result.namespaces || []).forEach(function (ns) { list.appendChild(namespaceRow(ns)); });
-    box.appendChild(el('p', { class: 'muted' }, [t.namespaces]));
     box.appendChild(list);
-    app.parentNode.appendChild(box);
+    app.appendChild(box);
   }
 
   function namespaceRow(ns) {
@@ -265,4 +278,5 @@ const PORTAL_SCRIPT = /* js */ `
       location.reload();
     });
 })();
+
 `;
