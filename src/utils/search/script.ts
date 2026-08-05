@@ -5,7 +5,7 @@
  * 文言は `window.MPR_SEARCH_MESSAGES` からのみ取得します。
  */
 
-import { SEARCH_THEME } from './theme';
+import { APP_THEME } from '../ui/theme';
 import { searchParts } from './parts';
 
 /** 1ページあたりのレシピ画像の表示枚数。 */
@@ -36,7 +36,7 @@ export function searchScript(locale: string): string {
   const SEARCH_NAME_LIMIT = ${SEARCH_NAME_LIMIT};
   const { ThemeProvider, createTheme, Container, Box, Typography, TextField, MenuItem, Button, Stack, CircularProgress, Chip, IconButton, Checkbox, FormControlLabel, Pagination, InputAdornment } = MaterialUI;
 
-  ${SEARCH_THEME}
+  ${APP_THEME}
   ${searchParts({ lang: toggleLang, label: toggleLabel })}
 
   /** 初期表示のURLパラメータ。同期エフェクトが書き換える前の値を読む必要がある。 */

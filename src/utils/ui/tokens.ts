@@ -13,6 +13,7 @@ export const TOKENS = {
   text: '#f1f5f9',
   muted: '#94a3b8',
   primary: '#8ab4f8',
+  primaryLight: '#adcbfa',
   primaryDark: '#669df6',
   hover: 'rgba(138, 180, 248, 0.08)',
 } as const;

@@ -114,7 +114,7 @@ export function searchParts(toggle: LangToggle): string {
             (ns === 'all' ? 'All' : ns) + ' (' + props.nsCounts[ns] + ')'))),
         e(TextField, { label: t.format, select: true, value: props.fmt, onChange: x => props.setFmt(x.target.value), sx: { width: { sm: 110 } }, size: 'small' },
           e(MenuItem, { value: 'png' }, 'PNG'), e(MenuItem, { value: 'gif' }, 'GIF'), e(MenuItem, { value: 'jpg' }, 'JPG')),
-        e(Button, { type: 'submit', variant: 'contained', sx: { px: 3, height: 40, minWidth: 88, flexShrink: 0 } }, t.show)));
+        e(Button, { type: 'submit', variant: 'contained', sx: { minWidth: 88, flexShrink: 0 } }, t.show)));
   }
 
   function MainPanel(props) {

@@ -27,6 +27,9 @@ export function portalPage(locale: string): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
 <style>${PORTAL_STYLES}</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@mui/material@5.15.20/umd/material-ui.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="/extractor.js"></script>
 </head>
@@ -35,7 +38,7 @@ export function portalPage(locale: string): string {
   <div class="app-bar-inner">
     <a class="app-brand" href="/">
       <img src="/icon.svg" alt="ModParks" width="32" height="32" />
-      <span class="app-title">${t.title}</span>
+      <span class="app-title">${t.siteTitle}</span>
     </a>
     <nav class="app-nav">
       <a href="/upload?lang=${toggle.lang}">${toggle.label}</a>
@@ -43,10 +46,7 @@ export function portalPage(locale: string): string {
     </nav>
   </div>
 </header>
-<main>
-  <p class="lead">${t.lead}</p>
-  <div id="app"></div>
-</main>
+<div id="root"></div>
 <script>
 window.MPR_MESSAGES = ${JSON.stringify(t)};
 ${PORTAL_SCRIPT}
