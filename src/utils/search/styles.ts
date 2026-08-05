@@ -1,22 +1,12 @@
 /**
  * @fileoverview 検索ページのスタイル。
  *
- * 配色と角丸は ModParks 本体（`lib/theme.ts` の new テーマ・ダーク）に合わせています。
  * カード・影・グラデーションは使わず、面の区切りは 1px の境界線だけで表現します。
  */
 
-/** ModParks 本体と同じデザイントークン。MUI テーマ側からも参照します。 */
-export const TOKENS = {
-  bg: '#0b1329',
-  surface: '#16223f',
-  border: '#3c4043',
-  text: '#f1f5f9',
-  muted: '#94a3b8',
-  primary: '#8ab4f8',
-  primaryDark: '#669df6',
-  hover: 'rgba(138, 180, 248, 0.08)',
-} as const;
+import { TOKENS } from '../ui/tokens';
 
+export { TOKENS };
 /** ページ全体のCSS。 */
 export const SEARCH_STYLES = /* css */ `
   :root { color-scheme: dark; }
