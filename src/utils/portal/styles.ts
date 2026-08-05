@@ -22,7 +22,8 @@ export const PORTAL_STYLES = /* css */ `
 
   .app-bar { border-bottom: 1px solid ${TOKENS.border}; }
   .app-bar-inner {
-    padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    max-width: 900px; margin: 0 auto; padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
   .app-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; }
   .app-brand img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
