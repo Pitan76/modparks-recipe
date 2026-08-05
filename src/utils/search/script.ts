@@ -38,19 +38,20 @@ export function searchScript(locale: string): string {
 
   function App() {
     const [recipes, setRecipes] = React.useState(null);
+    const [versions, setVersions] = React.useState(null);
     const [q, setQ] = React.useState('');
     const [fmt, setFmt] = React.useState(() => localStorage.getItem('mpr_fmt') || 'png');
     const [sel, setSel] = React.useState(null);
-    const [nonce, setNonce] = React.useState(0);
     const [names, setNames] = React.useState({});
     const [copiedId, setCopiedId] = React.useState(null);
     const [selNs, setSelNs] = React.useState(() => INITIAL_PARAMS.get('ns') || 'all');
-    const [showImg, setShowImg] = React.useState(() => INITIAL_PARAMS.get('view') === 'img');
+    const [showImg, setShowImg] = React.useState(() => INITIAL_PARAMS.get('view') !== 'list');
     const [page, setPage] = React.useState(1);
     const [itemPage, setItemPage] = React.useState(1);
 
     React.useEffect(() => {
       fetch('/api/list.json').then(r => r.ok ? r.json() : {}).then(d => {
+        setVersions(d.versions || null);
         if (Array.isArray(d.recipes)) setRecipes(d.recipes);
         else if (Array.isArray(d.ids)) setRecipes(d.ids.map(id => ({ id, result: id })));
         else setRecipes([]);
@@ -81,11 +82,11 @@ export function searchScript(locale: string): string {
     React.useEffect(() => {
       if (!recipes) return;
       const id = INITIAL_PARAMS.get('id');
-      if (id && groups[id]) select(id);
+      if (id && groups[id]) { select(id); setShowImg(false); }
     }, [recipes]);
 
     React.useEffect(() => { replaceQuery(p => selNs === 'all' ? p.delete('ns') : p.set('ns', selNs)); }, [selNs]);
-    React.useEffect(() => { replaceQuery(p => showImg ? p.set('view', 'img') : p.delete('view')); setPage(1); }, [showImg]);
+    React.useEffect(() => { replaceQuery(p => showImg ? p.delete('view') : p.set('view', 'list')); setPage(1); }, [showImg]);
     // filtered は names の更新でも作り直されるため、絞り込み条件そのものを見る
     // （ここで filtered を見ると、名前取得のたびに1ページ目へ戻ってしまう）
     React.useEffect(() => { setPage(1); setItemPage(1); }, [query, selNs, items]);
@@ -126,7 +127,6 @@ export function searchScript(locale: string): string {
 
     function select(item) {
       setSel({ label: item, recipeIds: groups[item] || [item] });
-      setNonce(Date.now());
       replaceQuery(p => p.set('id', item));
     }
 
@@ -142,7 +142,7 @@ export function searchScript(locale: string): string {
       ev.stopPropagation();
       (groups[item] || []).forEach(rid => {
         const a = document.createElement('a');
-        a.href = imagePath(rid, fmt);
+        a.href = imagePath(rid, fmt, versions);
         a.download = splitId(rid).id + '.' + fmt;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       });
@@ -198,8 +198,8 @@ export function searchScript(locale: string): string {
             e('div', { className: 'list-box' }, listBody),
             itemPager),
           e('div', { className: 'main-panel', id: 'main-panel' }, e(MainPanel, {
-            showImg: showImg, sel: sel, selName: selName, fmt: fmt, nonce: nonce, page: page, setPage: setPage,
-            filteredRecipes: filteredRecipes, copiedId: copiedId, names: names, onPick: pick, onCopy: copyId, onDownload: downloadItem
+            showImg: showImg, sel: sel, selName: selName, fmt: fmt, page: page, setPage: setPage,
+            filteredRecipes: filteredRecipes, copiedId: copiedId, names: names, versions: versions, onPick: pick, onCopy: copyId, onDownload: downloadItem
           })))));
   }
 
@@ -216,11 +216,11 @@ export function searchScript(locale: string): string {
         pager,
         e('div', { className: 'recipe-grid' },
           filteredRecipes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(({ rid, item }) =>
-            e(ImageTile, { key: rid, recipeId: rid, name: props.names[item], fmt: props.fmt, nonce: props.nonce, onClick: () => props.onPick(item) }))),
+            e(ImageTile, { key: rid, recipeId: rid, name: props.names[item], fmt: props.fmt, versions: props.versions, onClick: () => props.onPick(item) }))),
         pager);
     }
     if (!sel) return e('div', { className: 'empty-state' }, e(Typography, { variant: 'body2' }, t.lead));
-    const openFullSize = rid => window.open(imagePath(rid, props.fmt), '_blank', 'noopener');
+    const openFullSize = rid => window.open(imagePath(rid, props.fmt, props.versions), '_blank', 'noopener');
     return e(Box, null,
       e('div', { className: 'section-head' },
         e(Box, { sx: { flexGrow: 1, minWidth: 0 } },
@@ -232,7 +232,7 @@ export function searchScript(locale: string): string {
         e(IconButton, { size: 'small', onClick: ev => props.onDownload(ev, sel.label), title: t.download },
           e('i', { className: 'fa-solid fa-download', style: { fontSize: 14 } }))),
       e('div', { className: 'recipe-grid' },
-        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, name: props.selName, fmt: props.fmt, nonce: props.nonce, title: t.openImage, onClick: () => openFullSize(rid) }))));
+        sel.recipeIds.map(rid => e(ImageTile, { key: rid, recipeId: rid, name: props.selName, fmt: props.fmt, versions: props.versions, title: t.openImage, onClick: () => openFullSize(rid) }))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(e(ThemeProvider, { theme: theme }, e(App, null)));

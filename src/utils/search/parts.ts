@@ -23,9 +23,10 @@ export function searchParts(toggle: LangToggle): string {
     return i === -1 ? { ns: 'minecraft', id: full } : { ns: full.slice(0, i), id: full.slice(i + 1) };
   }
 
-  function imagePath(recipeId, fmt) {
+  function imagePath(recipeId, fmt, versions) {
     const p = splitId(recipeId);
-    return '/api/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.id) + '.' + fmt;
+    const v = versions && versions[p.ns];
+    return '/api/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.id) + '.' + fmt + (v ? '?v=' + encodeURIComponent(v) : '');
   }
 
   function ImageTile(props) {
@@ -35,8 +36,9 @@ export function searchParts(toggle: LangToggle): string {
       st === 'loading' && e(CircularProgress, { size: 20, sx: { my: 1 } }),
       st === 'error' && e(Typography, { variant: 'caption', color: 'error' }, props.recipeId + ' ' + t.cannotDisplay),
       e('img', {
-        src: imagePath(props.recipeId, props.fmt) + '?t=' + props.nonce, alt: props.recipeId, className: 'recipe-img',
+        src: imagePath(props.recipeId, props.fmt, props.versions), alt: props.recipeId, className: 'recipe-img',
         onLoad: () => setSt('ok'), onError: () => setSt('error'), onClick: props.onClick, title: props.title,
+        decoding: 'async',
         style: { display: st === 'ok' ? 'block' : 'none' }
       }),
       st === 'ok' && e('div', { className: 'recipe-meta' },
