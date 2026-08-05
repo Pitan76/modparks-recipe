@@ -14,7 +14,7 @@ import { messagesFor, type Messages } from '../i18n/portal';
  */
 export function portalPage(locale: string): string {
   const t: Messages = messagesFor(locale);
-  const leadHtml = t.lead ? `<p class="lead">${t.lead}</p>` : '';
+  const leadHtml = t.lead ? `<p>${t.lead}</p>` : '';
   return /* html */ `<!DOCTYPE html>
 <html lang="${locale}">
 <head>
@@ -23,27 +23,12 @@ export function portalPage(locale: string): string {
 <title>${t.title}</title>
 <style>
   :root { color-scheme: dark; }
-  body { margin: 0; background: #0f172a; color: #e2e8f0;
-         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; padding: 2rem 1.25rem 4rem; }
-  main { max-width: 32rem; margin: 0 auto; }
-  h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
-  p.lead { color: #94a3b8; margin: 0 0 1.5rem; line-height: 1.6; font-size: 0.9rem; }
-  #app { margin-top: 1rem; }
-  button { background: #38bdf8; color: #0f172a; border: 0;
-           padding: .4rem .8rem; font-size: .85rem; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: default; }
-  button.ghost { background: transparent; color: #38bdf8; text-decoration: underline; padding: 0; }
-  button.text-btn { background: transparent; color: #38bdf8; text-decoration: underline; padding: 0; }
-  .row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  .muted { color: #94a3b8; font-size: .85rem; }
-  .badge { font-size: .75rem; padding: .1rem .4rem; }
-  .badge.verified { color: #4ade80; background: #14532d33; }
-  .badge.unverified { color: #fbbf24; background: #78350f33; }
-  .error { color: #f87171; font-size: .85rem; }
-  input[type=file] { color: #e2e8f0; font-size: .85rem; }
-  ul { list-style: none; padding: 0; margin: 1rem 0 0; }
-  li { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; }
-  code { font-family: ui-monospace, monospace; }
+  body { font-family: system-ui, -apple-system, sans-serif; padding: 2rem; max-width: 32rem; margin: 0 auto; }
+  .row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+  .error { color: #ff8080; }
+  button { cursor: pointer; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="/extractor.js"></script>
@@ -114,15 +99,15 @@ const PORTAL_SCRIPT = /* js */ `
   function uploadView(me) {
     clear();
     app.appendChild(el('div', { class: 'row' }, [
-      el('span', { class: 'muted' }, [me.displayName]),
-      el('span', { class: 'muted' }, ['(' + t.remaining.replace('{remaining}', me.remaining) + ')']),
-      el('button', { class: 'text-btn', onclick: function () {
+      el('span', {}, [me.displayName]),
+      el('span', {}, ['(' + t.remaining.replace('{remaining}', me.remaining) + ')']),
+      el('button', { onclick: function () {
         localStorage.removeItem(TOKEN_KEY); location.reload();
       } }, [t.signOut])
     ]));
 
     var file = el('input', { type: 'file', accept: '.jar' });
-    var status = el('p', { class: 'muted' }, []);
+    var status = el('p', {}, []);
 
     file.addEventListener('change', function () {
       send(file, status);
@@ -135,7 +120,7 @@ const PORTAL_SCRIPT = /* js */ `
   function send(file, status) {
     if (!file.files || !file.files[0]) return;
     file.disabled = true;
-    status.className = 'muted';
+    status.className = '';
     status.textContent = t.uploading;
 
     var reader = new FileReader();
@@ -218,7 +203,7 @@ const PORTAL_SCRIPT = /* js */ `
 
     var box = el('div', { id: 'result-box' }, [
       el('h2', {}, [t.resultTitle]),
-      el('p', { class: 'muted' }, [t.extracted + ': ' + result.count])
+      el('p', {}, [t.extracted + ': ' + result.count])
     ]);
     var list = el('ul', {}, []);
     (result.namespaces || []).forEach(function (ns) { list.appendChild(namespaceRow(ns)); });
@@ -227,8 +212,8 @@ const PORTAL_SCRIPT = /* js */ `
   }
 
   function namespaceRow(ns) {
-    var badge = el('span', { class: 'badge' }, []);
-    var action = el('button', { class: 'ghost', onclick: function () { claim(ns, badge, action); } }, [t.claim]);
+    var badge = el('span', {}, []);
+    var action = el('button', { onclick: function () { claim(ns, badge, action); } }, [t.claim]);
     var row = el('li', {}, [el('code', {}, [ns]), badge, action]);
 
     fetch('/api/' + ns + '/owner.json').then(function (r) { return r.json(); }).then(function (owner) {
@@ -251,14 +236,12 @@ const PORTAL_SCRIPT = /* js */ `
       .then(function (claimed) { showTrust(badge, claimed.trust); action.remove(); })
       .catch(function (err) {
         action.disabled = false;
-        action.className = 'ghost error';
         action.textContent = err.message || t.errorGeneric;
       });
   }
 
   function showTrust(badge, trust) {
-    badge.className = 'badge ' + trust;
-    badge.textContent = trust === 'verified' ? t.trustVerified : t.trustUnverified;
+    badge.textContent = '(' + (trust === 'verified' ? t.trustVerified : t.trustUnverified) + ')';
   }
 
   if (!token) {
@@ -278,5 +261,6 @@ const PORTAL_SCRIPT = /* js */ `
       location.reload();
     });
 })();
+
 
 `;
