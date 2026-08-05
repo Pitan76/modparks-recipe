@@ -39,8 +39,9 @@ export function searchParts(toggle: LangToggle): string {
         onLoad: () => setSt('ok'), onError: () => setSt('error'), onClick: props.onClick, title: props.title,
         style: { display: st === 'ok' ? 'block' : 'none' }
       }),
-      st === 'ok' && props.name && props.name !== props.recipeId && e('div', { className: 'recipe-name' }, props.name),
-      st === 'ok' && e('div', { className: 'recipe-label' }, p.ns + ':' + p.id));
+      st === 'ok' && e('div', { className: 'recipe-meta' },
+        props.name && props.name !== props.recipeId && e('div', { className: 'recipe-name' }, props.name),
+        e('div', { className: 'recipe-label' }, p.ns + ':' + p.id)));
   }
 
   function AppBar(props) {

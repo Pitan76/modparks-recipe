@@ -62,11 +62,13 @@ export const SEARCH_STYLES = /* css */ `
   .item-row .MuiTypography-root { line-height: 1.35; }
   .item-actions { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
 
-  .recipe-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; max-width: 1700px; }
+  .recipe-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; }
   .recipe-item { flex: 0 0 auto; max-width: 100%; text-align: center; padding: 0; }
-  .recipe-img { image-rendering: pixelated; width: auto; max-width: 100%; height: auto; cursor: pointer; display: block; margin: 0 auto 2px; }
-  .recipe-name { font-size: 13px; color: ${TOKENS.text}; line-height: 1.3; }
-  .recipe-label { font-size: 11px; color: ${TOKENS.muted}; font-family: monospace; }
+  .recipe-img { image-rendering: pixelated; max-width: 100%; height: auto; cursor: pointer; display: block; margin: 0 auto 2px; }
+  /* 幅0で幅計算に参加させ、描画時だけタイル幅いっぱいに広げる。長いIDでタイルが伸びるのを防ぐ */
+  .recipe-meta { width: 0; min-width: 100%; }
+  .recipe-name { font-size: 13px; color: ${TOKENS.text}; line-height: 1.3; overflow-wrap: anywhere; }
+  .recipe-label { font-size: 11px; color: ${TOKENS.muted}; font-family: monospace; overflow-wrap: anywhere; }
 
   .section-head {
     display: flex; align-items: center; gap: 8px;
