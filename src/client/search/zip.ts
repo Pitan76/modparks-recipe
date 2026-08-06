@@ -40,7 +40,8 @@ type Sink = {
 /**
  * レシピ画像をまとめて取得し、zip の Blob を作ります。
  * @param recipeIds 対象のレシピID
- * @param fmt 画像形式
+ * @param fmt 静止画の形式
+ * @param animated 素材が切り替わるレシピかどうかの判定。true のものは GIF にします
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報
  * @param scale 拡大率

@@ -14,7 +14,6 @@ import { legacyAssetSource } from './build/asset-source';
 import type { AssetReader } from '../core/asset-reader';
 import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
-import { ensureWasm, svgToPng } from './wasm';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
 import { getAssetVersion } from './cache-version';
@@ -37,6 +36,10 @@ export async function renderBlockIconPng(
 ): Promise<Uint8Array | null> {
   const svg = await renderBlockIconSvg(env, ns, path, src);
   if (!svg) return null;
+
+  // ラスタライザは Worker 側だけの依存です。静的に読むとブラウザ向けのバンドルにも
+  // wasm 一式が入ってしまうため、実際にPNGが要るときだけ読み込みます。
+  const { ensureWasm, svgToPng } = await import('./wasm');
   await ensureWasm();
   // ピクセルアート：アンチエイリアシングは一切適用しません。
   // shapeRendering を 0 (optimizeSpeed) に設定することで、面のクリップパスの境界がぼやける（フェザリング）のを防ぎます。
