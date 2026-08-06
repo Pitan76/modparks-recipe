@@ -59,18 +59,36 @@ export function useGroups(recipes: RecipeEntry[] | null): Groups {
 }
 
 /**
+ * アイテムが属する Mod。完成品ではなくレシピ側のネームスペースを見ます。
+ *
+ * Mod がバニラのアイテムを作るレシピを足すことがあり（`astralenchant` のエンチャント本など）、
+ * 完成品で数えるとその Mod の一覧から消えてしまいます。1つのアイテムが複数の Mod から
+ * 作られることもあるため、返すのは集合です。
+ * @param groups 完成品ごとのレシピID一覧
+ * @param item 完成品アイテムID
+ */
+export function namespacesOf(groups: Groups, item: string): string[] {
+  return Array.from(new Set((groups[item] ?? []).map((rid) => splitId(rid).ns)));
+}
+
+/**
  * Mod ごとのアイテム件数。どの Mod にどれだけあるかを選ぶ前に知りたいので、選択肢に添えます。
+ *
+ * 複数の Mod にレシピを持つアイテムは、そのどちらでも数えます。選んだ Mod で表示される件数と
+ * 揃えるためで、合計が `all` を上回ることがあります。
+ * @param groups 完成品ごとのレシピID一覧
  * @param items アイテムID一覧
  */
-export function useNamespaceCounts(items: string[]): Record<string, number> {
+export function useNamespaceCounts(groups: Groups, items: string[]): Record<string, number> {
   return useMemo(() => {
     const counts: Record<string, number> = { all: items.length };
     items.forEach((item) => {
-      const ns = splitId(item).ns;
-      counts[ns] = (counts[ns] ?? 0) + 1;
+      namespacesOf(groups, item).forEach((ns) => {
+        counts[ns] = (counts[ns] ?? 0) + 1;
+      });
     });
     return counts;
-  }, [items]);
+  }, [groups, items]);
 }
 
 /** 表示名の解決結果。 */

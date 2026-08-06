@@ -11,6 +11,7 @@ import { MainPanel, PAGE_SIZE, type GridEntry, type Selection } from './MainPane
 import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle } from './parts';
 import {
   INITIAL_PARAMS,
+  namespacesOf,
   replaceQuery,
   useGroups,
   useNameRequests,
@@ -58,14 +59,17 @@ export function App({ locale }: { locale: string }) {
 
   const groups = useGroups(recipes);
   const items = useMemo(() => Object.keys(groups).sort(), [groups]);
-  const counts = useNamespaceCounts(items);
+  const counts = useNamespaceCounts(groups, items);
   const namespaces = useMemo(
     () => Object.keys(counts).sort((a, b) => (a === 'all' ? -1 : b === 'all' ? 1 : counts[b] - counts[a] || a.localeCompare(b))),
     [counts]
   );
 
   const query = q.trim().toLowerCase();
-  const scope = useMemo(() => (ns === 'all' ? items : items.filter((x) => splitId(x).ns === ns)), [items, ns]);
+  const scope = useMemo(
+    () => (ns === 'all' ? items : items.filter((x) => namespacesOf(groups, x).includes(ns))),
+    [groups, items, ns]
+  );
   const filtered = useMemo(() => {
     if (!query) return scope;
     return scope.filter((x) => x.toLowerCase().includes(query) || (names[x] || '').toLowerCase().includes(query));
@@ -111,9 +115,16 @@ export function App({ locale }: { locale: string }) {
   );
   const entries = useMemo<GridEntry[]>(() => {
     const out: GridEntry[] = [];
-    filtered.forEach((item) => (groups[item] || []).forEach((rid) => out.push({ rid, item })));
+    filtered.forEach((item) =>
+      (groups[item] || []).forEach((rid) => {
+        // Mod を選んでいる間は、その Mod が定義したレシピだけを見せます。バニラのアイテムを
+        // 作る Mod のレシピを選んだのに、バニラ側のレシピまで並ぶと選んだ意味がなくなります。
+        if (ns !== 'all' && splitId(rid).ns !== ns) return;
+        out.push({ rid, item });
+      })
+    );
     return out;
-  }, [filtered, groups]);
+  }, [filtered, groups, ns]);
   const gridItems = useMemo(
     () => Array.from(new Set(entries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((x) => x.item))),
     [entries, page]
