@@ -8,8 +8,13 @@
 
 import type { Env } from '../minecraft';
 
-/** 1 identity が1日に投稿できる jar の本数。 */
-export const DAILY_UPLOAD_LIMIT = 10;
+/**
+ * 1 identity が1日に投稿できる jar の本数。
+ *
+ * 枠は ModParks 側の Mod 開発者に優先して回します。こちらのポータルは、ModParks に
+ * プロジェクトを持たない人のための入口という位置づけなので、少なく取ってあります。
+ */
+export const DAILY_UPLOAD_LIMIT = 3;
 
 /**
  * 投稿1本分の枠を消費します。
