@@ -83,7 +83,7 @@ export function SearchForm(props: SearchFormProps) {
 
   return (
     <form onSubmit={props.onSubmit}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ mb: 2.5 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ mb: { xs: 2, sm: 2.5 } }}>
         <TextField
           label={t.search}
           value={props.q}
@@ -94,32 +94,41 @@ export function SearchForm(props: SearchFormProps) {
           InputProps={{ endAdornment: clear }}
           sx={{ maxWidth: { sm: 360 } }}
         />
-        <TextField label={t.namespace} select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={{ width: { sm: 200 } }}>
-          {props.namespaces.map((ns) => (
-            <MenuItem key={ns} value={ns}>{`${ns === 'all' ? 'All' : ns} (${props.counts[ns] ?? 0})`}</MenuItem>
-          ))}
-        </TextField>
-        <TextField label={t.format} select value={props.fmt} onChange={(ev) => props.onFmt(ev.target.value)} sx={{ width: { sm: 110 } }}>
-          <MenuItem value="png">PNG</MenuItem>
-          <MenuItem value="gif">GIF</MenuItem>
-          <MenuItem value="jpg">JPG</MenuItem>
-        </TextField>
-        <TextField
-          label={t.size}
-          select
-          value={props.scale}
-          onChange={(ev) => props.onScale(Number(ev.target.value))}
-          sx={{ width: { sm: 110 } }}
-        >
-          {SCALE_CHOICES.map((scale) => (
-            <MenuItem key={scale} value={scale}>{`${scale}x`}</MenuItem>
-          ))}
-        </TextField>
+        <FilterSelects {...props} />
         <Button type="submit" variant="contained" sx={{ minWidth: 88, flexShrink: 0 }}>
           {t.show}
         </Button>
       </Stack>
     </form>
+  );
+}
+
+/**
+ * 絞り込みの選択欄3つ。狭い画面では縦積みだと嵩むため、横一列に詰めて幅を分け合わせます。
+ */
+function FilterSelects(props: SearchFormProps) {
+  const { t } = props;
+  /** 狭い画面では割合で、広い画面では固定幅で並べる。 */
+  const cell = (grow: number, wide: number) => ({ flex: { xs: `${grow} 1 0`, sm: '0 0 auto' }, width: { sm: wide }, minWidth: 0 });
+
+  return (
+    <Stack direction="row" spacing={1.5} sx={{ width: { xs: '100%', sm: 'auto' }, flexShrink: 0 }}>
+      <TextField label={t.namespace} select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={cell(2, 200)}>
+        {props.namespaces.map((ns) => (
+          <MenuItem key={ns} value={ns}>{`${ns === 'all' ? 'All' : ns} (${props.counts[ns] ?? 0})`}</MenuItem>
+        ))}
+      </TextField>
+      <TextField label={t.format} select value={props.fmt} onChange={(ev) => props.onFmt(ev.target.value)} sx={cell(1, 110)}>
+        <MenuItem value="png">PNG</MenuItem>
+        <MenuItem value="gif">GIF</MenuItem>
+        <MenuItem value="jpg">JPG</MenuItem>
+      </TextField>
+      <TextField label={t.size} select value={props.scale} onChange={(ev) => props.onScale(Number(ev.target.value))} sx={cell(1, 110)}>
+        {SCALE_CHOICES.map((scale) => (
+          <MenuItem key={scale} value={scale}>{`${scale}x`}</MenuItem>
+        ))}
+      </TextField>
+    </Stack>
   );
 }
 

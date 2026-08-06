@@ -57,7 +57,7 @@ export function SignInView({ t, providers }: WithMessages & { providers: Provide
 /** ログイン中の表示とログアウト。 */
 export function AccountRow({ t, me, onSignOut }: WithMessages & { me: Me; onSignOut: () => void }) {
   return (
-    <Stack direction="row" spacing={1.5} alignItems="center">
+    <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
       <Typography variant="body2" sx={{ flexGrow: 1, minWidth: 0 }}>
         {me.displayName}
       </Typography>
@@ -81,7 +81,12 @@ export function JarPicker(props: WithMessages & {
   return (
     <Box>
       <Stack direction="row" spacing={1.5} alignItems="center">
-        <Button variant="contained" component="label" disabled={props.busy}>
+        <Button
+          variant="contained"
+          component="label"
+          disabled={props.busy}
+          sx={{ maxWidth: '100%', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
           {props.fileName || t.chooseJar}
           <input type="file" accept=".jar" hidden onChange={(ev) => props.onPick(ev.target.files?.[0] ?? null)} />
         </Button>
@@ -125,7 +130,14 @@ function NamespaceRow({ t, ns, onClaim }: WithMessages & { ns: string; onClaim: 
   }
 
   return (
-    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 1, borderBottom: 1, borderColor: 'divider' }}>
+    <Stack
+      direction="row"
+      spacing={1.5}
+      alignItems="center"
+      flexWrap="wrap"
+      useFlexGap
+      sx={{ py: 1, borderBottom: 1, borderColor: 'divider' }}
+    >
       <Typography variant="body2" sx={{ fontFamily: 'monospace', flexGrow: 1, minWidth: 0 }}>
         {ns}
       </Typography>
@@ -188,6 +200,8 @@ export function HistoryView({ t, rows }: WithMessages & { rows: UploadRecord[] |
           direction="row"
           spacing={1.5}
           alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
           sx={{ py: 1, borderBottom: 1, borderColor: 'divider' }}
         >
           <Typography variant="body2" sx={{ fontFamily: 'monospace', flexGrow: 1, minWidth: 0 }}>

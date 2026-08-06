@@ -183,7 +183,7 @@ export function App({ locale }: { locale: string }) {
   return (
     <>
       <AppBar t={t} toggle={toggle} selected={selection ? selection.label : null} />
-      <Container maxWidth={false} disableGutters sx={{ px: 3, py: 2.5 }}>
+      <Container maxWidth={false} disableGutters sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 2.5 } }}>
         <SearchForm
           t={t}
           q={q}

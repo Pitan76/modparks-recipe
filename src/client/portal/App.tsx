@@ -90,7 +90,7 @@ export function App({ locale }: { locale: string }) {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
+    <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 3 } }}>
       <Typography variant="h6" sx={{ mb: 0.5 }}>{t.title}</Typography>
       <Typography variant="body2" color="text.secondary">{t.lead}</Typography>
       {!token ? (
