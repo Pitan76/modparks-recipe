@@ -14,7 +14,7 @@ import { AssetSource } from '../utils/build/asset-source';
 import { readChannels } from '../utils/build/channels';
 import { foldBuild } from '../utils/build/manifest';
 import { toChannel, resolveChannel } from '../utils/build/mc-version';
-import { assetDelivery } from '../utils/image-cdn';
+import { assetDelivery, deliveryVersion } from '../utils/image-cdn';
 import { getRecipe } from '../utils/minecraft/data';
 import { hasVariantTag } from '../utils/tag-variants';
 import { runPool } from '../utils/pool';
@@ -63,7 +63,7 @@ listRoutes.get('/api/list.json', async (c) => {
   const index = await obj.json<{ recipes?: NamedEntry[] }>();
   // ネームスペース版と同じ基準で `tagged` を揃えます。ここがずれると、同じレシピでも
   // 見る経路によって静止画とアニメーションが入れ替わります。
-  if (Array.isArray(index.recipes)) await refineTagged(c.env, index.recipes, new AssetSource(c.env, null));
+  if (Array.isArray(index.recipes)) await refineTagged(c.env, index.recipes, new AssetSource(c.env, null), 'all');
   return c.json({ ...index, versions, assets }, 200, cacheControl);
 });
 
@@ -115,7 +115,7 @@ async function namespaceListing(
   if (buildId) {
     const folded = await foldBuild(env, ns, buildId);
     const recipes = (folded?.recipes ?? []) as NamedEntry[];
-    await refineTagged(env, recipes, src);
+    await refineTagged(env, recipes, src, `${ns}@${buildId.slice(0, 16)}`);
     return {
       version: buildId.slice(0, 16),
       mc: resolveChannel(wanted, channels),
@@ -130,7 +130,7 @@ async function namespaceListing(
 
   const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
   const recipes = all.filter((r) => r.id.startsWith(`${ns}:`)) as NamedEntry[];
-  await refineTagged(env, recipes, src);
+  await refineTagged(env, recipes, src, `${ns}@${version}`);
   return { version, mc: null, channels, recipes };
 }
 
