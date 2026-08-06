@@ -15,6 +15,9 @@ import { readChannels } from '../utils/build/channels';
 import { foldBuild } from '../utils/build/manifest';
 import { toChannel, resolveChannel } from '../utils/build/mc-version';
 import { assetDelivery } from '../utils/image-cdn';
+import { getRecipe } from '../utils/minecraft/data';
+import { hasTagIngredient } from '../core/recipe';
+import { runPool } from '../utils/pool';
 
 export const listRoutes = new Hono<{ Bindings: Env }>();
 
@@ -108,11 +111,13 @@ async function namespaceListing(
 
   if (buildId) {
     const folded = await foldBuild(env, ns, buildId);
+    const recipes = (folded?.recipes ?? []) as NamedEntry[];
+    await fillTagged(env, recipes, src);
     return {
       version: buildId.slice(0, 16),
       mc: resolveChannel(wanted, channels),
       channels,
-      recipes: (folded?.recipes ?? []) as NamedEntry[],
+      recipes,
     };
   }
 
@@ -122,6 +127,26 @@ async function namespaceListing(
 
   const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
   return { version, mc: null, channels, recipes: all.filter((r) => r.id.startsWith(`${ns}:`)) };
+}
+
+/**
+ * `tagged` が欠けているエントリを、レシピ本体から補います。
+ *
+ * build に載る索引エントリは取り込み時点で確定し、build ID が内容のハッシュである以上あとから
+ * 書き換えられません。`tagged` を持たない時代に取り込まれた build がそのまま残るため、配信時に
+ * 補います。以降の取り込みでは `indexEntryOf` が付けるので、この補完は自然に不要になります。
+ * @param env 環境変数
+ * @param recipes 索引エントリ群（その場で書き換えます）
+ * @param src アセット読み出し口
+ */
+async function fillTagged(env: Env, recipes: NamedEntry[], src: AssetSource): Promise<void> {
+  const missing = recipes.filter((r) => r.tagged === undefined);
+  if (missing.length === 0) return;
+
+  await runPool(missing, 20, async (entry) => {
+    const data = await getRecipe(entry.id, env, src);
+    entry.tagged = !!data && hasTagIngredient(data);
+  });
 }
 
 /**
