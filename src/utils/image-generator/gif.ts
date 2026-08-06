@@ -2,7 +2,8 @@
  * @fileoverview GIF生成処理。
  */
 
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetReader } from '../../core/asset-reader';
 import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { encodeGif } from '../gif-encoder';
@@ -28,7 +29,7 @@ function samePixels(a: Uint8Array, b: Uint8Array): boolean {
  * 1枚目と同じ絵に戻ります。そこで打ち切らないと、同じ絵のラスタライズを
  * 最大5回繰り返したうえで、静止画を無駄に5フレームのGIFとして配ることになります。
  */
-export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE, src: AssetSource = legacyAssetSource(env)): Promise<Uint8Array> {
+export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = 5, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env)): Promise<Uint8Array> {
   await ensureWasm();
   const frames = [];
 

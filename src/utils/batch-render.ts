@@ -2,7 +2,8 @@
  * @fileoverview 複数レシピをまとめて画像化する処理。POST/GET 両方のバッチエンドポイントで共有します。
  */
 
-import { AssetSource, legacyAssetSource } from './build/asset-source';
+import { legacyAssetSource } from './build/asset-source';
+import type { AssetReader } from '../core/asset-reader';
 import { Env, getRecipe } from './minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg } from './image-generator';
 import { bytesToBase64 } from './http';
@@ -32,7 +33,7 @@ function rendererFor(
   env: Env,
   scale: number,
   tagOffset: number,
-  src: AssetSource
+  src: AssetReader
 ): { mime: string; render: (recipe: any) => Promise<Uint8Array> } {
   if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale, src) };
   if (ext === 'jpg' || ext === 'jpeg') {
@@ -52,7 +53,7 @@ async function renderOrNull(
   render: (recipe: any) => Promise<Uint8Array>,
   fullId: string,
   env: Env,
-  src: AssetSource
+  src: AssetReader
 ): Promise<Uint8Array | null> {
   try {
     const recipe = await getRecipe(fullId, env, src);
@@ -81,7 +82,7 @@ export async function renderBatch(
   ext: string,
   scale: number,
   tagOffset: number,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<BatchResult> {
   const { mime, render } = rendererFor(ext, env, scale, tagOffset, src);
 

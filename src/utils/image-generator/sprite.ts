@@ -2,7 +2,8 @@
  * @fileoverview スプライトシート生成処理。
  */
 
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetReader } from '../../core/asset-reader';
 import { Resvg } from '@resvg/resvg-wasm';
 import { Env } from '../minecraft';
 import { ensureWasm } from '../wasm';
@@ -54,7 +55,7 @@ export interface SpriteSheet {
  * @param env 環境変数
  * @param scale スケール倍率
  */
-async function renderTile(recipe: any, env: Env, scale: number, src: AssetSource): Promise<Uint8Array | null> {
+async function renderTile(recipe: any, env: Env, scale: number, src: AssetReader): Promise<Uint8Array | null> {
   try {
     return await renderRecipePng(recipe, env, 0, scale, src);
   } catch (err) {
@@ -71,7 +72,7 @@ export async function renderRecipeSpriteSheet(
   env: Env,
   columns: number = 8,
   scale: number = DEFAULT_SCALE,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<SpriteSheet> {
   await ensureWasm();
 

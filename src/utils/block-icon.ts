@@ -10,7 +10,8 @@
  */
 
 import type { Env } from './minecraft';
-import { AssetSource, legacyAssetSource } from './build/asset-source';
+import { legacyAssetSource } from './build/asset-source';
+import type { AssetReader } from '../core/asset-reader';
 import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { ensureWasm, svgToPng } from './wasm';
@@ -32,7 +33,7 @@ export async function renderBlockIconPng(
   env: Env,
   ns: string,
   path: string,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<Uint8Array | null> {
   const svg = await renderBlockIconSvg(env, ns, path, src);
   if (!svg) return null;
@@ -58,7 +59,7 @@ export async function renderBlockIconSvg(
   env: Env,
   ns: string,
   path: string,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<string | null> {
   const getModel = (id: string) => modelJson(env, src, id);
   const getTexture = (ref: string) => textureDataUrl(env, src, ns, ref);
@@ -150,7 +151,7 @@ async function memoized<T>(env: Env, ns: string, key: string, load: () => Promis
  * @param id モデルID
  * @returns モデルJSONデータ、または null
  */
-function modelJson(env: Env, src: AssetSource, id: string): Promise<any | null> {
+function modelJson(env: Env, src: AssetReader, id: string): Promise<any | null> {
   const { ns, path } = split(id);
   return memoized(env, ns, `models/${path}`, async () => {
     const obj = await src.get(ns, `models/${path}.json`);
@@ -170,7 +171,7 @@ function modelJson(env: Env, src: AssetSource, id: string): Promise<any | null> 
  * @param ref テクスチャ参照（#から始まるキー、またはファイルパス）
  * @returns テクスチャ画像のbase64データURL、または null
  */
-function textureDataUrl(env: Env, src: AssetSource, defaultNs: string, ref: string): Promise<string | null> {
+function textureDataUrl(env: Env, src: AssetReader, defaultNs: string, ref: string): Promise<string | null> {
   const { ns, path } = split(ref, defaultNs);
   // 読み取りがバニラにフォールバックする場合でも、要求元のネームスペースのバージョンをキーにします。
   // これにより、`minecraft` だけのアップロードでModのエントリが無効化されるのを防ぎます。

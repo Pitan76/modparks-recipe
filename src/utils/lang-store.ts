@@ -10,7 +10,8 @@
  */
 
 import type { Env } from './minecraft';
-import { AssetSource, legacyAssetSource } from './build/asset-source';
+import { legacyAssetSource } from './build/asset-source';
+import type { AssetReader } from '../core/asset-reader';
 import { parseNamespacedId } from './minecraft';
 
 /**
@@ -82,13 +83,14 @@ export async function readLang(
   env: Env,
   namespace: string,
   locale: string,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<LangMap | null> {
   const obj = await src.get(namespace, `lang/${locale}.json`);
   if (!obj) return null;
 
   try {
-    return await obj.json<LangMap>();
+    // 読み出し口はテキストだけを約束します。JSON化は呼び出し側の責務です。
+    return JSON.parse(await obj.text()) as LangMap;
   } catch {
     // 壊れたオブジェクトは未登録と同じ扱いにする。次の取り込みで置き換わる。
     return null;
@@ -136,7 +138,7 @@ export async function resolveNames(
   env: Env,
   ids: string[],
   locale: string,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<Record<string, string>> {
   const byNamespace = new Map<string, { id: string; path: string }[]>();
   for (const id of ids) {

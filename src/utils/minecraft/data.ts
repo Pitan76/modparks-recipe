@@ -3,7 +3,8 @@
  */
 
 import { Env } from './env';
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetBody, AssetReader } from '../../core/asset-reader';
 import { parseNamespacedId } from './id';
 import { tagAliasOf } from '../../core/namespaces';
 import { TAG_DIRS } from '../../core/paths';
@@ -15,7 +16,7 @@ import { TAG_DIRS } from '../../core/paths';
  * @param path 拡張子を除いたタグのパス
  * @returns 見つからなければ null
  */
-async function readTagObject(src: AssetSource, ns: string, path: string): Promise<R2ObjectBody | null> {
+async function readTagObject(src: AssetReader, ns: string, path: string): Promise<AssetBody | null> {
   for (const dir of TAG_DIRS) {
     const obj = await src.get(ns, `tags/${dir}/${path}.json`);
     if (obj) return obj;
@@ -43,7 +44,7 @@ function parseStored(text: string): any | null {
  * データベース（D1）またはオブジェクトストレージ（R2）からレシピJSONを取得します。
  * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
  */
-export async function getRecipe(id: string, env: Env, src: AssetSource = legacyAssetSource(env)): Promise<any | null> {
+export async function getRecipe(id: string, env: Env, src: AssetReader = legacyAssetSource(env)): Promise<any | null> {
   const { namespace, path } = parseNamespacedId(id);
   // 同じIDでもMCバージョンごとに中身が違いうるため、キャッシュ行は build ごとに分ける。
   const cacheId = await cacheKeyOf(id, namespace, src);
@@ -80,7 +81,7 @@ export async function getRecipe(id: string, env: Env, src: AssetSource = legacyA
  * 指定されたIDに対応するタグ（アイテムグループ等）の構成アイテムリストを取得します。
  * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
  */
-export async function getTag(id: string, env: Env, src: AssetSource = legacyAssetSource(env)): Promise<string[]> {
+export async function getTag(id: string, env: Env, src: AssetReader = legacyAssetSource(env)): Promise<string[]> {
   if (id.startsWith('#')) id = id.substring(1);
 
   const { namespace, path } = parseNamespacedId(id);
@@ -120,7 +121,7 @@ export async function getTag(id: string, env: Env, src: AssetSource = legacyAsse
  * @param ns ネームスペース
  * @param src アセット読み出し口
  */
-async function cacheKeyOf(id: string, ns: string, src: AssetSource): Promise<string> {
+async function cacheKeyOf(id: string, ns: string, src: AssetReader): Promise<string> {
   const buildId = await src.buildOf(ns);
   return buildId ? `${id}@${buildId.slice(0, 16)}` : id;
 }

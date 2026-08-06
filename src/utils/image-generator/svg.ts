@@ -2,7 +2,8 @@
  * @fileoverview レシピ画像用SVGジェネレーター。
  */
 
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetReader } from '../../core/asset-reader';
 import { getItemImageBase64, getTag, Env } from '../minecraft';
 
 // レイアウト定数と純粋な描画ヘルパーは layout.ts に集約し、ここから再エクスポートします。
@@ -46,7 +47,7 @@ export class IconCache {
   /**
    * @param src アセット読み出し口
    */
-  constructor(readonly src: AssetSource) {}
+  constructor(readonly src: AssetReader) {}
 
   /**
    * メモ済みのアイコンを返します。
@@ -219,7 +220,7 @@ export async function generateRecipeSvg(
   recipeData: any,
   env: Env,
   tagOffset: number = 0,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ) {
   const cache = new IconCache(src);
 

@@ -2,7 +2,8 @@
  * @fileoverview Resvgを用いたPNG/JPEGレンダリング処理。
  */
 
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetReader } from '../../core/asset-reader';
 import { Resvg } from '@resvg/resvg-wasm';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { Env } from '../minecraft';
@@ -45,7 +46,7 @@ export function normalizeScale(value: unknown): number {
 /**
  * レシピJSONデータをPNG画像（バイナリ）としてレンダリングします。
  */
-export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetSource = legacyAssetSource(env)): Promise<Uint8Array> {
+export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env)): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset, src);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
@@ -55,7 +56,7 @@ export async function renderRecipePng(recipeData: any, env: Env, tagOffset: numb
 /**
  * レシピJSONデータをJPEG画像（バイナリ）としてレンダリングします。
  */
-export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetSource = legacyAssetSource(env)): Promise<Uint8Array> {
+export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env)): Promise<Uint8Array> {
   await ensureWasm();
   const svg = await generateRecipeSvg(recipeData, env, tagOffset, src);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });

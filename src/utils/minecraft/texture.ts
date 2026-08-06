@@ -9,7 +9,8 @@ import { bytesToBase64 } from '../http';
 import { getIcon, setIcon, noteVersion } from '../icon-memo';
 import { getAssetVersion } from '../cache-version';
 import { rendererVersion } from '../render-version';
-import { AssetSource, legacyAssetSource } from '../build/asset-source';
+import { legacyAssetSource } from '../build/asset-source';
+import type { AssetReader } from '../../core/asset-reader';
 
 /**
  * ArrayBufferをbase64のdataURLに変換します。
@@ -22,7 +23,7 @@ function pngDataUrl(buffer: ArrayBuffer): string {
 /**
  * リソースID（例: "ns:item/foo"）に対応するテクスチャPNGをR2から取得し、データURLとして返します。
  */
-async function textureDataUrl(texId: string, defaultNs: string, src: AssetSource): Promise<string | null> {
+async function textureDataUrl(texId: string, defaultNs: string, src: AssetReader): Promise<string | null> {
   const tns = texId.includes(':') ? texId.split(':')[0] : defaultNs;
   const tpath = texId.includes(':') ? texId.split(':').slice(1).join(':') : texId;
   let obj = await src.get(tns, `textures/${tpath}.png`);
@@ -38,7 +39,7 @@ async function textureDataUrl(texId: string, defaultNs: string, src: AssetSource
 async function mergedModelTextures(
   ns: string,
   modelPath: string,
-  src: AssetSource,
+  src: AssetReader,
   seen: Set<string>
 ): Promise<Record<string, string>> {
   const key = `${ns}:${modelPath}`;
@@ -78,7 +79,7 @@ function pickModelTexture(textures: Record<string, string>): string | null {
 /**
  * アイテム/ブロックのモデルJSONを介して、そのテクスチャパスを解決します（IDとテクスチャのファイル名が異なるアイテム用）。
  */
-async function resolveViaModel(namespace: string, path: string, src: AssetSource): Promise<string | null> {
+async function resolveViaModel(namespace: string, path: string, src: AssetReader): Promise<string | null> {
   for (const kind of ['item', 'block']) {
     const textures = await mergedModelTextures(namespace, `${kind}/${path}`, src, new Set());
     const texId = pickModelTexture(textures);
@@ -103,7 +104,7 @@ export const TRANSPARENT_PNG =
 export async function getItemImageBase64(
   id: string,
   env: Env,
-  src: AssetSource = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env)
 ): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
@@ -147,7 +148,7 @@ export async function getItemImageBase64(
  * @param src アセット読み出し口
  * @param ns ネームスペース
  */
-async function generationOf(env: Env, src: AssetSource, ns: string): Promise<string> {
+async function generationOf(env: Env, src: AssetReader, ns: string): Promise<string> {
   const buildId = await src.buildOf(ns);
   return buildId ? buildId.slice(0, 16) : getAssetVersion(env, ns);
 }
@@ -162,7 +163,7 @@ function iconCacheKey(env: Env, ns: string, version: string, path: string): stri
 /**
  * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
  */
-async function resolveItemImage(namespace: string, path: string, env: Env, src: AssetSource): Promise<string> {
+async function resolveItemImage(namespace: string, path: string, env: Env, src: AssetReader): Promise<string> {
   let obj = await src.get(namespace, `textures/render3d/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 

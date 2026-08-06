@@ -8,7 +8,7 @@
 
 import type { Env } from './minecraft';
 import { getTag } from './minecraft/data';
-import type { AssetSource } from './build/asset-source';
+import type { AssetReader } from '../core/asset-reader';
 
 /** タグを辿る深さの上限。素材解決側と揃えています。 */
 const MAX_DEPTH = 4;
@@ -27,7 +27,7 @@ const MAX_DEPTH = 4;
 async function countItems(
   tag: string,
   env: Env,
-  src: AssetSource,
+  src: AssetReader,
   seen: Set<string>,
   depth: number
 ): Promise<number> {
@@ -73,7 +73,7 @@ function tagsOf(ingredient: any, out: string[] = []): string[] {
  * @param env 環境変数
  * @param src アセット読み出し口
  */
-export async function hasVariantTag(data: any, env: Env, src: AssetSource): Promise<boolean> {
+export async function hasVariantTag(data: any, env: Env, src: AssetReader): Promise<boolean> {
   const shapeless = Array.isArray(data?.ingredients) ? data.ingredients : [];
   const shaped = data?.key && typeof data.key === 'object' ? Object.values(data.key) : [];
 
