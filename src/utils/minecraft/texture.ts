@@ -4,7 +4,7 @@
 
 import { Env } from './env';
 import { parseNamespacedId } from './id';
-import { renderBlockIconPng } from '../block-icon';
+import { renderBlockIconPng, renderBlockIconSvg } from '../block-icon';
 import { bytesToBase64 } from '../http';
 import { getIcon, setIcon, noteVersion } from '../icon-memo';
 import { getAssetVersion } from '../cache-version';
@@ -103,8 +103,8 @@ export const TRANSPARENT_PNG =
  */
 export async function getItemImageBase64(
   id: string,
-  env: Env,
-  src: AssetReader = legacyAssetSource(env)
+  env: Env | null,
+  src: AssetReader = legacyAssetSource(env!)
 ): Promise<string | null> {
   const { namespace, path } = parseNamespacedId(id);
 
@@ -120,7 +120,8 @@ export async function getItemImageBase64(
 
   // L1: 解決済みアイコン。キーに ns バージョンとレンダラー版を含むため、テクスチャ更新や
   // レンダラー変更で自動的に別キーとなり、古いものは参照されなくなる（削除不要）。
-  const persist = src.persistIcons !== false;
+  // 永続キャッシュは Worker 側だけの仕組みです。ブラウザ側の描画では素通しにします。
+  const persist = !!env && src.persistIcons !== false;
   const l1Key = iconCacheKey(env, namespace, version, path);
   const l1 = persist ? await env.BUCKET.get(l1Key) : null;
   if (l1) {
@@ -149,34 +150,41 @@ export async function getItemImageBase64(
  * @param src アセット読み出し口
  * @param ns ネームスペース
  */
-async function generationOf(env: Env, src: AssetReader, ns: string): Promise<string> {
+async function generationOf(env: Env | null, src: AssetReader, ns: string): Promise<string> {
   const buildId = await src.buildOf(ns);
-  return buildId ? buildId.slice(0, 16) : getAssetVersion(env, ns);
+  if (buildId) return buildId.slice(0, 16);
+  return env ? getAssetVersion(env, ns) : 'local';
 }
 
 /**
  * L1 アイコンキャッシュのキーを組み立てます。ns バージョンとレンダラー版を世代として含めます。
  */
-function iconCacheKey(env: Env, ns: string, version: string, path: string): string {
-  return `cache/icon/${rendererVersion(env)}/${ns}/${version}/${path}.dataurl`;
+function iconCacheKey(env: Env | null, ns: string, version: string, path: string): string {
+  return `cache/icon/${rendererVersion(env!)}/${ns}/${version}/${path}.dataurl`;
 }
 
 /**
  * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
  */
-async function resolveItemImage(namespace: string, path: string, env: Env, src: AssetReader): Promise<string> {
+async function resolveItemImage(namespace: string, path: string, env: Env | null, src: AssetReader): Promise<string> {
   let obj = await src.get(namespace, `textures/render3d/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   obj = await src.get(namespace, `textures/item/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
-  const icon = await renderBlockIconPng(env, namespace, path, src).catch(() => null);
-  if (icon) {
-    await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
-      httpMetadata: { contentType: 'image/png' },
-    }).catch(() => {});
-    return `data:image/png;base64,${bytesToBase64(icon)}`;
+  // ブラウザ側には resvg がありません。ラスタライズせず SVG のまま埋め込みます。
+  if (!env) {
+    const svg = await renderBlockIconSvg(null, namespace, path, src).catch(() => null);
+    if (svg) return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+  } else {
+    const icon = await renderBlockIconPng(env, namespace, path, src).catch(() => null);
+    if (icon) {
+      await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
+        httpMetadata: { contentType: 'image/png' },
+      }).catch(() => {});
+      return `data:image/png;base64,${bytesToBase64(icon)}`;
+    }
   }
 
   obj = await src.get(namespace, `textures/block/${path}.png`);

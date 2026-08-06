@@ -33,7 +33,7 @@ export async function renderBlockIconPng(
   env: Env,
   ns: string,
   path: string,
-  src: AssetReader = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env!)
 ): Promise<Uint8Array | null> {
   const svg = await renderBlockIconSvg(env, ns, path, src);
   if (!svg) return null;
@@ -56,10 +56,10 @@ export async function renderBlockIconPng(
  * @returns SVG文字列、または null
  */
 export async function renderBlockIconSvg(
-  env: Env,
+  env: Env | null,
   ns: string,
   path: string,
-  src: AssetReader = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env!)
 ): Promise<string | null> {
   const getModel = (id: string) => modelJson(env, src, id);
   const getTexture = (ref: string) => textureDataUrl(env, src, ns, ref);
@@ -127,8 +127,9 @@ const MEMO_MAX = 2000;
  * バージョンをキーにすることで、書き込みAPIに対して安全になります。アセットがアップロードされるとバージョンが上がり、
  * レンダリング済みの画像と同様に、古いバージョンのすべてのエントリがアクセス不能（無効化）になります。
  */
-async function memoized<T>(env: Env, ns: string, key: string, load: () => Promise<T>): Promise<T> {
-  const version = await getAssetVersion(env, ns);
+async function memoized<T>(env: Env | null, ns: string, key: string, load: () => Promise<T>): Promise<T> {
+  // バージョンはメモのキーにしか使いません。引けないときは固定値で構いません。
+  const version = env ? await getAssetVersion(env, ns) : 'local';
   const memoKey = `${version}:${ns}:${key}`;
 
   const hit = memo.get(memoKey);
@@ -151,7 +152,7 @@ async function memoized<T>(env: Env, ns: string, key: string, load: () => Promis
  * @param id モデルID
  * @returns モデルJSONデータ、または null
  */
-function modelJson(env: Env, src: AssetReader, id: string): Promise<any | null> {
+function modelJson(env: Env | null, src: AssetReader, id: string): Promise<any | null> {
   const { ns, path } = split(id);
   return memoized(env, ns, `models/${path}`, async () => {
     const obj = await src.get(ns, `models/${path}.json`);
@@ -171,7 +172,7 @@ function modelJson(env: Env, src: AssetReader, id: string): Promise<any | null> 
  * @param ref テクスチャ参照（#から始まるキー、またはファイルパス）
  * @returns テクスチャ画像のbase64データURL、または null
  */
-function textureDataUrl(env: Env, src: AssetReader, defaultNs: string, ref: string): Promise<string | null> {
+function textureDataUrl(env: Env | null, src: AssetReader, defaultNs: string, ref: string): Promise<string | null> {
   const { ns, path } = split(ref, defaultNs);
   // 読み取りがバニラにフォールバックする場合でも、要求元のネームスペースのバージョンをキーにします。
   // これにより、`minecraft` だけのアップロードでModのエントリが無効化されるのを防ぎます。

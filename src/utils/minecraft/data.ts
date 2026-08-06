@@ -44,12 +44,13 @@ function parseStored(text: string): any | null {
  * データベース（D1）またはオブジェクトストレージ（R2）からレシピJSONを取得します。
  * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
  */
-export async function getRecipe(id: string, env: Env, src: AssetReader = legacyAssetSource(env)): Promise<any | null> {
+export async function getRecipe(id: string, env: Env | null, src: AssetReader = legacyAssetSource(env!)): Promise<any | null> {
   const { namespace, path } = parseNamespacedId(id);
   // 同じIDでもMCバージョンごとに中身が違いうるため、キャッシュ行は build ごとに分ける。
   const cacheId = await cacheKeyOf(id, namespace, src);
 
-  const { results } = await env.DB.prepare('SELECT data FROM recipes WHERE id = ?').bind(cacheId).all();
+  // キャッシュはブラウザ側の描画では使えません。無ければ都度読み出します。
+  const { results } = env ? await env.DB.prepare('SELECT data FROM recipes WHERE id = ?').bind(cacheId).all() : { results: null };
   if (results && results.length > 0) {
     // 壊れたキャッシュ行は R2 から引き直す。次の取得でこの行は上書きされる。
     const cached = parseStored(results[0].data as string);
@@ -70,7 +71,7 @@ export async function getRecipe(id: string, env: Env, src: AssetReader = legacyA
   else if (data.result && typeof data.result === 'string') resultItem = data.result;
 
   // バックグラウンドで非同期にキャッシュ保存を実行
-  env.DB.prepare('INSERT OR REPLACE INTO recipes (id, result_item, data) VALUES (?, ?, ?)')
+  env?.DB.prepare('INSERT OR REPLACE INTO recipes (id, result_item, data) VALUES (?, ?, ?)')
     .bind(cacheId, resultItem, dataStr)
     .run().catch(console.error);
 
@@ -81,13 +82,13 @@ export async function getRecipe(id: string, env: Env, src: AssetReader = legacyA
  * 指定されたIDに対応するタグ（アイテムグループ等）の構成アイテムリストを取得します。
  * DBにキャッシュがない場合はR2から取得し、DBにキャッシュを保存します。
  */
-export async function getTag(id: string, env: Env, src: AssetReader = legacyAssetSource(env)): Promise<string[]> {
+export async function getTag(id: string, env: Env | null, src: AssetReader = legacyAssetSource(env!)): Promise<string[]> {
   if (id.startsWith('#')) id = id.substring(1);
 
   const { namespace, path } = parseNamespacedId(id);
   const cacheId = await cacheKeyOf(id, namespace, src);
 
-  const { results } = await env.DB.prepare('SELECT data FROM tags WHERE id = ?').bind(cacheId).all();
+  const { results } = env ? await env.DB.prepare('SELECT data FROM tags WHERE id = ?').bind(cacheId).all() : { results: null };
   if (results && results.length > 0) {
     // 壊れたキャッシュ行は R2 から引き直す。次の取得でこの行は上書きされる。
     const cached = parseStored(results[0].data as string);
@@ -105,7 +106,7 @@ export async function getTag(id: string, env: Env, src: AssetReader = legacyAsse
   const data = parseStored(dataStr);
   if (!data) return [];
 
-  env.DB.prepare('INSERT OR REPLACE INTO tags (id, data) VALUES (?, ?)')
+  env?.DB.prepare('INSERT OR REPLACE INTO tags (id, data) VALUES (?, ?)')
     .bind(cacheId, dataStr)
     .run().catch(console.error);
 

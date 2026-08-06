@@ -70,7 +70,7 @@ export class IconCache {
 /**
  * キャッシュを活用して、特定のアイテムIDに対応するアイコンデータURLを取得します。
  */
-export function itemIcon(id: string, env: Env, cache: IconCache): Promise<string | null> {
+export function itemIcon(id: string, env: Env | null, cache: IconCache): Promise<string | null> {
   let pending = cache.get(id);
   if (!pending) {
     pending = getItemImageBase64(id, env, cache.src);
@@ -102,7 +102,7 @@ type IngredientTrail = {
  */
 export async function resolveIngredient(
   ingredient: any,
-  env: Env,
+  env: Env | null,
   tagOffset: number,
   cache: IconCache,
   trail: IngredientTrail = { tags: new Set(), depth: 0 }
@@ -133,7 +133,7 @@ export async function resolveIngredient(
  */
 async function resolveTag(
   tag: string,
-  env: Env,
+  env: Env | null,
   tagOffset: number,
   cache: IconCache,
   trail: IngredientTrail
@@ -200,9 +200,9 @@ function slotsOf(recipeData: any): Slot[] {
  */
 export async function createRecipeGrid(
   recipeData: any,
-  env: Env,
+  env: Env | null,
   tagOffset: number,
-  cache: IconCache = new IconCache(legacyAssetSource(env))
+  cache: IconCache = new IconCache(legacyAssetSource(env!))
 ): Promise<Array<string | null>> {
   const grid: Array<string | null> = Array(GRID_SIZE * GRID_SIZE).fill(null);
   await Promise.all(
@@ -218,9 +218,9 @@ export async function createRecipeGrid(
  */
 export async function generateRecipeSvg(
   recipeData: any,
-  env: Env,
+  env: Env | null,
   tagOffset: number = 0,
-  src: AssetReader = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env!)
 ) {
   const cache = new IconCache(src);
 
