@@ -59,3 +59,7 @@ tail.log
 
 # ローカルのスロット配置プレビュー出力
 preview/
+
+# クライアントバンドルの成果物。ビルド（npm run build:client）で毎回作られる。
+# 生成物の名前を持つ src/generated/client-bundles.ts のほうは Worker が import するので追跡する。
+/public/app/

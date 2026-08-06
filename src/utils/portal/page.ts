@@ -1,12 +1,12 @@
 /**
  * @fileoverview 投稿ポータルのHTML。
  *
- * 文言はサーバ側で選んだ表を埋め込み、スクリプトはそれを参照するだけにしています。
- * ページ内に日本語も英語も書かないため、言語を増やしても触るのは i18n/portal.ts だけです。
+ * 画面はクライアントバンドル（`src/client/portal`）が組み立てます。ここが返すのは
+ * 器と、初期表示に必要な最小限（表示言語・ヘッダー・全体CSS）だけです。
  */
 
 import { messagesFor, type Messages } from '../i18n/portal';
-import { PORTAL_SCRIPT } from './script';
+import { CLIENT_BUNDLES } from '../../generated/client-bundles';
 import { PORTAL_STYLES } from './styles';
 
 /**
@@ -27,9 +27,6 @@ export function portalPage(locale: string): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
 <style>${PORTAL_STYLES}</style>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/@mui/material@5.15.20/umd/material-ui.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="/extractor.js"></script>
 </head>
@@ -47,10 +44,8 @@ export function portalPage(locale: string): string {
   </div>
 </header>
 <div id="root"></div>
-<script>
-window.MPR_MESSAGES = ${JSON.stringify(t)};
-${PORTAL_SCRIPT}
-</script>
+<script>window.MPR_LOCALE = ${JSON.stringify(locale)};</script>
+<script type="module" src="/app/${CLIENT_BUNDLES.portal}"></script>
 </body>
 </html>`;
 }

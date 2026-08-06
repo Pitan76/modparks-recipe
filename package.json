@@ -2,18 +2,22 @@
   "name": "mp-recipe",
   "version": "1.0.0",
   "scripts": {
-    "dev": "wrangler dev src/index.ts",
-    "dev:remote": "wrangler dev --remote src/index.ts",
-    "deploy": "wrangler deploy --minify src/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "npm run build:client && wrangler dev src/index.ts",
+    "dev:remote": "npm run build:client && wrangler dev --remote src/index.ts",
+    "deploy": "npm run build:client && wrangler deploy --minify src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
     "render-blocks": "tsx src/scripts/render-blocks.ts",
     "upload-lang": "tsx src/scripts/upload-lang.ts",
     "migrate-builds": "tsx src/scripts/migrate-builds.ts",
-    "gc-builds": "tsx src/scripts/gc-builds.ts"
+    "gc-builds": "tsx src/scripts/gc-builds.ts",
+    "build:client": "vite build --config vite.client.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^5.15.20",
     "@resvg/resvg-js": "^2.6.2",
     "@resvg/resvg-wasm": "^2.6.2",
     "@smithy/node-http-handler": "^4.9.7",
@@ -23,6 +27,8 @@
     "jpeg-js": "^0.4.4",
     "jszip": "^3.10.1",
     "omggif": "^1.0.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "satori": "^0.26.0",
     "ts-node": "^10.9.2",
     "unzipper": "^0.12.5"
@@ -30,7 +36,10 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",
     "@types/omggif": "^1.0.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@types/unzipper": "^0.10.11",
+    "@vitejs/plugin-react": "^6.0.5",
     "tsx": "^4.23.1",
     "typescript": "^5.0.4",
     "vite": "^8.1.4",
