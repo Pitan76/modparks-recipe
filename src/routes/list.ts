@@ -81,7 +81,7 @@ listRoutes.get('/api/:namespace/list.json', async (c) => {
 
   const wanted = toChannel(c.req.query('mc') ?? '');
   const src = new AssetSource(c.env, wanted);
-  const listing = await namespaceListing(c.env, namespace, wanted, src);
+  const listing = await namespaceListing(c, namespace, wanted, src);
 
   if (locale) await attachNames(c.env, listing.recipes, locale, src);
 
@@ -104,18 +104,19 @@ listRoutes.get('/api/:namespace/list.json', async (c) => {
  * @param src アセット読み出し口
  */
 async function namespaceListing(
-  env: Env,
+  c: any,
   ns: string,
   wanted: string | null,
   src: AssetSource
 ): Promise<{ version: string; mc: string | null; channels: string[]; recipes: NamedEntry[] }> {
+  const env: Env = c.env;
   const channels = Object.keys(await readChannels(env, ns)).sort();
   const buildId = await src.buildOf(ns);
 
   if (buildId) {
     const folded = await foldBuild(env, ns, buildId);
     const recipes = (folded?.recipes ?? []) as NamedEntry[];
-    await refineTagged(env, recipes, src, `${ns}@${buildId.slice(0, 16)}`);
+    await refineTagged(c, recipes, src, `${ns}@${buildId.slice(0, 16)}`);
     return {
       version: buildId.slice(0, 16),
       mc: resolveChannel(wanted, channels),
@@ -130,7 +131,7 @@ async function namespaceListing(
 
   const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
   const recipes = all.filter((r) => r.id.startsWith(`${ns}:`)) as NamedEntry[];
-  await refineTagged(env, recipes, src, `${ns}@${version}`);
+  await refineTagged(c, recipes, src, `${ns}@${version}`);
   return { version, mc: null, channels, recipes };
 }
 

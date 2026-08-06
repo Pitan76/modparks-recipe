@@ -130,9 +130,16 @@ const MEMO_MAX = 2000;
  * バージョンをキーにすることで、書き込みAPIに対して安全になります。アセットがアップロードされるとバージョンが上がり、
  * レンダリング済みの画像と同様に、古いバージョンのすべてのエントリがアクセス不能（無効化）になります。
  */
-async function memoized<T>(env: Env | null, ns: string, key: string, load: () => Promise<T>): Promise<T> {
-  // バージョンはメモのキーにしか使いません。引けないときは固定値で構いません。
-  const version = env ? await getAssetVersion(env, ns) : 'local';
+async function memoized<T>(
+  env: Env | null,
+  src: AssetReader,
+  ns: string,
+  key: string,
+  load: () => Promise<T>
+): Promise<T> {
+  // 「見つからなかった」も成功として記憶されます。素材を後から取りに行く経路では、
+  // 取り終えたあとに引き直せるよう、読み出し口が示す世代でメモを分けます。
+  const version = env ? await getAssetVersion(env, ns) : ((await src.buildOf(ns)) ?? 'local');
   const memoKey = `${version}:${ns}:${key}`;
 
   const hit = memo.get(memoKey);
@@ -157,7 +164,7 @@ async function memoized<T>(env: Env | null, ns: string, key: string, load: () =>
  */
 function modelJson(env: Env | null, src: AssetReader, id: string): Promise<any | null> {
   const { ns, path } = split(id);
-  return memoized(env, ns, `models/${path}`, async () => {
+  return memoized(env, src, ns, `models/${path}`, async () => {
     const obj = await src.get(ns, `models/${path}.json`);
     if (!obj) return null;
     try {
@@ -180,7 +187,7 @@ function textureDataUrl(env: Env | null, src: AssetReader, defaultNs: string, re
   // 読み取りがバニラにフォールバックする場合でも、要求元のネームスペースのバージョンをキーにします。
   // これにより、`minecraft` だけのアップロードでModのエントリが無効化されるのを防ぎます。
   // これは再アップロードされたバニラテクスチャにおいてのみ意味を持ち、オフラインパイプラインはいずれにせよバージョンごとに1回だけ書き込みを行います。
-  return memoized(env, ns, `textures/${path}`, async () => {
+  return memoized(env, src, ns, `textures/${path}`, async () => {
     let obj = await src.get(ns, `textures/${path}.png`);
     if (!obj && ns !== 'minecraft') obj = await src.get('minecraft', `textures/${path}.png`);
     if (!obj) return null;

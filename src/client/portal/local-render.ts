@@ -45,6 +45,9 @@ class LocalAssetReader implements AssetReader {
   /** 取得済みの中身。`ns:論理パス` を鍵にします。 */
   private readonly fetched = new Map<string, ArrayBuffer>();
 
+  /** 取りに行った回数。描画側のメモを周回ごとに切り替えるために使います。 */
+  private round = 0;
+
   /**
    * @param zip 展開済みの jar
    */
@@ -97,12 +100,18 @@ class LocalAssetReader implements AssetReader {
         loaded++;
       })
     );
+    if (loaded > 0) this.round++;
     return loaded;
   }
 
-  /** 手元の jar は build を持たないため、常に固定の世代になります。 */
+  /**
+   * この周回を表す世代を返します。
+   *
+   * 描画側は「見つからなかった」結果もメモします。素材を取り終えたあとに引き直させるため、
+   * 周回が進むたびに別の値を返します。
+   */
   async buildOf(): Promise<string | null> {
-    return null;
+    return `local-${this.round}`;
   }
 
   /**
