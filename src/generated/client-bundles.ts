@@ -1,5 +1,5 @@
 /** 自動生成。`npm run build:client` が書き換えます。手で編集しないこと。 */
 export const CLIENT_BUNDLES = {
-  "portal": "portal-BAcjcQwi.js",
-  "search": "search-Diyu6BT0.js"
+  "portal": "portal-BD_h7FGg.js",
+  "search": "search-TadIV6LU.js"
 } as const;

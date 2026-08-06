@@ -57,6 +57,9 @@ export default defineConfig({
     // CSS は Worker がHTMLに直接埋めるため、JS からは吐かせない
     cssCodeSplit: false,
     rollupOptions: {
+      // ラスタライザ（satori / resvg）の wasm は Worker 側だけで使います。ブラウザ側の描画は
+      // SVG を組み立てるところまでで完結するため、読み込まれない経路のために解析させません。
+      external: [/\.wasm$/],
       input: entries(),
       output: {
         entryFileNames: '[name]-[hash].js',
