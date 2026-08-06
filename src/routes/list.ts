@@ -63,7 +63,7 @@ listRoutes.get('/api/list.json', async (c) => {
   const index = await obj.json<{ recipes?: NamedEntry[] }>();
   // ネームスペース版と同じ基準で `tagged` を揃えます。ここがずれると、同じレシピでも
   // 見る経路によって静止画とアニメーションが入れ替わります。
-  if (Array.isArray(index.recipes)) await refineTagged(c.env, index.recipes, new AssetSource(c.env, null), 'all');
+  if (Array.isArray(index.recipes)) await refineTagged(c, index.recipes, new AssetSource(c.env, null), 'all');
   return c.json({ ...index, versions, assets }, 200, cacheControl);
 });
 
@@ -146,14 +146,58 @@ async function namespaceListing(
  * @param recipes 索引エントリ群（その場で書き換えます）
  * @param src アセット読み出し口
  */
-async function refineTagged(env: Env, recipes: NamedEntry[], src: AssetSource): Promise<void> {
+async function refineTagged(c: any, recipes: NamedEntry[], src: AssetSource, scope: string): Promise<void> {
   const candidates = recipes.filter((r) => r.tagged !== false);
   if (candidates.length === 0) return;
 
-  await runPool(candidates, 20, async (entry) => {
-    const data = await getRecipe(entry.id, env, src);
-    entry.tagged = !!data && (await hasVariantTag(data, env, src));
+  // 判定はレシピ1件ごとに本体とタグの読み出しを伴います。件数分を応答の中で回すと一覧が秒単位で
+  // 遅くなるため、結果を残して使い回します。世代が変われば別のキーになり、古い判定は参照されません。
+  const key = `cache/tagged/${await deliveryVersion(c.env)}/${scope}.json`;
+  const cached = await readTaggedCache(c.env, key);
+  if (cached) {
+    for (const entry of candidates) entry.tagged = cached[entry.id] === true;
+    return;
+  }
+
+  // 初回は待たせません。索引が持つ粗い値のまま返し、判定は裏で作って次回から使います。
+  // 待たせると、世代が変わるたびに最初の閲覧者だけが数十秒待つことになります。
+  c.executionCtx.waitUntil(buildTaggedCache(c.env, candidates.map((r) => r.id), src, key));
+}
+
+/**
+ * 判定結果を作って残します。応答の外で走らせる前提です。
+ * @param env 環境変数
+ * @param ids 判定するレシピID
+ * @param src アセット読み出し口
+ * @param key R2オブジェクトキー
+ */
+async function buildTaggedCache(env: Env, ids: string[], src: AssetSource, key: string): Promise<void> {
+  const computed: Record<string, boolean> = {};
+
+  await runPool(ids, 20, async (id) => {
+    const data = await getRecipe(id, env, src);
+    computed[id] = !!data && (await hasVariantTag(data, env, src));
   });
+
+  await env.BUCKET.put(key, JSON.stringify(computed), {
+    httpMetadata: { contentType: 'application/json' },
+  }).catch(() => {});
+}
+
+/**
+ * 判定結果のキャッシュを読みます。壊れていれば作り直させます。
+ * @param env 環境変数
+ * @param key R2オブジェクトキー
+ */
+async function readTaggedCache(env: Env, key: string): Promise<Record<string, boolean> | null> {
+  const obj = await env.BUCKET.get(key);
+  if (!obj) return null;
+
+  try {
+    return await obj.json<Record<string, boolean>>();
+  } catch {
+    return null;
+  }
 }
 
 /**
