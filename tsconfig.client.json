@@ -12,7 +12,9 @@
       "DOM.Iterable"
     ],
     "jsx": "react-jsx",
-    "types": []
+    "types": [
+      "@cloudflare/workers-types"
+    ]
   },
   "include": [
     "src/client/search",
