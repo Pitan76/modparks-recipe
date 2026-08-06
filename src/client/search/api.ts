@@ -18,7 +18,10 @@ export type Assets = { base: string; rv: string };
 export type RecipeIndex = { recipes: RecipeEntry[]; versions: Versions | null; assets: Assets | null };
 
 /** Worker側の DEFAULT_SCALE。R2の直接URLを組むにはキーと同じ値が要ります。 */
-const DEFAULT_SCALE = 2;
+export const DEFAULT_SCALE = 2;
+
+/** 画面から選べる拡大率。Worker側の normalizeScale が受ける 1〜8 の範囲に収めています。 */
+export const SCALE_CHOICES = [1, 2, 4, 8] as const;
 
 /** Worker側の既定 tagOffset。 */
 const DEFAULT_TAG_OFFSET = 0;
@@ -47,12 +50,18 @@ export function splitId(full: string): { ns: string; id: string } {
  * @param recipeId レシピID
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
+ * @param scale 拡大率。既定値ならURLに載せません（キャッシュを既定値のURLに寄せるため）
  */
-export function imagePath(recipeId: string, fmt: string, versions: Versions | null): string {
+export function imagePath(recipeId: string, fmt: string, versions: Versions | null, scale: number = DEFAULT_SCALE): string {
   const p = splitId(recipeId);
   const version = versions?.[p.ns];
+  const query = new URLSearchParams();
+  if (version) query.set('v', version);
+  if (scale !== DEFAULT_SCALE) query.set('scale', String(scale));
+
   const base = `/api/${encodeURIComponent(p.ns)}/${encodeURIComponent(p.id)}.${fmt}`;
-  return version ? `${base}?v=${encodeURIComponent(version)}` : base;
+  const qs = query.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 /**
@@ -65,13 +74,15 @@ export function imagePath(recipeId: string, fmt: string, versions: Versions | nu
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報（`/api/list.json` の `assets`）
+ * @param scale 拡大率
  * @returns 直接配信できないときは null
  */
 export function imageCdnPath(
   recipeId: string,
   fmt: string,
   versions: Versions | null,
-  assets: Assets | null
+  assets: Assets | null,
+  scale: number = DEFAULT_SCALE
 ): string | null {
   if (!assets?.base) return null;
 
@@ -80,7 +91,7 @@ export function imageCdnPath(
   // バージョンが無いとサーバ側が引いた値がキーに入るため、クライアントからは行き先を当てられない。
   if (!version || version === '0') return null;
 
-  const key = `cache/img/${assets.rv}/${p.ns}/${version}/${p.id}@${DEFAULT_SCALE}+${DEFAULT_TAG_OFFSET}.${fmt}`;
+  const key = `cache/img/${assets.rv}/${p.ns}/${version}/${p.id}@${scale}+${DEFAULT_TAG_OFFSET}.${fmt}`;
   return `${assets.base}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 

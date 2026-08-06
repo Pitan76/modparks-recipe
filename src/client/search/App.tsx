@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEv
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Pagination from '@mui/material/Pagination';
-import { imagePath, splitId, type Names } from './api';
+import { DEFAULT_SCALE, imagePath, SCALE_CHOICES, splitId, type Names } from './api';
 import { MainPanel, PAGE_SIZE, type GridEntry, type Selection } from './MainPanel';
 import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle } from './parts';
 import {
@@ -27,6 +27,9 @@ const ITEM_PAGE_SIZE = 50;
 /** 画像形式の保存キー。 */
 const FMT_KEY = 'mpr_fmt';
 
+/** 拡大率の保存キー。 */
+const SCALE_KEY = 'mpr_scale';
+
 /**
  * 表示言語に対応するMinecraftのロケールと、言語切替リンクの行き先を返します。
  * @param locale 表示言語
@@ -44,6 +47,7 @@ export function App({ locale }: { locale: string }) {
 
   const [q, setQ] = useState('');
   const [fmt, setFmt] = useState(() => readStored(FMT_KEY) || 'png');
+  const [scale, setScale] = useState(() => storedScale());
   const [selection, setSelection] = useState<Selection | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [failedId, setFailedId] = useState<string | null>(null);
@@ -152,12 +156,17 @@ export function App({ locale }: { locale: string }) {
 
   function downloadRecipe(ev: MouseEvent, rid: string) {
     ev.stopPropagation();
-    downloadUrl(imagePath(rid, fmt, versions), `${splitId(rid).id}.${fmt}`);
+    downloadUrl(imagePath(rid, fmt, versions, scale), `${splitId(rid).id}.${fmt}`);
   }
 
   function changeFmt(next: string) {
     setFmt(next);
     writeStored(FMT_KEY, next);
+  }
+
+  function changeScale(next: number) {
+    setScale(next);
+    writeStored(SCALE_KEY, String(next));
   }
 
   return (
@@ -172,6 +181,8 @@ export function App({ locale }: { locale: string }) {
           onNs={setNs}
           fmt={fmt}
           onFmt={changeFmt}
+          scale={scale}
+          onScale={changeScale}
           namespaces={namespaces}
           counts={counts}
           onSubmit={submit}
@@ -218,6 +229,7 @@ export function App({ locale }: { locale: string }) {
               fmt={fmt}
               versions={versions}
               assets={assets}
+              scale={scale}
               page={page}
               onPage={setPage}
               entries={entries}
@@ -233,6 +245,15 @@ export function App({ locale }: { locale: string }) {
       </Container>
     </>
   );
+}
+
+/**
+ * 保存済みの拡大率を読みます。選択肢に無い値は既定へ落とします
+ * （保存値を素通しすると、選択肢を変えたときに選択の外れたセレクトが出ます）。
+ */
+function storedScale(): number {
+  const saved = Number(readStored(SCALE_KEY));
+  return SCALE_CHOICES.includes(saved as never) ? saved : DEFAULT_SCALE;
 }
 
 /** アイテム一覧の中身。読み込み中・索引なし・0件をここで出し分けます。 */

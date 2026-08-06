@@ -27,6 +27,7 @@ export type MainPanelProps = WithMessages & {
   fmt: string;
   versions: Versions | null;
   assets: Assets | null;
+  scale: number;
   page: number;
   onPage: (page: number) => void;
   entries: GridEntry[];
@@ -69,6 +70,7 @@ function RecipeGrid(props: MainPanelProps) {
             fmt={props.fmt}
             versions={props.versions}
             assets={props.assets}
+            scale={props.scale}
             copied={props.copiedId === item}
             failed={props.failedId === item}
             onClick={() => props.onPick(item)}
@@ -118,10 +120,11 @@ function RecipeDetail(props: MainPanelProps & { selection: Selection }) {
             fmt={props.fmt}
             versions={props.versions}
             assets={props.assets}
+            scale={props.scale}
             title={t.openImage}
             copied={copied}
             failed={failed}
-            onClick={() => window.open(imagePath(rid, props.fmt, props.versions), '_blank', 'noopener')}
+            onClick={() => window.open(imagePath(rid, props.fmt, props.versions, props.scale), '_blank', 'noopener')}
             onCopy={(ev) => props.onCopy(ev, label)}
             onDownload={(ev) => props.onDownloadRecipe(ev, rid)}
           />

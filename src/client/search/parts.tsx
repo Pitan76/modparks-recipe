@@ -15,7 +15,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { imageCdnPath, imagePath, splitId, type Assets, type Versions } from './api';
+import { imageCdnPath, imagePath, SCALE_CHOICES, splitId, type Assets, type Versions } from './api';
 import type { SearchMessages } from '../../utils/i18n/search';
 
 /** 部品が共通で受け取る文言。 */
@@ -62,6 +62,8 @@ export type SearchFormProps = WithMessages & {
   onNs: (value: string) => void;
   fmt: string;
   onFmt: (value: string) => void;
+  scale: number;
+  onScale: (value: number) => void;
   namespaces: string[];
   counts: Record<string, number>;
   onSubmit: (ev: FormEvent) => void;
@@ -91,7 +93,7 @@ export function SearchForm(props: SearchFormProps) {
           InputProps={{ endAdornment: clear }}
           sx={{ maxWidth: { sm: 360 } }}
         />
-        <TextField label="Mod" select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={{ width: { sm: 200 } }}>
+        <TextField label={t.namespace} select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={{ width: { sm: 200 } }}>
           {props.namespaces.map((ns) => (
             <MenuItem key={ns} value={ns}>{`${ns === 'all' ? 'All' : ns} (${props.counts[ns] ?? 0})`}</MenuItem>
           ))}
@@ -100,6 +102,17 @@ export function SearchForm(props: SearchFormProps) {
           <MenuItem value="png">PNG</MenuItem>
           <MenuItem value="gif">GIF</MenuItem>
           <MenuItem value="jpg">JPG</MenuItem>
+        </TextField>
+        <TextField
+          label={t.size}
+          select
+          value={props.scale}
+          onChange={(ev) => props.onScale(Number(ev.target.value))}
+          sx={{ width: { sm: 110 } }}
+        >
+          {SCALE_CHOICES.map((scale) => (
+            <MenuItem key={scale} value={scale}>{`${scale}x`}</MenuItem>
+          ))}
         </TextField>
         <Button type="submit" variant="contained" sx={{ minWidth: 88, flexShrink: 0 }}>
           {t.show}
@@ -172,6 +185,7 @@ export type ImageTileProps = WithMessages & {
   fmt: string;
   versions: Versions | null;
   assets: Assets | null;
+  scale: number;
   title?: string;
   copied: boolean;
   failed: boolean;
@@ -184,13 +198,14 @@ export function ImageTile(props: ImageTileProps) {
   const { t } = props;
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const parts = splitId(props.recipeId);
-  const direct = imageCdnPath(props.recipeId, props.fmt, props.versions, props.assets);
-  // 直接配信を試している間だけ true。R2に未生成の画像は404になるので、その1回だけWorkerへ落とす。
-  const [useDirect, setUseDirect] = useState(direct !== null);
+  const direct = imageCdnPath(props.recipeId, props.fmt, props.versions, props.assets, props.scale);
+  // 直接配信を諦めたURL。形式や拡大率を変えると direct も変わるので、その都度また直接配信から試せる。
+  const [gaveUp, setGaveUp] = useState<string | null>(null);
+  const useDirect = direct !== null && gaveUp !== direct;
 
   /** 直接配信の404はWorkerで拾い直す。それ以外の失敗は本当のエラーとして出す。 */
   const onError = () => {
-    if (useDirect) return setUseDirect(false);
+    if (useDirect) return setGaveUp(direct);
     setStatus('error');
   };
 
@@ -201,7 +216,7 @@ export function ImageTile(props: ImageTileProps) {
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
       <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions)}
+        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions, props.scale)}
         alt={props.recipeId}
         className="recipe-img"
         title={props.title}
