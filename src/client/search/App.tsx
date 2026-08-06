@@ -194,7 +194,7 @@ export function App({ locale }: { locale: string }) {
     if (ids.length === 0 || zipping) return;
 
     setZipping(t.downloadZipProgress.replace('{done}', '0').replace('{total}', String(ids.length)));
-    const blob = await buildRecipeZip(ids, fmt, versions, assets, scale, (done, total) => {
+    const blob = await buildRecipeZip(ids, fmt, scale, (done, total) => {
       setZipping(t.downloadZipProgress.replace('{done}', String(done)).replace('{total}', String(total)));
     }).catch(() => null);
     setZipping(null);
