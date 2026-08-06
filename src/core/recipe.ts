@@ -30,6 +30,7 @@ function isTagIngredient(ingredient: any): boolean {
   if (typeof ingredient === 'string') return ingredient.startsWith('#');
   if (Array.isArray(ingredient)) return ingredient.some(isTagIngredient);
   if (typeof ingredient.tag === 'string') return true;
+  if (ingredient.items !== undefined) return isTagIngredient(ingredient.items);
   return typeof ingredient.id === 'string' && ingredient.id.startsWith('#');
 }
 
