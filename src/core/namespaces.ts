@@ -21,10 +21,13 @@ export function isSharedNamespace(ns: string): boolean {
 /**
  * 共通タグのネームスペースの読み替え表。
  *
- * 共通タグは Forge の `forge:` から `c:` へ移り、NeoForge も `c:` に揃いました。1.20.x 以前の
- * mod は今も `#forge:ingots/copper` を参照してくるため、実体が無いときの読み替え先を持ちます。
+ * 共通タグは Forge の `forge:` から `c:` へ改名されました。1.20.x 以前の mod は今も
+ * `#forge:ingots/copper` を参照してくるため、実体が無いときの読み替え先を持ちます。
+ *
+ * `neoforge:` は入れません。改名ではなく `neoforge:enchanting_fuels` のような NeoForge 固有の
+ * 別物で、読み替えると無関係な `c:` のタグを引き当てかねません。実データを取り込んで解決します。
  */
-const TAG_ALIASES: Record<string, string> = { forge: 'c', neoforge: 'c' };
+const TAG_ALIASES: Record<string, string> = { forge: 'c' };
 
 /**
  * タグを引き直す先のネームスペースを返します。

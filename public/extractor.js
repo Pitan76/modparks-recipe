@@ -32,10 +32,28 @@
 	function isSharedNamespace(ns) {
 		return SHARED_NAMESPACES.includes(ns);
 	}
+	//#endregion
+	//#region src/core/paths.ts
+	/**
+	* @fileoverview jar 内アセットのパス規則。
+	*
+	* クライアント側の抽出（ブラウザで jar を展開する経路）と、サーバ側の抽出
+	* （jar を丸ごと受け取る経路）で同じ規則を使うための唯一の出所です。
+	* 片方だけが新しいディレクトリ名に対応する、という食い違いを防ぎます。
+	*/
+	/** data/<ns>/recipe(s)/<id>.json。1.21 以降は単数形の `recipe/`。 */
+	var RECIPE_PATH = /^data\/([^/]+)\/recipes?\/(.+)\.json$/;
+	/** data/<ns>/tag(s)/<種別>/<id>.json。`id` は `item/planks` のように種別を含みます。 */
+	var TAG_PATH = new RegExp(`^data/([^/]+)/tags?/((?:${[
+		"item",
+		"items",
+		"block",
+		"blocks"
+	].join("|")})/.+)\\.json$`);
 	/** 判定順に並べた規則表。先に一致したものを採用します。 */
 	var RULES = [
-		["recipes", /^data\/([^/]+)\/recipes?\/(.+)\.json$/],
-		["tags", /^data\/([^/]+)\/tags?\/(.+)\.json$/],
+		["recipes", RECIPE_PATH],
+		["tags", TAG_PATH],
 		["textures", /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/],
 		["models", /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/],
 		["langs", /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/]

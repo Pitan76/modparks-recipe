@@ -6,9 +6,7 @@ import { Env } from './env';
 import { AssetSource, legacyAssetSource } from '../build/asset-source';
 import { parseNamespacedId } from './id';
 import { tagAliasOf } from '../../core/namespaces';
-
-/** タグJSONが置かれうるディレクトリ。単数形・複数形の両方がMCの版によって使われます。 */
-const TAG_DIRS = ['item', 'items', 'block', 'blocks'];
+import { TAG_DIRS } from '../../core/paths';
 
 /**
  * タグJSONの実体を読みます。

@@ -20,6 +20,34 @@ export function resultItemOf(data: any): string | null {
 }
 
 /**
+ * 素材がタグ参照を含むかどうかを判定します。
+ *
+ * `resolveIngredient` が受け付ける形（文字列・配列・`{tag}`・`{id}`）に合わせています。
+ * @param ingredient レシピの素材1つ
+ */
+function isTagIngredient(ingredient: any): boolean {
+  if (!ingredient) return false;
+  if (typeof ingredient === 'string') return ingredient.startsWith('#');
+  if (Array.isArray(ingredient)) return ingredient.some(isTagIngredient);
+  if (typeof ingredient.tag === 'string') return true;
+  return typeof ingredient.id === 'string' && ingredient.id.startsWith('#');
+}
+
+/**
+ * レシピがタグ由来の素材を持つか、つまり素材が切り替わりうるかを判定します。
+ *
+ * タグの中身までは見ません。構成アイテムが1つだけのタグもありますが、それを見分けるには
+ * タグ本体の読み出しが要る一方、取り込みではレシピがタグより先に書かれるため当てになりません。
+ * 静止画になる場合も描画側が同一フレームで打ち切るので、ここは静的な判定に留めます。
+ * @param data レシピJSONオブジェクト
+ */
+export function hasTagIngredient(data: any): boolean {
+  const shapeless = Array.isArray(data?.ingredients) ? data.ingredients : [];
+  const shaped = data?.key && typeof data.key === 'object' ? Object.values(data.key) : [];
+  return [...shapeless, ...shaped].some(isTagIngredient);
+}
+
+/**
  * レシピタイプがクラフト関連（shaped または shapeless）であるかどうかを判定します。
  * @param type レシピのタイプ
  */

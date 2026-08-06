@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
     "fetch-common-tags": "tsx src/scripts/fetch-common-tags.ts",
+    "backfill-tagged": "tsx src/scripts/backfill-tagged.ts",
     "render-blocks": "tsx src/scripts/render-blocks.ts",
     "upload-lang": "tsx src/scripts/upload-lang.ts",
     "migrate-builds": "tsx src/scripts/migrate-builds.ts",

@@ -2,7 +2,7 @@
  * @fileoverview レシピデータのR2保存、D1キャッシュ破棄、およびインデックス（recipes.json）の管理を行うユーティリティ。
  */
 
-import { Env, resultItemOf, isCraftingType } from './minecraft';
+import { Env, resultItemOf, isCraftingType, hasTagIngredient } from './minecraft';
 import { updateJson } from './r2-json';
 
 const INDEX_KEY = 'index/recipes.json';
@@ -50,8 +50,13 @@ export async function updateIndexMany(env: Env, entries: { fullId: string; data:
   await upsertIndexEntries(env, entries.map((e) => e.fullId), shaped);
 }
 
-/** 公開インデックスに載る1レシピの形。 */
-export type IndexEntry = { id: string; result: string | null; type: string };
+/**
+ * 公開インデックスに載る1レシピの形。
+ *
+ * `tagged` はタグ由来の素材を持つ（＝素材が切り替わりうる）ことを表し、閲覧側が静止画と
+ * アニメーションのどちらを要求するかの判断に使います。持たないエントリは false と同じ扱いです。
+ */
+export type IndexEntry = { id: string; result: string | null; type: string; tagged?: boolean };
 
 /**
  * レシピデータから索引エントリを組み立てます。呼び出し側でクラフト系判定を済ませておくこと。
@@ -59,7 +64,14 @@ export type IndexEntry = { id: string; result: string | null; type: string };
  * @param data レシピJSONデータ
  */
 export function indexEntryOf(fullId: string, data: any): IndexEntry {
-  return { id: fullId, result: resultItemOf(data), type: String(data.type).replace(/^minecraft:/, '') };
+  const entry: IndexEntry = {
+    id: fullId,
+    result: resultItemOf(data),
+    type: String(data.type).replace(/^minecraft:/, ''),
+  };
+  // 索引は全ネームスペース分が1ファイルに載るため、偽のときは書かずに済ませます。
+  if (hasTagIngredient(data)) entry.tagged = true;
+  return entry;
 }
 
 /**

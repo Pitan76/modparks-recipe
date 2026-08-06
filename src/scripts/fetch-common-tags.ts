@@ -1,46 +1,80 @@
 /**
- * @fileoverview 共通タグ（`c:`）の基盤データを R2 に取り込むスクリプト。
+ * @fileoverview ローダーが定義するタグ（`c:` と `neoforge:`）の基盤データを R2 に取り込むスクリプト。
  *
- * `c:` タグは個々の mod ではなくローダー側のライブラリが定義しており、mod の jar には
- * 自分が足す分の断片しか入っていません。土台が無いと `#c:ingots/copper` のような
- * ありふれた参照すら解決できないため、ここで一括して入れます。
+ * これらのタグは個々の mod ではなくローダー側が定義しており、mod の jar には自分が足す分の
+ * 断片しか入っていません。土台が無いと `#c:ingots/copper` のようなありふれた参照すら解決できません。
  *
- * 取得元は Fabric API の `fabric-convention-tags-v2` です。NeoForge も同じ `c:` タグを
- * 配っていますが、タグ名の集合は Fabric 側の部分集合だったので、1つに絞っています。
- * ただし Fabric API は JiJ（jar in jar）なので、本体直下ではなく `META-INF/jars/` の中を見ます。
+ * 取得元は2つです。
+ * - Fabric API: `c:` の共通タグ。JiJ（jar in jar）なので `META-INF/jars/` の中を見ます。
+ *   NeoForge も同じ `c:` を配っていますが、タグ名の集合は Fabric 側の部分集合でした。
+ * - NeoForge: `neoforge:` 固有のタグ。`neoforge:enchanting_fuels` のように `c:` には無いものがあります。
  *
- * mod 固有の `c:` タグ（`c:ingots/tin` など）は、ポータル経由の投稿が書き込みAPI側の
- * 統合処理でこの土台に積み増します。ここで入れるのはあくまで基盤分です。
+ * mod 固有のタグ（`c:ingots/tin` など）は、ポータル経由の投稿が書き込みAPI側の統合処理で
+ * この土台に積み増します。ここで入れるのはあくまで基盤分です。
  */
 
 import * as unzipper from 'unzipper';
 import { uploadToR2, runPool, BUCKET_NAME } from './r2';
-
-const METADATA_URL = 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml';
+import { TAG_DIRS } from '../core/paths';
 
 /** JiJ の中から探す、共通タグを持つモジュール。 */
 const CONVENTION_JAR = /^META-INF\/jars\/fabric-convention-tags-v2-.*\.jar$/;
 
-/** R2 へ写す対象。jar 内のパスをそのまま R2 キーにします。 */
-const TAG_PATH = /^data\/c\/tags\/.*\.json$/;
+/**
+ * R2 へ写す対象のパターンを組み立てます。jar 内のパスをそのまま R2 キーにします。
+ *
+ * 描画で引かれるディレクトリだけに絞ります。jar には `worldgen` や `damage_type` のタグも
+ * 入っていますが、レシピの素材解決からは辿り着かないため置いても読まれません。
+ * @param ns タグのネームスペース
+ */
+function tagPathOf(ns: string): RegExp {
+  return new RegExp(`^data/${ns}/tags/(?:${TAG_DIRS.join('|')})/.*\\.json$`);
+}
+
+/** タグの取得元。 */
+interface TagSource {
+  name: string;
+  /** maven-metadata.xml の場所 */
+  metadata: string;
+  /** 版から jar の URL を組み立てます */
+  jarUrl: (version: string) => string;
+  /** 同梱 jar を使う場合の取り出し方 */
+  unwrap?: (jar: Buffer) => Promise<Buffer>;
+  /** 写す対象 */
+  path: RegExp;
+}
+
+const FABRIC_MAVEN = 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api';
+const NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/net/neoforged/neoforge';
+
+const SOURCES: TagSource[] = [
+  {
+    name: 'fabric-api',
+    metadata: `${FABRIC_MAVEN}/maven-metadata.xml`,
+    // 版名に `+` を含むため、URL に埋める前にエスケープが要ります
+    jarUrl: (v) => `${FABRIC_MAVEN}/${encodeURIComponent(v)}/fabric-api-${encodeURIComponent(v)}.jar`,
+    unwrap: extractConventionJar,
+    path: tagPathOf('c'),
+  },
+  {
+    name: 'neoforge',
+    metadata: `${NEOFORGE_MAVEN}/maven-metadata.xml`,
+    jarUrl: (v) => `${NEOFORGE_MAVEN}/${v}/neoforge-${v}-universal.jar`,
+    path: tagPathOf('neoforge'),
+  },
+];
 
 /**
- * Fabric API の最新リリース版とその jar の URL を取得します。
+ * maven-metadata.xml から最新のリリース版を読みます。
+ * @param source 取得元
  */
-async function fetchLatestFabricApi(): Promise<{ url: string; version: string }> {
-  const res = await fetch(METADATA_URL);
-  if (!res.ok) throw new Error(`Failed to fetch fabric-api metadata: ${res.statusText}`);
+async function fetchLatestVersion(source: TagSource): Promise<string> {
+  const res = await fetch(source.metadata);
+  if (!res.ok) throw new Error(`Failed to fetch ${source.name} metadata: ${res.statusText}`);
 
-  const xml = await res.text();
-  const version = xml.match(/<release>([^<]+)<\/release>/)?.[1];
-  if (!version) throw new Error('Could not find <release> in fabric-api metadata');
-
-  // 版名に `+` を含むため、URL に埋める前にエスケープが要ります
-  const encoded = encodeURIComponent(version);
-  return {
-    url: `https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${encoded}/fabric-api-${encoded}.jar`,
-    version,
-  };
+  const version = (await res.text()).match(/<release>([^<]+)<\/release>/)?.[1];
+  if (!version) throw new Error(`Could not find <release> in ${source.name} metadata`);
+  return version;
 }
 
 /**
@@ -67,15 +101,34 @@ async function extractConventionJar(jar: Buffer): Promise<Buffer> {
 }
 
 /**
- * jar から `data/c/tags/**.json` を抜き出します。
- * @param jar 共通タグを持つ jar
+ * jar からタグJSONを抜き出します。
+ * @param jar 対象の jar
+ * @param path 写す対象のパターン
  */
-async function extractCommonTags(jar: Buffer): Promise<{ key: string; body: Buffer }[]> {
+async function extractTags(jar: Buffer, path: RegExp): Promise<{ key: string; body: Buffer }[]> {
   const dir = await unzipper.Open.buffer(jar);
-  const targets = dir.files.filter((f) => f.type === 'File' && TAG_PATH.test(f.path));
+  const targets = dir.files.filter((f) => f.type === 'File' && path.test(f.path));
 
   const entries: { key: string; body: Buffer }[] = [];
   for (const file of targets) entries.push({ key: file.path, body: await file.buffer() });
+  return entries;
+}
+
+/**
+ * 1つの取得元からタグを集めます。
+ * @param source 取得元
+ */
+async function collectFrom(source: TagSource): Promise<{ key: string; body: Buffer }[]> {
+  const version = await fetchLatestVersion(source);
+  console.log(`${source.name} ${version}`);
+
+  console.log(`  Downloading ${source.name}...`);
+  const jar = await download(source.jarUrl(version));
+  const target = source.unwrap ? await source.unwrap(jar) : jar;
+
+  const entries = await extractTags(target, source.path);
+  console.log(`  Extracted ${entries.length} tags.`);
+  if (entries.length === 0) throw new Error(`No tags found in ${source.name}; the jar layout may have changed`);
   return entries;
 }
 
@@ -105,17 +158,10 @@ async function uploadAll(entries: { key: string; body: Buffer }[]): Promise<numb
 
 /** 実行本体。 */
 async function run() {
-  const { url, version } = await fetchLatestFabricApi();
-  console.log(`fabric-api ${version}`);
+  const entries: { key: string; body: Buffer }[] = [];
+  for (const source of SOURCES) entries.push(...(await collectFrom(source)));
 
-  console.log('Downloading fabric-api...');
-  const conventionJar = await extractConventionJar(await download(url));
-
-  const entries = await extractCommonTags(conventionJar);
-  console.log(`Extracted ${entries.length} common tags.`);
-  if (entries.length === 0) throw new Error('No common tags found; the jar layout may have changed');
-
-  console.log(`Uploading to R2 bucket "${BUCKET_NAME}"...`);
+  console.log(`Uploading ${entries.length} tags to R2 bucket "${BUCKET_NAME}"...`);
   if (await uploadAll(entries) > 0) process.exit(1);
 }
 

@@ -7,6 +7,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, NoSuchKey } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
+import fs from 'fs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -16,6 +17,14 @@ const ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'mp-recipe-images';
+
+/**
+ * 書き込みを実際には行わない空打ちモード。`R2_DRY_RUN=1` で有効になります。
+ *
+ * 手元で挙動を見たいときに実装を書き換えると、戻し忘れたまま commit されて
+ * 「動いているのに何も上がらない」状態が残ります。切り替えは環境変数だけで完結させます。
+ */
+const DRY_RUN = process.env.R2_DRY_RUN === '1';
 
 /**
  * 環境変数に R2 の認証情報が存在するかどうかを判定します。
@@ -66,22 +75,61 @@ function contentTypeFor(key: string): string {
  * @param key アップロード先のオブジェクトキー
  * @param body アップロードするバイナリデータ
  */
-import fs from 'fs';
-
 export async function uploadToR2(key: string, body: Buffer): Promise<void> {
-  console.log(`[Mock R2] uploadToR2 for ${key}`);
-  if (key === 'index/recipes.json') {
-    fs.writeFileSync('test-recipes.json', body);
-    console.log('[Mock R2] Saved to test-recipes.json');
+  if (DRY_RUN) return mockUpload(key, body);
+
+  await getS3().send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: body,
+      ContentType: contentTypeFor(key),
+    })
+  );
+}
+
+/**
+ * R2 バケットの指定キーを取得します。存在しない場合は null を返します。
+ * @param key 取得するオブジェクトキー
+ */
+export async function getFromR2(key: string): Promise<Buffer | null> {
+  if (DRY_RUN) return mockGet(key);
+
+  try {
+    const res = await getS3().send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+    const bytes = await res.Body!.transformToByteArray();
+    return Buffer.from(bytes);
+  } catch (e) {
+    if (e instanceof NoSuchKey || (e as any)?.name === 'NoSuchKey' || (e as any)?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw e;
   }
 }
 
-export async function getFromR2(key: string): Promise<Buffer | null> {
-  console.log(`[Mock R2] getFromR2 for ${key}`);
-  if (key === 'index/recipes.json' && fs.existsSync('test-recipes.json')) {
-    return fs.readFileSync('test-recipes.json');
-  }
-  return null;
+/** 空打ち時にレシピインデックスを置くローカルの控え。 */
+const DRY_RUN_INDEX_FILE = 'test-recipes.json';
+
+/**
+ * 空打ち時の書き込み。レシピインデックスだけは手元に落とし、中身を確認できるようにします。
+ * @param key アップロード先のオブジェクトキー
+ * @param body アップロードするバイナリデータ
+ */
+function mockUpload(key: string, body: Buffer): void {
+  console.log(`[Dry run] uploadToR2 for ${key}`);
+  if (key !== 'index/recipes.json') return;
+  fs.writeFileSync(DRY_RUN_INDEX_FILE, body);
+  console.log(`[Dry run] Saved to ${DRY_RUN_INDEX_FILE}`);
+}
+
+/**
+ * 空打ち時の読み出し。直前の空打ちが残した控えを返します。
+ * @param key 取得するオブジェクトキー
+ */
+function mockGet(key: string): Buffer | null {
+  console.log(`[Dry run] getFromR2 for ${key}`);
+  if (key !== 'index/recipes.json' || !fs.existsSync(DRY_RUN_INDEX_FILE)) return null;
+  return fs.readFileSync(DRY_RUN_INDEX_FILE);
 }
 
 /**

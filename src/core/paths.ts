@@ -9,8 +9,16 @@
 /** data/<ns>/recipe(s)/<id>.json。1.21 以降は単数形の `recipe/`。 */
 export const RECIPE_PATH = /^data\/([^/]+)\/recipes?\/(.+)\.json$/;
 
-/** data/<ns>/tag(s)/<id>.json。`id` は `item/planks` のように種別を含みます。 */
-export const TAG_PATH = /^data\/([^/]+)\/tags?\/(.+)\.json$/;
+/**
+ * レシピの素材解決で実際に読むタグのディレクトリ。単数形・複数形はMCの版によって使い分けられます。
+ *
+ * `worldgen` や `enchantment` など他の種別のタグも jar には入っていますが、クラフト画像の描画では
+ * 引かれることがありません。取り込み側もここに合わせ、読まれないものを溜めないようにします。
+ */
+export const TAG_DIRS = ['item', 'items', 'block', 'blocks'];
+
+/** data/<ns>/tag(s)/<種別>/<id>.json。`id` は `item/planks` のように種別を含みます。 */
+export const TAG_PATH = new RegExp(`^data/([^/]+)/tags?/((?:${TAG_DIRS.join('|')})/.+)\\.json$`);
 
 /** assets/<ns>/textures/(item|block)/<id>.png */
 export const TEXTURE_PATH = /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/;
