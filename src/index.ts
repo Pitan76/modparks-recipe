@@ -13,6 +13,7 @@ import { migrateRoutes } from './routes/migrate';
 import { authRoutes } from './routes/auth';
 import { uploadRoutes } from './routes/upload';
 import { previewRoutes } from './routes/preview';
+import { assetRoutes } from './routes/asset';
 import { gcRoutes } from './routes/gc';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -34,6 +35,7 @@ app.route('/', authRoutes);
 // 外部 jar の投稿ポータル。`/api/upload` は namespace 付きのパスより先に登録します。
 app.route('/', uploadRoutes);
 app.route('/', previewRoutes);
+app.route('/', assetRoutes);
 // レシピ索引API（全体版とネームスペース版）。
 // 画像APIの `/api/:namespace/:filename` が `/api/:namespace/list.json` を拾わないよう、先に登録します。
 app.route('/', listRoutes);
