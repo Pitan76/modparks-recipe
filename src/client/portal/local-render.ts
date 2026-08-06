@@ -141,3 +141,40 @@ async function collectRecipes(zip: ZipLike): Promise<{ id: string; data: any }[]
 
   return found.sort((a, b) => a.id.localeCompare(b.id));
 }
+
+/**
+ * SVG文字列をデータURLにします。
+ * @param svg SVG文字列
+ */
+export function svgDataUrl(svg: string): string {
+  // 日本語などの非ASCIIが混じっても壊れないように、UTF-8として符号化してから base64 にします。
+  const utf8 = new TextEncoder().encode(svg);
+  let binary = '';
+  for (const byte of utf8) binary += String.fromCharCode(byte);
+  return `data:image/svg+xml;base64,${btoa(binary)}`;
+}
+
+/**
+ * SVGをPNGのデータURLに変換します。
+ *
+ * アイコンはすべてSVGの中にデータURLとして埋まっているため、外部参照が無く canvas が汚れません。
+ * @param svg SVG文字列
+ * @param scale 拡大率
+ */
+export async function svgToPngDataUrl(svg: string, scale: number): Promise<string | null> {
+  const image = new Image();
+  image.src = svgDataUrl(svg);
+  await image.decode().catch(() => undefined);
+  if (!image.width) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width * scale;
+  canvas.height = image.height * scale;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  // ドット絵なので、拡大時に補間させません。
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}

@@ -24,7 +24,7 @@ export async function saveDataUrlZip(images: Record<string, string | null>, file
 
   for (const [id, dataUrl] of Object.entries(images)) {
     if (!dataUrl) continue;
-    const ext = dataUrl.startsWith('data:image/gif') ? 'gif' : 'png';
+    const ext = extensionOf(dataUrl);
     // `ns:id` の `:` と `/` はファイル名に使えないため、階層に開きます。
     zip.file(`${id.replace(':', '/')}.${ext}`, dataUrl.slice(dataUrl.indexOf(',') + 1), { base64: true });
     added++;
@@ -32,6 +32,16 @@ export async function saveDataUrlZip(images: Record<string, string | null>, file
   if (added === 0) return;
 
   saveBlob(await zip.generateAsync({ type: 'blob' }), fileName);
+}
+
+/**
+ * データURLの種別から拡張子を決めます。
+ * @param dataUrl データURL
+ */
+function extensionOf(dataUrl: string): string {
+  if (dataUrl.startsWith('data:image/gif')) return 'gif';
+  if (dataUrl.startsWith('data:image/svg')) return 'svg';
+  return 'png';
 }
 
 /**
