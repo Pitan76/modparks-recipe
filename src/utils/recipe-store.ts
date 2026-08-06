@@ -53,8 +53,9 @@ export async function updateIndexMany(env: Env, entries: { fullId: string; data:
 /**
  * 公開インデックスに載る1レシピの形。
  *
- * `tagged` はタグ由来の素材を持つ（＝素材が切り替わりうる）ことを表し、閲覧側が静止画と
- * アニメーションのどちらを要求するかの判断に使います。持たないエントリは false と同じ扱いです。
+ * `tagged` は「タグ由来の素材を持つか」です。取り込み時点ではタグ本体がまだ無いことがあるため、
+ * ここで分かるのは形だけです。実際に素材が切り替わるか（＝アニメーションにする意味があるか）は
+ * タグが出揃う配信時に絞り込みます。値を持たないのは、この項目が無かった頃の古い build です。
  */
 export type IndexEntry = { id: string; result: string | null; type: string; tagged?: boolean };
 
@@ -69,8 +70,8 @@ export function indexEntryOf(fullId: string, data: any): IndexEntry {
     result: resultItemOf(data),
     type: String(data.type).replace(/^minecraft:/, ''),
   };
-  // 索引は全ネームスペース分が1ファイルに載るため、偽のときは書かずに済ませます。
-  if (hasTagIngredient(data)) entry.tagged = true;
+  // 偽も明示します。値が無いことを「未判定」の意味に使うため、判定済みの偽と区別が要ります。
+  entry.tagged = hasTagIngredient(data);
   return entry;
 }
 

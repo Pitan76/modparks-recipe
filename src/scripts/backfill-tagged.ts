@@ -56,12 +56,9 @@ async function fill(entries: Entry[]): Promise<{ tagged: number; missing: number
       missing++;
       return;
     }
-    if (!hasTagIngredient(data)) {
-      delete entry.tagged;
-      return;
-    }
-    entry.tagged = true;
-    tagged++;
+    // 偽も明示します。値が無いと「未判定」として配信時に本体を読み直すことになります。
+    entry.tagged = hasTagIngredient(data);
+    if (entry.tagged) tagged++;
   });
 
   return { tagged, missing };
