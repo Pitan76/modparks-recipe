@@ -7,14 +7,23 @@
  */
 
 import dotenv from 'dotenv';
+import { runPool } from '../utils/pool';
 
 dotenv.config();
 
 const API_URL = process.env.MP_RECIPE_URL?.replace(/\/$/, '');
 const SECRET = process.env.UPLOAD_SECRET || process.env.ADMIN_SECRET;
 
-/** 1回の一括リクエストに含めるタグ数。 */
+/**
+ * 1回の一括リクエストに含めるタグ数。
+ *
+ * 1件につきサーバ側で数回のストレージ操作が走るため、Worker のサブリクエスト上限に対して
+ * 余裕を残せる大きさにしています。
+ */
 const BATCH_SIZE = 50;
+
+/** 同時に送るリクエスト数。ステージング断片はリクエストごとに別キーなので並行して問題ありません。 */
+const CONCURRENCY = 6;
 
 /** 投入する1件。 */
 export type TagEntry = { path: string; body: string };
@@ -65,12 +74,17 @@ async function fetchChannels(ns: string): Promise<string[]> {
 async function pushBatches(ns: string, entries: TagEntry[], session: string | null): Promise<void> {
   const query = session ? `?session=${encodeURIComponent(session)}` : '';
 
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+  const batches: TagEntry[][] = [];
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) batches.push(entries.slice(i, i + BATCH_SIZE));
+
+  let done = 0;
+  await runPool(batches, CONCURRENCY, async (batch) => {
     const tags: Record<string, string> = {};
-    for (const e of entries.slice(i, i + BATCH_SIZE)) tags[e.path] = e.body;
+    for (const e of batch) tags[e.path] = e.body;
     await call(`/api/${ns}/bulk${query}`, { method: 'POST', body: JSON.stringify({ tags }) });
-    console.log(`  ${Math.min(i + BATCH_SIZE, entries.length)}/${entries.length}`);
-  }
+    done += batch.length;
+    console.log(`  ${done}/${entries.length}`);
+  });
 }
 
 /**

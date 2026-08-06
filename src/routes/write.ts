@@ -225,18 +225,20 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   if (session) await stageEntries(c.env, namespace, session, staged);
   else await updateIndexMany(c.env, indexEntries);
 
-  for (const [path, val] of plainEntries(p.tags)) {
+  // 共有ネームスペースでは1件ごとに既存を読んで統合するため、直列だと往復が積み上がります。
+  // テクスチャ・モデルと同じく同時実行で流します（保存先はタグごとに異なるため衝突しません）。
+  await runPool(plainEntries(p.tags), 20, async ([path, val]) => {
     if (!isSafePath(path)) {
       skipped++;
-      continue;
+      return;
     }
     const body = typeof val === 'string' ? val : JSON.stringify(val);
-    try { JSON.parse(body); } catch { skipped++; continue; }
+    try { JSON.parse(body); } catch { skipped++; return; }
     const id = path.replace(/\.json$/, '');
     const stored = await putTagBody(c.env, namespace, id, body);
     if (collector) await collector.addText(`tags/${id}.json`, stored);
     tags++;
-  }
+  });
 
   await runPool(plainEntries(p.textures), 20, async ([path, b64]) => {
     if (!isSafePath(path) || typeof b64 !== 'string') {
