@@ -23,8 +23,13 @@ import {
 } from './api';
 import { AccountRow, HistoryView, JarPicker, PreviewView, ResultView, Section, SignInView } from './parts';
 import { saveDataUrlZip } from './preview-zip';
+import { renderJarLocally, svgDataUrl, svgToPngDataUrl } from './local-render';
 import { readStored, removeStored, writeStored } from '../shared/browser';
+import type { ZipLike } from '../../core/jar-assets';
 import { messagesFor } from '../../utils/i18n/portal';
+
+/** JSZip はページに読み込まれたものを使います。 */
+declare const JSZip: { loadAsync(data: ArrayBuffer): Promise<ZipLike> };
 
 /** トークンの保存キー。 */
 const TOKEN_KEY = 'mpr_token';
@@ -54,6 +59,7 @@ export function App({ locale }: { locale: string }) {
   const [history, setHistory] = useState<UploadRecord[] | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [localFailed, setLocalFailed] = useState(false);
 
   const signOut = useCallback(() => {
     removeStored(TOKEN_KEY);
@@ -77,14 +83,45 @@ export function App({ locale }: { locale: string }) {
     if (me) loadHistory();
   }, [me, loadHistory]);
 
-  /** jar を選ぶだけ。投稿もプレビューも、選んだあとに明示的に実行します。 */
+  /**
+   * jar を選びます。投稿はしません。
+   *
+   * 選んだ時点でこの端末だけでプレビューを作ります。サーバは素材を返すだけなので、
+   * 描画のためにファイルを送る必要がありません。作れなかったときだけサーバ描画に頼ります。
+   */
   function pick(next: File | null) {
     if (!next) return;
     setFile(next);
     setFileName(next.name);
     setResult(null);
     setPreview(null);
+    setLocalFailed(false);
     setError('');
+    void previewLocally(next);
+  }
+
+  /** この端末だけでプレビューを作ります。 */
+  async function previewLocally(target: File) {
+    setBusy(true);
+    try {
+      const zip = await JSZip.loadAsync(await target.arrayBuffer());
+      const rendered = await renderJarLocally(zip, (n, total) => {
+        setStatus(t.previewLocal.replace('{done}', String(n)).replace('{total}', String(total)));
+      });
+      if (rendered.length === 0) throw new Error('no recipes');
+
+      setPreview({
+        ids: rendered.map((r) => r.id),
+        images: Object.fromEntries(rendered.map((r) => [r.id, svgDataUrl(r.svg)])),
+      });
+      setStatus('');
+    } catch (err) {
+      console.warn('Local render failed, offering server-side preview:', err);
+      setLocalFailed(true);
+      setStatus('');
+    } finally {
+      setBusy(false);
+    }
   }
 
   /** 選んだ jar を投稿します。こちらは投稿枠を消費します。 */
@@ -150,7 +187,12 @@ export function App({ locale }: { locale: string }) {
           </Section>
           <Section title={t.preview}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{t.previewLead}</Typography>
-            <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
+            {localFailed && (
+              <>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t.previewLocalFailed}</Typography>
+                <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
+              </>
+            )}
             {preview && (
               <Box sx={{ mt: 2 }}>
                 <PreviewView
