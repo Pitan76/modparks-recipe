@@ -52,7 +52,7 @@ async function readIndex(env: Env): Promise<IndexEntry[]> {
 listRoutes.get('/api/list.json', async (c) => {
   const [obj, versions] = await Promise.all([c.env.BUCKET.get(INDEX_KEY), getAllVersions(c.env)]);
   const cacheControl = { 'Cache-Control': `public, max-age=${INDEX_MAX_AGE}` };
-  const assets = assetDelivery(c.env);
+  const assets = await assetDelivery(c.env);
   // 索引が未生成のときも同じだけキャッシュさせる。ここを素通しにすると、
   // 立ち上げ直後や再構築中に空応答のリクエストが全部オリジンまで来る。
   if (!obj) return c.json({ count: 0, versions, assets, recipes: [] }, 200, cacheControl);
@@ -79,7 +79,7 @@ listRoutes.get('/api/:namespace/list.json', async (c) => {
 
   if (locale) await attachNames(c.env, listing.recipes, locale, src);
 
-  return c.json({ namespace, ...listing, assets: assetDelivery(c.env), count: listing.recipes.length }, 200, {
+  return c.json({ namespace, ...listing, assets: await assetDelivery(c.env), count: listing.recipes.length }, 200, {
     // `?v=` 付きは内容が一意に定まるため恒久キャッシュにできます。
     'Cache-Control': c.req.query('v')
       ? 'public, max-age=31536000, immutable'

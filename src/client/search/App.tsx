@@ -178,7 +178,7 @@ export function App({ locale }: { locale: string }) {
 
   function downloadRecipe(ev: MouseEvent, rid: string) {
     ev.stopPropagation();
-    downloadUrl(imagePath(rid, fmt, versions, scale), `${splitId(rid).id}.${fmt}`);
+    downloadUrl(imagePath(rid, fmt, versions, assets, scale), `${splitId(rid).id}.${fmt}`);
   }
 
   function changeFmt(next: string) {

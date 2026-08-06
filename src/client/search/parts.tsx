@@ -226,7 +226,7 @@ export function ImageTile(props: ImageTileProps) {
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
       <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions, props.scale)}
+        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions, props.assets, props.scale)}
         alt={props.recipeId}
         className="recipe-img"
         title={props.title}

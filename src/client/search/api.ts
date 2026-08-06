@@ -50,13 +50,23 @@ export function splitId(full: string): { ns: string; id: string } {
  * @param recipeId レシピID
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
+ * @param assets 配信情報。`rv` をURLに載せるために使います
  * @param scale 拡大率。既定値ならURLに載せません（キャッシュを既定値のURLに寄せるため）
  */
-export function imagePath(recipeId: string, fmt: string, versions: Versions | null, scale: number = DEFAULT_SCALE): string {
+export function imagePath(
+  recipeId: string,
+  fmt: string,
+  versions: Versions | null,
+  assets: Assets | null,
+  scale: number = DEFAULT_SCALE
+): string {
   const p = splitId(recipeId);
   const version = versions?.[p.ns];
   const query = new URLSearchParams();
   if (version) query.set('v', version);
+  // レンダラーの更新や共通タグの追加では ns のバージョンが動かない。`rv` を載せないと、
+  // 新しい絵ができていても `immutable` で焼き付いた古い応答が返り続ける。
+  if (assets?.rv) query.set('rv', assets.rv);
   if (scale !== DEFAULT_SCALE) query.set('scale', String(scale));
 
   const base = `/api/${encodeURIComponent(p.ns)}/${encodeURIComponent(p.id)}.${fmt}`;
@@ -114,7 +124,7 @@ export function imageUrl(
   scale: number = DEFAULT_SCALE
 ): string {
   const direct = imageCdnPath(recipeId, fmt, versions, assets, scale);
-  return direct ?? `${window.location.origin}${imagePath(recipeId, fmt, versions, scale)}`;
+  return direct ?? `${window.location.origin}${imagePath(recipeId, fmt, versions, assets, scale)}`;
 }
 
 /**
