@@ -50,6 +50,7 @@ type Sink = {
 export async function buildRecipeZip(
   recipeIds: string[],
   fmt: string,
+  animated: (recipeId: string) => boolean,
   versions: Versions | null,
   assets: Assets | null,
   scale: number,
@@ -59,9 +60,12 @@ export async function buildRecipeZip(
   let done = 0;
   let added = 0;
 
+  // 素材が切り替わるものだけ GIF。静止画を GIF にすると色数が落ち、PNG より重くなります。
+  const extOf = (recipeId: string) => (animated(recipeId) ? 'gif' : fmt);
+
   const sink: Sink = {
     add(recipeId, data, base64) {
-      zip.file(`${splitId(recipeId).id}.${fmt}`, data, base64 ? { base64: true } : undefined);
+      zip.file(`${splitId(recipeId).id}.${extOf(recipeId)}`, data, base64 ? { base64: true } : undefined);
       added++;
     },
     step() {
@@ -69,8 +73,8 @@ export async function buildRecipeZip(
     },
   };
 
-  const missing = await collectDirect(recipeIds, fmt, versions, assets, scale, sink);
-  await collectBatched(missing, fmt, scale, sink);
+  const missing = await collectDirect(recipeIds, extOf, versions, assets, scale, sink);
+  await collectBatched(missing, extOf, scale, sink);
 
   if (added === 0) return null;
   return zip.generateAsync({ type: 'blob' });
@@ -82,7 +86,7 @@ export async function buildRecipeZip(
  */
 async function collectDirect(
   recipeIds: string[],
-  fmt: string,
+  extOf: (recipeId: string) => string,
   versions: Versions | null,
   assets: Assets | null,
   scale: number,
@@ -93,7 +97,7 @@ async function collectDirect(
 
   const workers = Array.from({ length: Math.min(DIRECT_CONCURRENCY, queue.length) }, async () => {
     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
-      const url = imageCdnPath(id, fmt, versions, assets, scale);
+      const url = imageCdnPath(id, extOf(id), versions, assets, scale);
       // 未生成なら404、CORS が未設定なら例外。どちらも一括APIへ回します。
       const bytes = url ? await fetchBytes(url) : null;
       if (!bytes) {
@@ -115,16 +119,17 @@ async function collectDirect(
  */
 async function collectBatched(
   recipeIds: string[],
-  fmt: string,
+  extOf: (recipeId: string) => string,
   scale: number,
   sink: Sink
 ): Promise<void> {
-  const queue = groupByNamespace(recipeIds);
+  // 一括APIは1リクエストにつき1形式なので、形式ごとに分けて投げます。
+  const queue = groupByNamespace(recipeIds).flatMap((batch) => splitByExt(batch, extOf));
 
   const workers = Array.from({ length: Math.min(BATCH_CONCURRENCY, queue.length) }, async () => {
     for (let batch = queue.shift(); batch !== undefined; batch = queue.shift()) {
       // 1バッチの失敗で全体を捨てると、数百枚のうち一部のためにやり直しになります。
-      const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, fmt, scale).catch(() => ({}));
+      const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, batch.ext, scale).catch(() => ({}));
       for (const id of batch.ids) {
         const dataUrl = images[id];
         if (dataUrl) sink.add(`${batch.ns}:${id}`, dataUrl.slice(dataUrl.indexOf(',') + 1), true);
@@ -149,7 +154,7 @@ async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
 }
 
 /** 一括APIへ渡す単位。IDはネームスペースを除いた部分です。 */
-type Batch = { ns: string; ids: string[] };
+type Batch = { ns: string; ids: string[]; ext: string };
 
 /**
  * レシピIDをネームスペースごとに分け、一括APIの上限で刻みます。
@@ -166,9 +171,25 @@ function groupByNamespace(recipeIds: string[]): Batch[] {
 
   const batches: Batch[] = [];
   for (const [ns, ids] of byNs) {
-    for (let i = 0; i < ids.length; i += BATCH_SIZE) batches.push({ ns, ids: ids.slice(i, i + BATCH_SIZE) });
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) batches.push({ ns, ids: ids.slice(i, i + BATCH_SIZE), ext: '' });
   }
   return batches;
+}
+
+/**
+ * 1つの束を形式ごとに分けます。一括APIはリクエスト単位でしか形式を指定できません。
+ * @param batch 分ける前の束
+ * @param extOf レシピIDから形式を決める関数
+ */
+function splitByExt(batch: Batch, extOf: (recipeId: string) => string): Batch[] {
+  const byExt = new Map<string, string[]>();
+  for (const id of batch.ids) {
+    const ext = extOf(`${batch.ns}:${id}`);
+    const list = byExt.get(ext) ?? [];
+    list.push(id);
+    byExt.set(ext, list);
+  }
+  return [...byExt].map(([ext, ids]) => ({ ns: batch.ns, ids, ext }));
 }
 
 /**

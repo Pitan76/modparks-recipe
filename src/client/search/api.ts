@@ -3,7 +3,12 @@
  */
 
 /** 索引に載る1レシピ。 */
-export type RecipeEntry = { id: string; result?: string | null };
+export type RecipeEntry = {
+  id: string;
+  result?: string | null;
+  /** 素材が切り替わるレシピ。静止画ではなくアニメーションで見せる */
+  tagged?: boolean;
+};
 
 /** ネームスペースごとのアセットバージョン。画像URLの `?v=` に載せます。 */
 export type Versions = Record<string, string>;

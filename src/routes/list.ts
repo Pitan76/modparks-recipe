@@ -60,7 +60,10 @@ listRoutes.get('/api/list.json', async (c) => {
   // 立ち上げ直後や再構築中に空応答のリクエストが全部オリジンまで来る。
   if (!obj) return c.json({ count: 0, versions, assets, recipes: [] }, 200, cacheControl);
 
-  const index = await obj.json<Record<string, unknown>>();
+  const index = await obj.json<{ recipes?: NamedEntry[] }>();
+  // ネームスペース版と同じ基準で `tagged` を揃えます。ここがずれると、同じレシピでも
+  // 見る経路によって静止画とアニメーションが入れ替わります。
+  if (Array.isArray(index.recipes)) await refineTagged(c.env, index.recipes, new AssetSource(c.env, null));
   return c.json({ ...index, versions, assets }, 200, cacheControl);
 });
 

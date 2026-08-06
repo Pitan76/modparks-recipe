@@ -191,10 +191,11 @@ export function App({ locale }: { locale: string }) {
    */
   async function downloadZip() {
     const ids = entries.map((e) => e.rid);
+    const animated = new Set((recipes ?? []).filter((r) => r.tagged).map((r) => r.id));
     if (ids.length === 0 || zipping) return;
 
     setZipping(t.downloadZipProgress.replace('{done}', '0').replace('{total}', String(ids.length)));
-    const blob = await buildRecipeZip(ids, fmt, versions, assets, scale, (done, total) => {
+    const blob = await buildRecipeZip(ids, fmt, (id) => animated.has(id), versions, assets, scale, (done, total) => {
       setZipping(t.downloadZipProgress.replace('{done}', String(done)).replace('{total}', String(total)));
     }).catch(() => null);
     setZipping(null);
