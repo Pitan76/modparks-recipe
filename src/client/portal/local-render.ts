@@ -266,10 +266,25 @@ async function collectRecipes(zip: ZipLike): Promise<{ id: string; data: any }[]
 }
 
 /**
+ * ドット絵が滲まないよう、拡大時の補間を切る指定を差し込みます。
+ *
+ * SVG が持つのは `image-rendering="optimizeSpeed"` です。SVG 1.1 の値で、ブラウザによっては
+ * 補間されます。サーバー側のラスタライザはこの値で正しく動くため書き換えず、ブラウザへ渡すときだけ
+ * 現行の指定を上から足します。
+ * @param svg SVG文字列
+ */
+function pixelated(svg: string): string {
+  const close = svg.indexOf('>');
+  if (close < 0) return svg;
+  return `${svg.slice(0, close + 1)}<style>image{image-rendering:pixelated}</style>${svg.slice(close + 1)}`;
+}
+
+/**
  * SVG文字列をデータURLにします。
  * @param svg SVG文字列
  */
 export function svgDataUrl(svg: string): string {
+  svg = pixelated(svg);
   // 日本語などの非ASCIIが混じっても壊れないように、UTF-8として符号化してから base64 にします。
   const utf8 = new TextEncoder().encode(svg);
   let binary = '';
