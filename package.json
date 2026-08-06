@@ -11,7 +11,7 @@
     "upload-lang": "tsx src/scripts/upload-lang.ts",
     "migrate-builds": "tsx src/scripts/migrate-builds.ts",
     "gc-builds": "tsx src/scripts/gc-builds.ts",
-    "build:client": "vite build --config vite.client.config.ts"
+    "build:client": "vite build --config vite.client.config.ts && vite build --config vite.extractor.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",

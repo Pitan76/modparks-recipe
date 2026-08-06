@@ -10,6 +10,7 @@ import { storeRecipe, putRecipeBody, updateIndexMany, indexEntryOf } from '../ut
 import { isCraftingType } from '../utils/minecraft';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
+import { putTagBody } from '../utils/tag-store';
 import { readIngestMeta, stageEntries, type StagedEntry } from '../utils/ingest';
 import { PatchCollector, stagePatch } from '../utils/build/staging';
 import { runPool } from '../utils/pool';
@@ -85,10 +86,7 @@ writeRoutes.put('/api/:namespace/tag/:path{.+}', async (c) => {
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
   const id = path.replace(/\.json$/, '');
-  await c.env.BUCKET.put(`data/${namespace}/tags/${id}.json`, body, {
-    httpMetadata: { contentType: 'application/json' },
-  });
-  await c.env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
+  await putTagBody(c.env, namespace, id, body);
   await bumpAssetVersion(c.env, namespace);
   return c.json({ ok: true, id: `${namespace}:${id}` });
 });
@@ -235,11 +233,8 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     const body = typeof val === 'string' ? val : JSON.stringify(val);
     try { JSON.parse(body); } catch { skipped++; continue; }
     const id = path.replace(/\.json$/, '');
-    await c.env.BUCKET.put(`data/${namespace}/tags/${id}.json`, body, {
-      httpMetadata: { contentType: 'application/json' },
-    });
-    await c.env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(`${namespace}:${id}`).run().catch(() => {});
-    if (collector) await collector.addText(`tags/${id}.json`, body);
+    const stored = await putTagBody(c.env, namespace, id, body);
+    if (collector) await collector.addText(`tags/${id}.json`, stored);
     tags++;
   }
 

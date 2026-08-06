@@ -3,6 +3,7 @@
  */
 
 import JSZip from 'jszip'
+import { RECIPE_PATH } from './paths'
 
 /** 解析されたレシピ情報の型定義。 */
 export interface ParsedRecipe {
@@ -30,14 +31,12 @@ export async function parseJarForRecipes(
 
   const recipes: ParsedRecipe[] = []
 
-  // data/<namespace>/recipes/*.json を探索する
-  const recipeRegex = /^data\/([^/]+)\/recipes\/.*\.json$/
   const filePromises: Promise<void>[] = []
 
   zip.forEach((relativePath, zipEntry) => {
     if (zipEntry.dir) return
 
-    const match = relativePath.match(recipeRegex)
+    const match = relativePath.match(RECIPE_PATH)
     if (match) {
       const namespace = match[1]
       // 特定のmodidが指定されていればフィルタ、無ければすべて取得

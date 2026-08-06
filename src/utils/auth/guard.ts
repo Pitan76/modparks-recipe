@@ -6,6 +6,7 @@
  * そのまま build の素性に流せます。
  */
 
+import { isSharedNamespace } from '../../core/namespaces';
 import type { Env } from '../minecraft';
 import { authorized } from '../http';
 import { canWrite, claimNamespace, getOwnership, type Trust } from './ownership';
@@ -36,6 +37,10 @@ export async function authorizeWrite(c: any, ns: string): Promise<WriteGrant | W
 
   const grant = await verifyToken(env, token);
   if (!grant || !scopeAllows(grant.scope, ns)) return { reason: 'forbidden' };
+
+  // 共有ネームスペースは誰の所有物にもしません。先着で確保させると、共通タグを含む jar を
+  // 最初に投げた人が `c` を丸ごと占有し、以降の投稿が拒否されます。
+  if (isSharedNamespace(ns)) return { identityId: grant.identityId, trust: 'unverified' };
 
   const owned = await getOwnership(env, ns);
   if (!owned) {

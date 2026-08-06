@@ -1,10 +1,14 @@
 /**
  * @fileoverview 投稿ポータルが叩くAPIと、jar の取り込み。
  *
- * jar の展開はページに読み込まれた `jszip` と `/extractor.js` に依存します。
- * どちらもグローバルに生えるため、ここで型だけ宣言します。
+ * jar の展開はページに読み込まれた `jszip` と `/extractor.js` に依存します。どちらもグローバルに
+ * 生えるため、ここでは型だけ宣言します。
+ *
+ * `/extractor.js` は外部にも配っている公開版です。ポータルがバンドルに取り込まず同じものを読むことで、
+ * 配布物が壊れていればポータルでも壊れる（＝気づける）ようにしています。型は実装元から借ります。
  */
 
+import type { ExtractedJar, ZipLike } from '../../core/jar-assets';
 import type { Messages } from '../../utils/i18n/portal';
 
 /** ログイン中の利用者。 */
@@ -28,8 +32,8 @@ export type UploadRecord = {
 /** namespace の所有状況。 */
 export type Owner = { claimed?: boolean; trust?: string };
 
-declare const JSZip: { loadAsync(data: ArrayBuffer): Promise<unknown> };
-declare function analyzeJar(zip: unknown): Promise<{ namespaces: string[]; byNs: Record<string, unknown> }>;
+declare const JSZip: { loadAsync(data: ArrayBuffer): Promise<ZipLike> };
+declare function analyzeJar(zip: ZipLike): Promise<ExtractedJar>;
 
 /**
  * 認証ヘッダを組み立てます。
@@ -116,11 +120,7 @@ export async function uploadJar(file: File, token: string, t: Messages): Promise
  * @param token 投稿者のトークン
  * @param t 文言表
  */
-async function sendExtracted(
-  extracted: { namespaces: string[]; byNs: Record<string, unknown> },
-  token: string,
-  t: Messages
-): Promise<UploadSummary> {
+async function sendExtracted(extracted: ExtractedJar, token: string, t: Messages): Promise<UploadSummary> {
   const bodies = await Promise.all(
     extracted.namespaces.map(async (ns) => {
       const res = await fetch(`/api/${ns}/bulk`, {
