@@ -1,19 +1,20 @@
 /**
  * @fileoverview 表示中のレシピ画像を zip にまとめて渡す処理。
  *
- * 1枚ずつのダウンロードは枚数が増えると現実的でないため、まとめて1ファイルにします。
+ * 2段構えで集めます。まず R2 の直接配信から取り、取れなかったものだけ一括APIへ回します。
+ * 直接配信は Worker を起こさず生バイトで受け取れるぶん軽く、生成済みの画像は大半がこちらで済みます。
+ * 未生成の画像は直接配信では 404 になるため、そこだけ一括APIに作らせます。
  *
- * 取得には一括APIを使います。1枚ずつ引くと枚数分のリクエストになり、数百枚では現実的ではありません。
- * 一括APIは1回で最大200件を返すので、リクエスト数は枚数の200分の1に収まります。
- * R2 の直接配信を使わないのは、別オリジンで `fetch` に CORS の許可が要るためです。
+ * 直接配信は別オリジンなので、`fetch` で読むにはバケット側に CORS の許可が要ります。
+ * 許可が無ければ全件が一括APIへ落ちるだけで、結果は変わりません。
  */
 
-import { splitId } from './api';
+import { imageCdnPath, splitId, type Assets, type Versions } from './api';
 
 /** JSZip はページに読み込まれたものを使います。 */
 declare const JSZip: {
   new (): {
-    file(name: string, data: string, options: { base64: true }): void;
+    file(name: string, data: ArrayBuffer | string, options?: { base64: true }): void;
     generateAsync(options: { type: 'blob' }): Promise<Blob>;
   };
 };
@@ -21,16 +22,27 @@ declare const JSZip: {
 /** 一括APIが1回で受け付けるID数の上限。サーバ側の制限に合わせています。 */
 const BATCH_SIZE = 200;
 
+/** 直接配信を同時に取りに行く本数。 */
+const DIRECT_CONCURRENCY = 8;
+
 /** 同時に投げる一括リクエスト数。 */
-const CONCURRENCY = 2;
+const BATCH_CONCURRENCY = 2;
 
 /** 進捗の通知。 */
 export type ZipProgress = (done: number, total: number) => void;
+
+/** 集める先。zip への追加と進捗の更新をまとめて受け持ちます。 */
+type Sink = {
+  add(recipeId: string, data: ArrayBuffer | string, base64: boolean): void;
+  step(): void;
+};
 
 /**
  * レシピ画像をまとめて取得し、zip の Blob を作ります。
  * @param recipeIds 対象のレシピID
  * @param fmt 画像形式
+ * @param versions ネームスペースごとのバージョン
+ * @param assets 配信情報
  * @param scale 拡大率
  * @param onProgress 進捗の通知
  * @returns zip の Blob。1枚も取れなければ null
@@ -38,6 +50,8 @@ export type ZipProgress = (done: number, total: number) => void;
 export async function buildRecipeZip(
   recipeIds: string[],
   fmt: string,
+  versions: Versions | null,
+  assets: Assets | null,
   scale: number,
   onProgress?: ZipProgress
 ): Promise<Blob | null> {
@@ -45,27 +59,93 @@ export async function buildRecipeZip(
   let done = 0;
   let added = 0;
 
-  const batches = groupByNamespace(recipeIds);
-  const queue = [...batches];
-  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+  const sink: Sink = {
+    add(recipeId, data, base64) {
+      zip.file(`${splitId(recipeId).id}.${fmt}`, data, base64 ? { base64: true } : undefined);
+      added++;
+    },
+    step() {
+      onProgress?.(++done, recipeIds.length);
+    },
+  };
+
+  const missing = await collectDirect(recipeIds, fmt, versions, assets, scale, sink);
+  await collectBatched(missing, fmt, scale, sink);
+
+  if (added === 0) return null;
+  return zip.generateAsync({ type: 'blob' });
+}
+
+/**
+ * R2 の直接配信から集めます。
+ * @returns 取れなかったレシピID
+ */
+async function collectDirect(
+  recipeIds: string[],
+  fmt: string,
+  versions: Versions | null,
+  assets: Assets | null,
+  scale: number,
+  sink: Sink
+): Promise<string[]> {
+  const missing: string[] = [];
+  const queue = [...recipeIds];
+
+  const workers = Array.from({ length: Math.min(DIRECT_CONCURRENCY, queue.length) }, async () => {
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      const url = imageCdnPath(id, fmt, versions, assets, scale);
+      // 未生成なら404、CORS が未設定なら例外。どちらも一括APIへ回します。
+      const bytes = url ? await fetchBytes(url) : null;
+      if (!bytes) {
+        missing.push(id);
+        continue;
+      }
+      sink.add(id, bytes, false);
+      sink.step();
+    }
+  });
+  await Promise.all(workers);
+
+  return missing;
+}
+
+/**
+ * 一括APIから集めます。直接配信で取れなかった分の受け皿です。
+ * @param recipeIds 対象のレシピID
+ */
+async function collectBatched(
+  recipeIds: string[],
+  fmt: string,
+  scale: number,
+  sink: Sink
+): Promise<void> {
+  const queue = groupByNamespace(recipeIds);
+
+  const workers = Array.from({ length: Math.min(BATCH_CONCURRENCY, queue.length) }, async () => {
     for (let batch = queue.shift(); batch !== undefined; batch = queue.shift()) {
       // 1バッチの失敗で全体を捨てると、数百枚のうち一部のためにやり直しになります。
       const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, fmt, scale).catch(() => ({}));
       for (const id of batch.ids) {
         const dataUrl = images[id];
-        const base64 = dataUrl ? dataUrl.slice(dataUrl.indexOf(',') + 1) : null;
-        if (base64) {
-          zip.file(`${id}.${fmt}`, base64, { base64: true });
-          added++;
-        }
-        onProgress?.(++done, recipeIds.length);
+        if (dataUrl) sink.add(`${batch.ns}:${id}`, dataUrl.slice(dataUrl.indexOf(',') + 1), true);
+        sink.step();
       }
     }
   });
   await Promise.all(workers);
+}
 
-  if (added === 0) return null;
-  return zip.generateAsync({ type: 'blob' });
+/**
+ * URLの中身をバイト列で読みます。
+ * @returns 取れなければ null
+ */
+async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch(url);
+    return res.ok ? await res.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 一括APIへ渡す単位。IDはネームスペースを除いた部分です。 */
