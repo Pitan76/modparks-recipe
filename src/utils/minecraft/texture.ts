@@ -120,8 +120,9 @@ export async function getItemImageBase64(
 
   // L1: 解決済みアイコン。キーに ns バージョンとレンダラー版を含むため、テクスチャ更新や
   // レンダラー変更で自動的に別キーとなり、古いものは参照されなくなる（削除不要）。
+  const persist = src.persistIcons !== false;
   const l1Key = iconCacheKey(env, namespace, version, path);
-  const l1 = await env.BUCKET.get(l1Key);
+  const l1 = persist ? await env.BUCKET.get(l1Key) : null;
   if (l1) {
     const dataUrl = await l1.text();
     setIcon(namespace, version, path, dataUrl);
@@ -132,7 +133,7 @@ export async function getItemImageBase64(
   setIcon(namespace, version, path, resolved);
 
   // 解決失敗（透明フォールバック）は永続化しない。テクスチャ未着の投入中に固定してしまうのを防ぐ。
-  if (resolved !== TRANSPARENT_PNG) {
+  if (persist && resolved !== TRANSPARENT_PNG) {
     await env.BUCKET.put(l1Key, resolved, { httpMetadata: { contentType: 'text/plain' } }).catch(() => {});
   }
   return resolved;

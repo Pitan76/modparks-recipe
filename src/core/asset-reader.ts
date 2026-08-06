@@ -30,4 +30,12 @@ export interface AssetReader {
    * @param ns ネームスペース
    */
   buildOf(ns: string): Promise<string | null>;
+
+  /**
+   * 解決済みアイコンを永続キャッシュに残してよいかどうか。既定は残す扱いです。
+   *
+   * 保存を伴わない一時的な描画では false にします。保存していないネームスペースの内容で
+   * キャッシュを書くと、次に同じ名前で正規の画像を出すときに他人の中身が混ざります。
+   */
+  readonly persistIcons?: boolean;
 }
