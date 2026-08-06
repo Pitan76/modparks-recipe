@@ -7,8 +7,7 @@
  */
 
 import type { Env } from './minecraft';
-import { getTag as _g } from './minecraft/data';
-const getTag = async (id: string) => { const t = (globalThis as any).__tags; return t ? (t.get(id.includes(':') ? id : 'minecraft:' + id)?.values ?? []) : _g(id, arguments[1], arguments[2]); };
+import { getTag } from './minecraft/data';
 import type { AssetSource } from './build/asset-source';
 
 /** タグを辿る深さの上限。素材解決側と揃えています。 */
