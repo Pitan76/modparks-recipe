@@ -96,6 +96,28 @@ export function imageCdnPath(
 }
 
 /**
+ * 画像の共有用URL（絶対URL）を返します。
+ *
+ * 直接配信が使えるならR2のURLをそのまま渡します。貼られたリンクがWorkerを起こさずに済み、
+ * 受け取った側にもリダイレクト無しで届きます。使えない場合のみWorkerのURLへ落とします。
+ * @param recipeId レシピID
+ * @param fmt 画像形式
+ * @param versions ネームスペースごとのバージョン
+ * @param assets 配信情報
+ * @param scale 拡大率
+ */
+export function imageUrl(
+  recipeId: string,
+  fmt: string,
+  versions: Versions | null,
+  assets: Assets | null,
+  scale: number = DEFAULT_SCALE
+): string {
+  const direct = imageCdnPath(recipeId, fmt, versions, assets, scale);
+  return direct ?? `${window.location.origin}${imagePath(recipeId, fmt, versions, scale)}`;
+}
+
+/**
  * レシピ索引を取得します。
  * @returns 取得できなければ空の索引
  */

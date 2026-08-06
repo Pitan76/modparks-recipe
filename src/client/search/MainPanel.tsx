@@ -8,7 +8,7 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Pagination from '@mui/material/Pagination';
 import Typography from '@mui/material/Typography';
-import { imagePath, type Assets, type Names, type Versions } from './api';
+import { imageUrl, type Assets, type Names, type Versions } from './api';
 import { copyTitle, EmptyState, ImageTile, SectionHead, type WithMessages } from './parts';
 
 /** 1ページあたりのレシピ画像の表示枚数。 */
@@ -37,6 +37,7 @@ export type MainPanelProps = WithMessages & {
   onCopy: (ev: MouseEvent, item: string) => void;
   onDownloadItem: (ev: MouseEvent, item: string) => void;
   onDownloadRecipe: (ev: MouseEvent, rid: string) => void;
+  onCopyImage: (ev: MouseEvent, rid: string) => void;
 };
 
 export function MainPanel(props: MainPanelProps) {
@@ -71,10 +72,10 @@ function RecipeGrid(props: MainPanelProps) {
             versions={props.versions}
             assets={props.assets}
             scale={props.scale}
-            copied={props.copiedId === item}
-            failed={props.failedId === item}
+            copied={props.copiedId === rid}
+            failed={props.failedId === rid}
             onClick={() => props.onPick(item)}
-            onCopy={(ev) => props.onCopy(ev, item)}
+            onCopy={(ev) => props.onCopyImage(ev, rid)}
             onDownload={(ev) => props.onDownloadRecipe(ev, rid)}
           />
         ))}
@@ -122,10 +123,10 @@ function RecipeDetail(props: MainPanelProps & { selection: Selection }) {
             assets={props.assets}
             scale={props.scale}
             title={t.openImage}
-            copied={copied}
-            failed={failed}
-            onClick={() => window.open(imagePath(rid, props.fmt, props.versions, props.scale), '_blank', 'noopener')}
-            onCopy={(ev) => props.onCopy(ev, label)}
+            copied={props.copiedId === rid}
+            failed={props.failedId === rid}
+            onClick={() => window.open(imageUrl(rid, props.fmt, props.versions, props.assets, props.scale), '_blank', 'noopener')}
+            onCopy={(ev) => props.onCopyImage(ev, rid)}
             onDownload={(ev) => props.onDownloadRecipe(ev, rid)}
           />
         ))}

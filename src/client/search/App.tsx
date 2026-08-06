@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEv
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Pagination from '@mui/material/Pagination';
-import { DEFAULT_SCALE, imagePath, SCALE_CHOICES, splitId, type Names } from './api';
+import { DEFAULT_SCALE, imagePath, imageUrl, SCALE_CHOICES, splitId, type Names } from './api';
 import { MainPanel, PAGE_SIZE, type GridEntry, type Selection } from './MainPanel';
 import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle } from './parts';
 import {
@@ -135,11 +135,22 @@ export function App({ locale }: { locale: string }) {
     if (filtered.length > 0) pick(filtered[0]);
   }
 
+  /** アイテム一覧からはページへのリンクを配りたい。画像そのものは別（{@link copyImage}）。 */
   function copyLink(ev: MouseEvent, id: string) {
     ev.stopPropagation();
     const params = new URLSearchParams(window.location.search);
     params.set('id', id);
-    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    copy(ev, id, `${window.location.origin}${window.location.pathname}?${params.toString()}`);
+  }
+
+  /** 画像タイルからは画像そのもののURLを配る。直接配信が効くならR2のURLになる。 */
+  function copyImage(ev: MouseEvent, rid: string) {
+    copy(ev, rid, imageUrl(rid, fmt, versions, assets, scale));
+  }
+
+  /** コピーして、その行に結果を2秒だけ出す。 */
+  function copy(ev: MouseEvent, id: string, url: string) {
+    ev.stopPropagation();
     copyText(url).then((ok) => {
       (ok ? setCopiedId : setFailedId)(id);
       setTimeout(() => {
@@ -237,6 +248,7 @@ export function App({ locale }: { locale: string }) {
               failedId={failedId}
               onPick={pick}
               onCopy={copyLink}
+              onCopyImage={copyImage}
               onDownloadItem={downloadItem}
               onDownloadRecipe={downloadRecipe}
             />

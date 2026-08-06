@@ -26,10 +26,11 @@ export type WithMessages = { t: SearchMessages };
  * @param t 文言表
  * @param copied コピー成功直後か
  * @param failed コピー失敗直後か
+ * @param idle 平常時の文言
  */
-export function copyTitle(t: SearchMessages, copied: boolean, failed: boolean): string {
+export function copyTitle(t: SearchMessages, copied: boolean, failed: boolean, idle: string = t.copyLink): string {
   if (failed) return t.copyFailed;
-  return copied ? t.copySuccess : t.copyLink;
+  return copied ? t.copySuccess : idle;
 }
 
 /** ページ上端のヘッダー。 */
@@ -234,7 +235,7 @@ export function ImageTile(props: ImageTileProps) {
             <IconButton size="small" onClick={props.onDownload} title={t.download}>
               <i className="fa-solid fa-download" style={{ fontSize: 11 }} />
             </IconButton>
-            <IconButton size="small" onClick={props.onCopy} title={copyTitle(t, props.copied, props.failed)}>
+            <IconButton size="small" onClick={props.onCopy} title={copyTitle(t, props.copied, props.failed, t.copyImage)}>
               <i className={props.copied ? 'fa-solid fa-check' : 'fa-regular fa-copy'} style={{ fontSize: 11 }} />
             </IconButton>
           </div>
