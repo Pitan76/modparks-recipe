@@ -122,8 +122,8 @@ export async function getItemImageBase64(
   // レンダラー変更で自動的に別キーとなり、古いものは参照されなくなる（削除不要）。
   // 永続キャッシュは Worker 側だけの仕組みです。ブラウザ側の描画では素通しにします。
   const persist = !!env && src.persistIcons !== false;
-  const l1Key = iconCacheKey(env, namespace, version, path);
-  const l1 = persist ? await env.BUCKET.get(l1Key) : null;
+  const l1Key = persist ? iconCacheKey(env, namespace, version, path) : null;
+  const l1 = l1Key ? await env!.BUCKET.get(l1Key) : null;
   if (l1) {
     const dataUrl = await l1.text();
     setIcon(namespace, version, path, dataUrl);
@@ -134,8 +134,8 @@ export async function getItemImageBase64(
   setIcon(namespace, version, path, resolved);
 
   // 解決失敗（透明フォールバック）は永続化しない。テクスチャ未着の投入中に固定してしまうのを防ぐ。
-  if (persist && resolved !== TRANSPARENT_PNG) {
-    await env.BUCKET.put(l1Key, resolved, { httpMetadata: { contentType: 'text/plain' } }).catch(() => {});
+  if (l1Key && resolved !== TRANSPARENT_PNG) {
+    await env!.BUCKET.put(l1Key, resolved, { httpMetadata: { contentType: 'text/plain' } }).catch(() => {});
   }
   return resolved;
 }
