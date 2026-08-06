@@ -14,14 +14,14 @@
  */
 
 import * as unzipper from 'unzipper';
-import { uploadToR2, runPool, BUCKET_NAME } from './r2';
 import { TAG_DIRS } from '../core/paths';
+import { describeTarget, pushTags, targetProblem, type TagEntry } from './tag-push';
 
 /** JiJ の中から探す、共通タグを持つモジュール。 */
 const CONVENTION_JAR = /^META-INF\/jars\/fabric-convention-tags-v2-.*\.jar$/;
 
 /**
- * R2 へ写す対象のパターンを組み立てます。jar 内のパスをそのまま R2 キーにします。
+ * 取り込む対象のパターンを組み立てます。
  *
  * 描画で引かれるディレクトリだけに絞ります。jar には `worldgen` や `damage_type` のタグも
  * 入っていますが、レシピの素材解決からは辿り着かないため置いても読まれません。
@@ -34,6 +34,8 @@ function tagPathOf(ns: string): RegExp {
 /** タグの取得元。 */
 interface TagSource {
   name: string;
+  /** 投入先のネームスペース */
+  ns: string;
   /** maven-metadata.xml の場所 */
   metadata: string;
   /** 版から jar の URL を組み立てます */
@@ -50,6 +52,7 @@ const NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/net/neoforged/neofo
 const SOURCES: TagSource[] = [
   {
     name: 'fabric-api',
+    ns: 'c',
     metadata: `${FABRIC_MAVEN}/maven-metadata.xml`,
     // 版名に `+` を含むため、URL に埋める前にエスケープが要ります
     jarUrl: (v) => `${FABRIC_MAVEN}/${encodeURIComponent(v)}/fabric-api-${encodeURIComponent(v)}.jar`,
@@ -58,6 +61,7 @@ const SOURCES: TagSource[] = [
   },
   {
     name: 'neoforge',
+    ns: 'neoforge',
     metadata: `${NEOFORGE_MAVEN}/maven-metadata.xml`,
     jarUrl: (v) => `${NEOFORGE_MAVEN}/${v}/neoforge-${v}-universal.jar`,
     path: tagPathOf('neoforge'),
@@ -105,12 +109,16 @@ async function extractConventionJar(jar: Buffer): Promise<Buffer> {
  * @param jar 対象の jar
  * @param path 写す対象のパターン
  */
-async function extractTags(jar: Buffer, path: RegExp): Promise<{ key: string; body: Buffer }[]> {
+async function extractTags(jar: Buffer, source: TagSource): Promise<TagEntry[]> {
   const dir = await unzipper.Open.buffer(jar);
-  const targets = dir.files.filter((f) => f.type === 'File' && path.test(f.path));
+  const targets = dir.files.filter((f) => f.type === 'File' && source.path.test(f.path));
+  // 書き込みAPIが受けるのは `item/planks` のような種別からの相対パスです。
+  const prefix = `data/${source.ns}/tags/`;
 
-  const entries: { key: string; body: Buffer }[] = [];
-  for (const file of targets) entries.push({ key: file.path, body: await file.buffer() });
+  const entries: TagEntry[] = [];
+  for (const file of targets) {
+    entries.push({ path: file.path.slice(prefix.length), body: (await file.buffer()).toString('utf-8') });
+  }
   return entries;
 }
 
@@ -118,7 +126,7 @@ async function extractTags(jar: Buffer, path: RegExp): Promise<{ key: string; bo
  * 1つの取得元からタグを集めます。
  * @param source 取得元
  */
-async function collectFrom(source: TagSource): Promise<{ key: string; body: Buffer }[]> {
+async function collectFrom(source: TagSource): Promise<TagEntry[]> {
   const version = await fetchLatestVersion(source);
   console.log(`${source.name} ${version}`);
 
@@ -126,43 +134,22 @@ async function collectFrom(source: TagSource): Promise<{ key: string; body: Buff
   const jar = await download(source.jarUrl(version));
   const target = source.unwrap ? await source.unwrap(jar) : jar;
 
-  const entries = await extractTags(target, source.path);
+  const entries = await extractTags(target, source);
   console.log(`  Extracted ${entries.length} tags.`);
   if (entries.length === 0) throw new Error(`No tags found in ${source.name}; the jar layout may have changed`);
   return entries;
 }
 
-/**
- * 取り出したタグを R2 へ書き込みます。
- * @param entries R2 キーと中身の組
- * @returns 失敗した件数
- */
-async function uploadAll(entries: { key: string; body: Buffer }[]): Promise<number> {
-  let uploaded = 0;
-  let failed = 0;
-
-  await runPool(entries, 20, async ({ key, body }) => {
-    try {
-      await uploadToR2(key, body);
-      uploaded++;
-      if (uploaded % 100 === 0) console.log(`  Uploaded ${uploaded}/${entries.length}...`);
-    } catch (e) {
-      failed++;
-      console.error(`  Failed to upload ${key}:`, (e as Error).message);
-    }
-  });
-
-  console.log(`Done. Uploaded ${uploaded} files, ${failed} failures.`);
-  return failed;
-}
-
 /** 実行本体。 */
 async function run() {
-  const entries: { key: string; body: Buffer }[] = [];
-  for (const source of SOURCES) entries.push(...(await collectFrom(source)));
+  const problem = targetProblem();
+  if (problem) throw new Error(problem);
+  console.log(`Target: ${describeTarget()}`);
 
-  console.log(`Uploading ${entries.length} tags to R2 bucket "${BUCKET_NAME}"...`);
-  if (await uploadAll(entries) > 0) process.exit(1);
+  for (const source of SOURCES) {
+    const entries = await collectFrom(source);
+    await pushTags(source.ns, entries);
+  }
 }
 
 run().catch((error) => {
