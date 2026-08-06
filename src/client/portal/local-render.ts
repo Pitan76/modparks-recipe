@@ -94,8 +94,15 @@ class LocalAssetReader implements AssetReader {
   }
 }
 
-/** 手元で組み立てた1レシピ。 */
-export type LocalRecipe = { id: string; svg: string };
+/** 素材の切り替わりを見せるコマ数の上限。Worker 側の GIF と揃えています。 */
+const MAX_FRAMES = 5;
+
+/**
+ * 手元で組み立てた1レシピ。
+ *
+ * `frames` は素材が切り替わるレシピのコマです。切り替わらないものは1つだけ入ります。
+ */
+export type LocalRecipe = { id: string; svg: string; frames: string[] };
 
 /**
  * jar からクラフト系のレシピを取り出し、SVGに組み立てます。
@@ -113,11 +120,30 @@ export async function renderJarLocally(
   let done = 0;
   for (const { id, data } of recipes) {
     // 1件の失敗で全体を捨てず、描けたものだけ返します。
-    const svg = await generateRecipeSvg(data, null, 0, reader).catch(() => null);
-    if (svg) out.push({ id, svg });
+    const frames = await framesOf(data, reader).catch(() => []);
+    if (frames.length > 0) out.push({ id, svg: frames[0], frames });
     onProgress?.(++done, recipes.length);
   }
   return out;
+}
+
+/**
+ * 素材の切り替わりぶんのコマを作ります。
+ *
+ * タグを展開して構成アイテム数を数える代わりに、実際に描いて絵が変わるかで判断します。
+ * 1周して1コマ目に戻った時点で打ち切るため、同じ絵を並べたGIFになりません。
+ * @param data レシピJSON
+ * @param reader アセット読み出し口
+ */
+async function framesOf(data: any, reader: AssetReader): Promise<string[]> {
+  const frames: string[] = [];
+
+  for (let offset = 0; offset < MAX_FRAMES; offset++) {
+    const svg = await generateRecipeSvg(data, null, offset, reader);
+    if (offset > 0 && svg === frames[0]) break;
+    frames.push(svg);
+  }
+  return frames;
 }
 
 /**
