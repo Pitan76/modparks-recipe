@@ -230,3 +230,43 @@ function sourceLabel(t: Messages, source: string): string {
   if (source === 'commit') return t.sourceCommit;
   return t.sourceBulk;
 }
+
+/**
+ * 保存せずに描画した結果の一覧。
+ * @param images レシピIDからデータURLへの対応
+ */
+export function PreviewView(props: WithMessages & {
+  ids: string[];
+  images: Record<string, string | null>;
+  onDownload: () => void;
+}) {
+  const { t } = props;
+  const shown = props.ids.filter((id) => props.images[id]);
+  if (shown.length === 0) return <Typography variant="body2" color="text.secondary">{t.previewEmpty}</Typography>;
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <Chip size="small" variant="outlined" label={shown.length} />
+        <Button size="small" variant="outlined" onClick={props.onDownload}>
+          {t.previewDownload}
+        </Button>
+      </Stack>
+      <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+        {shown.map((id) => (
+          <Box key={id}>
+            <img
+              src={props.images[id]!}
+              alt={id}
+              loading="lazy"
+              style={{ width: '100%', height: 'auto', imageRendering: 'pixelated' }}
+            />
+            <Typography variant="caption" color="text.secondary" noWrap title={id} sx={{ display: 'block' }}>
+              {id}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}

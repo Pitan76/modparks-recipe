@@ -156,3 +156,57 @@ async function sendWholeJar(file: File, token: string, t: Messages): Promise<Upl
   if (!res.ok) throw new Error(t.errorGeneric);
   return (await res.json()) as UploadSummary;
 }
+
+/** 保存せずに描画した結果。 */
+export type PreviewResult = {
+  /** 描画できたレシピID順の一覧 */
+  ids: string[];
+  /** レシピIDからデータURLへの対応。描画できなかったものは null */
+  images: Record<string, string | null>;
+};
+
+/** 1回のリクエストで取りに行く枚数。サーバ側の上限に合わせています。 */
+const PREVIEW_CHUNK = 40;
+
+/**
+ * jar を保存せずに描画します。
+ *
+ * 描画はサーバのCPUを使うため1回のリクエストで返る枚数に上限があります。`offset` を進めながら
+ * 全件揃うまで繰り返します。投稿ではないので枠は消費しません。
+ * @param file 選ばれた jar
+ * @param token 投稿者のトークン
+ * @param t 文言表
+ * @param onProgress 進捗の通知
+ */
+export async function previewJar(
+  file: File,
+  token: string,
+  t: Messages,
+  onProgress?: (done: number, total: number) => void
+): Promise<PreviewResult> {
+  const images: Record<string, string | null> = {};
+  let ids: string[] = [];
+  let offset = 0;
+
+  do {
+    const body = new FormData();
+    body.append('jar', file);
+    const res = await fetch(`/api/preview?offset=${offset}&limit=${PREVIEW_CHUNK}`, {
+      method: 'POST',
+      headers: auth(token),
+      body,
+    });
+    if (!res.ok) throw new Error(t.errorGeneric);
+
+    const page = (await res.json()) as { total: number; count: number; ids: string[]; images: Record<string, string | null> };
+    ids = page.ids;
+    Object.assign(images, page.images);
+    offset += page.count;
+    onProgress?.(offset, page.total);
+
+    // 進まなくなったら打ち切ります。無いはずですが、無限に往復させないためです。
+    if (page.count === 0) break;
+  } while (offset < ids.length);
+
+  return { ids, images };
+}
