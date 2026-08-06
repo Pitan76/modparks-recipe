@@ -8,7 +8,7 @@ import Container from '@mui/material/Container';
 import Pagination from '@mui/material/Pagination';
 import { DEFAULT_SCALE, imagePath, imageUrl, SCALE_CHOICES, splitId, type Names } from './api';
 import { MainPanel, PAGE_SIZE, type GridEntry, type Selection } from './MainPanel';
-import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle } from './parts';
+import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle, ZipButton } from './parts';
 import {
   INITIAL_PARAMS,
   namespacesOf,
@@ -20,6 +20,7 @@ import {
   useRecipeIndex,
 } from './state';
 import { copyText, downloadUrl, readStored, writeStored } from '../shared/browser';
+import { buildRecipeZip, saveBlob } from './zip';
 import { searchMessagesFor } from '../../utils/i18n/search';
 
 /** 1ページあたりのアイテム一覧の表示件数。 */
@@ -56,6 +57,7 @@ export function App({ locale }: { locale: string }) {
   const [showImages, setShowImages] = useState(() => INITIAL_PARAMS.get('view') !== 'list');
   const [page, setPage] = useState(1);
   const [itemPage, setItemPage] = useState(1);
+  const [zipping, setZipping] = useState<string | null>(null);
 
   const groups = useGroups(recipes);
   const items = useMemo(() => Object.keys(groups).sort(), [groups]);
@@ -181,6 +183,26 @@ export function App({ locale }: { locale: string }) {
     downloadUrl(imagePath(rid, fmt, versions, assets, scale), `${splitId(rid).id}.${fmt}`);
   }
 
+  /**
+   * 表示中のレシピをまとめて1つの zip にして渡します。
+   *
+   * 対象は絞り込み後のレシピです。Mod を選んでいればその Mod 分だけになるので、
+   * 「Mod ごとにまとめて欲しい」という使い方はネームスペースの選択で表現できます。
+   */
+  async function downloadZip() {
+    const ids = entries.map((e) => e.rid);
+    if (ids.length === 0 || zipping) return;
+
+    setZipping(t.downloadZipProgress.replace('{done}', '0').replace('{total}', String(ids.length)));
+    const blob = await buildRecipeZip(ids, fmt, versions, assets, scale, (done, total) => {
+      setZipping(t.downloadZipProgress.replace('{done}', String(done)).replace('{total}', String(total)));
+    }).catch(() => null);
+    setZipping(null);
+
+    if (!blob) return window.alert(t.downloadZipEmpty);
+    saveBlob(blob, `${ns === 'all' ? 'recipes' : ns}-${fmt}.zip`);
+  }
+
   function changeFmt(next: string) {
     setFmt(next);
     writeStored(FMT_KEY, next);
@@ -211,7 +233,15 @@ export function App({ locale }: { locale: string }) {
         />
         <div className="app-layout">
           <div className="side-panel">
-            <SectionHead title={t.itemList} count={recipes ? filtered.length : undefined} />
+            <SectionHead
+              title={t.itemList}
+              count={recipes ? filtered.length : undefined}
+              action={
+                entries.length > 0 ? (
+                  <ZipButton t={t} busy={zipping} onClick={downloadZip} />
+                ) : undefined
+              }
+            />
             <ShowImagesToggle t={t} checked={showImages} onChange={setShowImages} />
             <div className="list-box">
               <ItemList

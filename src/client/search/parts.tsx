@@ -133,12 +133,33 @@ function FilterSelects(props: SearchFormProps) {
 }
 
 /** 見出しと件数バッジ。 */
-export function SectionHead({ title, count }: { title: string; count?: ReactNode }) {
+export function SectionHead({
+  title,
+  count,
+  action,
+}: {
+  title: string;
+  count?: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div className="section-head">
       <Typography variant="subtitle2">{title}</Typography>
       {count !== undefined && <Chip size="small" variant="outlined" label={count} />}
+      {action !== undefined && <span style={{ marginLeft: 'auto' }}>{action}</span>}
     </div>
+  );
+}
+
+/**
+ * 表示中のレシピをまとめて zip で受け取るボタン。
+ * @param busy 進行中の表示。null なら待機中
+ */
+export function ZipButton({ t, busy, onClick }: WithMessages & { busy: string | null; onClick: () => void }) {
+  return (
+    <Button size="small" startIcon={<i className="fa-solid fa-file-zipper" />} disabled={!!busy} onClick={onClick}>
+      {busy ?? t.downloadZip}
+    </Button>
   );
 }
 

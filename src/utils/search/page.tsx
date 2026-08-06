@@ -42,6 +42,8 @@ function Shell({ locale, origin, t }: ShellProps) {
       </head>
       <body>
         <div id="root" />
+        {/* まとめてzipにするときだけ使う。描画には要らないので defer で後回しにする。 */}
+        <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" />
         <script>{raw(`window.MPR_LOCALE = ${JSON.stringify(locale)};`)}</script>
         <script type="module" src={`/app/${CLIENT_BUNDLES.search}`} />
       </body>
