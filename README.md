@@ -1,5 +1,6 @@
 # ModParks Recipe
-ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバーです。  
+Minecraftのレシピ画像をjarのdata, assetsから動的に生成、配信するAPI、ツールです。<br />
+今のところ、json形式のレシピをサポートしていない場合は生成できません。
 
 - https://recipe.modparks.pitan76.net/
 
