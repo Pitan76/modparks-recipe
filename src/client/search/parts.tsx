@@ -15,7 +15,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { imagePath, splitId, type Versions } from './api';
+import { imageCdnPath, imagePath, splitId, type Assets, type Versions } from './api';
 import type { SearchMessages } from '../../utils/i18n/search';
 
 /** 部品が共通で受け取る文言。 */
@@ -171,6 +171,7 @@ export type ImageTileProps = WithMessages & {
   name?: string;
   fmt: string;
   versions: Versions | null;
+  assets: Assets | null;
   title?: string;
   copied: boolean;
   failed: boolean;
@@ -183,6 +184,15 @@ export function ImageTile(props: ImageTileProps) {
   const { t } = props;
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const parts = splitId(props.recipeId);
+  const direct = imageCdnPath(props.recipeId, props.fmt, props.versions, props.assets);
+  // 直接配信を試している間だけ true。R2に未生成の画像は404になるので、その1回だけWorkerへ落とす。
+  const [useDirect, setUseDirect] = useState(direct !== null);
+
+  /** 直接配信の404はWorkerで拾い直す。それ以外の失敗は本当のエラーとして出す。 */
+  const onError = () => {
+    if (useDirect) return setUseDirect(false);
+    setStatus('error');
+  };
 
   return (
     <div className="recipe-item">
@@ -191,13 +201,13 @@ export function ImageTile(props: ImageTileProps) {
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
       <img
-        src={imagePath(props.recipeId, props.fmt, props.versions)}
+        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions)}
         alt={props.recipeId}
         className="recipe-img"
         title={props.title}
         decoding="async"
         onLoad={() => setStatus('ok')}
-        onError={() => setStatus('error')}
+        onError={onError}
         onClick={props.onClick}
         style={{ display: status === 'ok' ? 'block' : 'none' }}
       />

@@ -39,7 +39,7 @@ function localeSetup(locale: string) {
 export function App({ locale }: { locale: string }) {
   const t = searchMessagesFor(locale);
   const { mcLocale, toggle } = localeSetup(locale);
-  const { recipes, versions } = useRecipeIndex();
+  const { recipes, versions, assets } = useRecipeIndex();
   const { names, request } = useNames(mcLocale);
 
   const [q, setQ] = useState('');
@@ -217,6 +217,7 @@ export function App({ locale }: { locale: string }) {
               names={names}
               fmt={fmt}
               versions={versions}
+              assets={assets}
               page={page}
               onPage={setPage}
               entries={entries}

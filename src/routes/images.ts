@@ -9,6 +9,7 @@ import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
 import { getAssetVersion } from '../utils/cache-version';
 import { rendererVersion } from '../utils/render-version';
+import { imageCacheKey } from '../utils/image-cdn';
 import { renderBatch } from '../utils/batch-render';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
@@ -185,7 +186,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   // R2 に永続化しておけば、そうしたミスは R2 GET 1回で済む。キーに ns バージョンと
   // レンダラー版を含むので、更新時は別キーになり古い画像は参照されなくなる。
   const contentType = contentTypeForExt(ext);
-  const imgKey = `cache/img/${rendererVersion(c.env)}/${namespace}/${version}/${id}@${scale}+${tagOffset}.${ext}`;
+  const imgKey = imageCacheKey(rendererVersion(c.env), namespace, version, id, scale, tagOffset, ext);
   const l1 = await c.env.BUCKET.get(imgKey);
   if (l1) {
     const res = new Response(l1.body, { headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl } });

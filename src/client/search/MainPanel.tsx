@@ -8,7 +8,7 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Pagination from '@mui/material/Pagination';
 import Typography from '@mui/material/Typography';
-import { imagePath, type Names, type Versions } from './api';
+import { imagePath, type Assets, type Names, type Versions } from './api';
 import { copyTitle, EmptyState, ImageTile, SectionHead, type WithMessages } from './parts';
 
 /** 1ページあたりのレシピ画像の表示枚数。 */
@@ -26,6 +26,7 @@ export type MainPanelProps = WithMessages & {
   names: Names;
   fmt: string;
   versions: Versions | null;
+  assets: Assets | null;
   page: number;
   onPage: (page: number) => void;
   entries: GridEntry[];
@@ -67,6 +68,7 @@ function RecipeGrid(props: MainPanelProps) {
             name={props.names[item]}
             fmt={props.fmt}
             versions={props.versions}
+            assets={props.assets}
             copied={props.copiedId === item}
             failed={props.failedId === item}
             onClick={() => props.onPick(item)}
@@ -115,6 +117,7 @@ function RecipeDetail(props: MainPanelProps & { selection: Selection }) {
             name={props.names[label]}
             fmt={props.fmt}
             versions={props.versions}
+            assets={props.assets}
             title={t.openImage}
             copied={copied}
             failed={failed}

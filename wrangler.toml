@@ -12,6 +12,13 @@ compatibility_flags = ["nodejs_compat"]
 [site]
 bucket = "./public"
 
+# R2 バケットに割り当てた公開ドメイン。設定するとクライアントはレンダリング済み画像を
+# Worker を介さず R2 から直接取得し、その分の Worker 実行が消えます。
+# 先に Cloudflare ダッシュボードで mp-recipe-images に Custom Domain を割り当ててください
+# （R2 > バケット > Settings > Public access）。未設定なら従来どおり全部 Worker を通ります。
+[vars]
+PUBLIC_IMAGE_BASE = "https://files.recipe.modparks.pitan76.net"
+
 # Database for Recipes
 [[d1_databases]]
 binding = "DB"

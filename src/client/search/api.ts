@@ -11,8 +11,17 @@ export type Versions = Record<string, string>;
 /** アイテムID -> 表示名。 */
 export type Names = Record<string, string>;
 
+/** R2直接配信の情報。`base` が空なら直接配信は無効です。 */
+export type Assets = { base: string; rv: string };
+
 /** 索引の取得結果。 */
-export type RecipeIndex = { recipes: RecipeEntry[]; versions: Versions | null };
+export type RecipeIndex = { recipes: RecipeEntry[]; versions: Versions | null; assets: Assets | null };
+
+/** Worker側の DEFAULT_SCALE。R2の直接URLを組むにはキーと同じ値が要ります。 */
+const DEFAULT_SCALE = 2;
+
+/** Worker側の既定 tagOffset。 */
+const DEFAULT_TAG_OFFSET = 0;
 
 /** 1回の名前解決で送るID数。 */
 const NAME_BATCH = 50;
@@ -47,18 +56,48 @@ export function imagePath(recipeId: string, fmt: string, versions: Versions | nu
 }
 
 /**
+ * レンダリング済み画像をR2から直接取る URL を組み立てます。
+ *
+ * Worker を通さないぶん Worker 実行が丸ごと消えますが、未レンダリングの画像は 404 になります。
+ * 呼び出し側は失敗時に {@link imagePath} へフォールバックしてください（Worker が生成してR2へ
+ * 保存するので、次回からは直接ヒットします）。
+ * @param recipeId レシピID
+ * @param fmt 画像形式
+ * @param versions ネームスペースごとのバージョン
+ * @param assets 配信情報（`/api/list.json` の `assets`）
+ * @returns 直接配信できないときは null
+ */
+export function imageCdnPath(
+  recipeId: string,
+  fmt: string,
+  versions: Versions | null,
+  assets: Assets | null
+): string | null {
+  if (!assets?.base) return null;
+
+  const p = splitId(recipeId);
+  const version = versions?.[p.ns];
+  // バージョンが無いとサーバ側が引いた値がキーに入るため、クライアントからは行き先を当てられない。
+  if (!version || version === '0') return null;
+
+  const key = `cache/img/${assets.rv}/${p.ns}/${version}/${p.id}@${DEFAULT_SCALE}+${DEFAULT_TAG_OFFSET}.${fmt}`;
+  return `${assets.base}/${key.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/**
  * レシピ索引を取得します。
  * @returns 取得できなければ空の索引
  */
 export async function fetchIndex(): Promise<RecipeIndex> {
   const res = await fetch('/api/list.json');
-  if (!res.ok) return { recipes: [], versions: null };
+  if (!res.ok) return { recipes: [], versions: null, assets: null };
 
-  const body = (await res.json()) as { recipes?: RecipeEntry[]; ids?: string[]; versions?: Versions };
+  const body = (await res.json()) as { recipes?: RecipeEntry[]; ids?: string[]; versions?: Versions; assets?: Assets };
   const versions = body.versions ?? null;
-  if (Array.isArray(body.recipes)) return { recipes: body.recipes, versions };
-  if (Array.isArray(body.ids)) return { recipes: body.ids.map((id) => ({ id, result: id })), versions };
-  return { recipes: [], versions };
+  const assets = body.assets ?? null;
+  if (Array.isArray(body.recipes)) return { recipes: body.recipes, versions, assets };
+  if (Array.isArray(body.ids)) return { recipes: body.ids.map((id) => ({ id, result: id })), versions, assets };
+  return { recipes: [], versions, assets };
 }
 
 /**

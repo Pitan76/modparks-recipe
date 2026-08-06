@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchIndex, fetchNameIndex, fetchNames, splitId, type Names, type RecipeEntry, type Versions } from './api';
+import { fetchIndex, fetchNameIndex, fetchNames, splitId, type Assets, type Names, type RecipeEntry, type Versions } from './api';
 
 /** 検索時に表示名を引きに行く上限件数。 */
 const SEARCH_NAME_LIMIT = 3000;
@@ -25,16 +25,16 @@ export function replaceQuery(mutate: (params: URLSearchParams) => void): void {
 }
 
 /** 索引の読み込み結果。`recipes` が null の間は読み込み中です。 */
-export type IndexState = { recipes: RecipeEntry[] | null; versions: Versions | null };
+export type IndexState = { recipes: RecipeEntry[] | null; versions: Versions | null; assets: Assets | null };
 
 /** レシピ索引を1回だけ読み込みます。 */
 export function useRecipeIndex(): IndexState {
-  const [state, setState] = useState<IndexState>({ recipes: null, versions: null });
+  const [state, setState] = useState<IndexState>({ recipes: null, versions: null, assets: null });
 
   useEffect(() => {
     fetchIndex()
-      .then((index) => setState({ recipes: index.recipes, versions: index.versions }))
-      .catch(() => setState({ recipes: [], versions: null }));
+      .then((index) => setState({ recipes: index.recipes, versions: index.versions, assets: index.assets }))
+      .catch(() => setState({ recipes: [], versions: null, assets: null }));
   }, []);
 
   return state;

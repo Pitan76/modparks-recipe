@@ -10,6 +10,10 @@ export interface Env {
   UPLOAD_SECRET?: string;
   // レンダラー版の上書き（CI がレンダリング系ソースのハッシュを注入する運用に備えたもの）。
   RENDERER_VERSION?: string;
+  // R2バケットに割り当てた公開ドメイン（例: `https://img.recipe.modparks.pitan76.net`）。
+  // 設定するとクライアントはレンダリング済み画像をWorkerを介さずR2から直接取得します。
+  // 未設定なら従来どおり全リクエストがWorkerを通ります。
+  PUBLIC_IMAGE_BASE?: string;
   // ModParks アカウントでログインさせる場合のみ設定します。3つ揃わなければプロバイダごと無効になります。
   MODPARKS_URL?: string;
   MODPARKS_CLIENT_ID?: string;

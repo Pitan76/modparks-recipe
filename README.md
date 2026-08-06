@@ -13,7 +13,7 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
-| `GET` | `/api/list.json` | 全名前空間のレシピ索引とアセットバージョンを返します。 |
+| `GET` | `/api/list.json` | 全名前空間のレシピ索引、アセットバージョン、配信情報（`assets`）を返します。 |
 | `GET` | `/api/:namespace/list.json` | 名前空間1つ分のレシピ索引を返します（`?lang=` でアイテム名を同梱）。 |
 | `GET` | `/api/:namespace/:id.png` | レシピ画像（PNG）を返します。 |
 | `GET` | `/api/:namespace/:id.jpg` | レシピ画像（JPG）を返します。 |
@@ -60,6 +60,7 @@ ModParks用のレシピ画像を動的に生成・配信するCDN/APIサーバ�
     }
     ```
   - `version` をそのまま画像URLの `?v=` に使えます（`0` は未設定を意味するので付けないでください）。
+  - `assets: { base, rv }` はR2からの直接配信用です（「R2からの直接配信」を参照）。`base` が空なら無効です。
 
 ### アイテム名API
 
@@ -317,6 +318,33 @@ L0/L1 のアイコンキャッシュがなぜ効くか: アイテムは数千種
 **レンダラー版**（`RENDERER_VERSION`、[src/utils/render-version.ts](src/utils/render-version.ts)）はL1キーに含まれます。レンダリング系コードを変えたら値を上げると、過去のL1が自動的に参照されなくなります。環境変数 `RENDERER_VERSION` が設定されていればそれを優先します（CIがソースのハッシュを注入する運用に対応）。
 
 **L1のゴミ掃除**: `rv`/バージョンが変わると古い `cache/` オブジェクトは参照されなくなりますが残ります。R2 の lifecycle rule で `cache/` プレフィックスに期限（例: 30日）を設定して自動削除するのが運用不要でおすすめです（wrangler.toml では設定できず、ダッシュボード操作が必要）。
+
+### R2からの直接配信
+
+L1（`cache/img/...`）にレンダリング済みの画像があるなら、Workerは「R2から読んで返すだけ」です。
+これによってR2の公開ドメインを直接叩けば丸ごと不要になり、その画像分のWorker実行が消えます。
+
+有効化の手順:
+
+1. Cloudflareダッシュボードで `mp-recipe-images` バケットに Custom Domain を割り当てます（R2 > バケット > Settings > Public access）。
+2. `wrangler.toml` の `PUBLIC_IMAGE_BASE` にそのURLを設定してデプロイします。未設定なら直接配信は無効のままです。
+
+`/api/list.json` と `/api/:namespace/list.json` は `assets: { base, rv }` を返します。クライアントは
+`base` と `rv`、索引の `version` からキーを組み立てて直接取得できます:
+
+```
+<base>/cache/img/<rv>/<namespace>/<version>/<id>@<scale>+<tagOffset>.<ext>
+```
+
+`scale` の既定は2、`tagOffset` の既定は0です。**未レンダリングの画像は404になります**。呼び出し側は
+404のときだけ `/api/:namespace/:id.<ext>?v=<version>` へフォールバックしてください。Workerが生成して
+L1へ保存するため、以降は直接配信でヒットします（検索ページは `<img>` の `onerror` でこれを行います）。
+
+`version` が無い（`0`）ネームスペースはサーバ側がバージョンを引くため、キーを外から組めません。この場合は
+従来どおりWorker経由になります。
+
+注意: Custom Domainはバケット全体を公開読み取りにします（キー指定のGETのみで、一覧はできません）。
+このバケットの中身はいずれもAPIから公開しているアセットですが、秘匿したい物を置かない前提は守ってください。
 
 ### キャッシュ破棄（アセットバージョン）
 
