@@ -9,6 +9,7 @@ import { bumpAssetVersion, ensureAssetVersions, getAllVersions } from '../utils/
 import { sweepStaleIngests } from '../utils/ingest';
 import { reindexStep, normalizeBatch } from '../utils/reindex';
 import { listUploads } from '../utils/audit';
+import { deliveryVersion } from '../utils/image-cdn';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -231,3 +232,71 @@ adminRoutes.get('/admin/reindex', async (c) => {
   const step = await reindexStep(c.env, c.req.query('cursor'), normalizeBatch(c.req.query('batch')));
   return c.json({ ok: true, ...step });
 });
+
+/**
+ * 使われなくなった世代のレンダリング済み画像（L1）を削除します。
+ *
+ * L1 のキーは `cache/img/<rv>/...` で、`rv` はレンダラー版と共有ネームスペースのバージョンから
+ * 決まります。更新のたびに新しい世代へ移るため、古い世代は参照されないまま残り続けます。
+ * 消えても Worker が作り直すだけなので、現行世代以外はいつ消しても構いません。
+ *
+ * 既定は数えるだけです。実際に消すには `?delete=1` を付けてください。
+ * 例: GET /admin/gc-images?secret=...&delete=1
+ */
+adminRoutes.get('/admin/gc-images', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const current = await deliveryVersion(c.env);
+  const apply = c.req.query('delete') === '1';
+  const stale = new Map<string, number>();
+  let kept = 0;
+  let deleted = 0;
+
+  let cursor: string | undefined = undefined;
+  do {
+    const listed = await c.env.BUCKET.list({ prefix: IMAGE_CACHE_PREFIX, cursor });
+    const doomed: string[] = [];
+    for (const obj of listed.objects) {
+      const generation = generationOf(obj.key);
+      if (!generation || generation === current) {
+        kept++;
+        continue;
+      }
+      stale.set(generation, (stale.get(generation) ?? 0) + 1);
+      doomed.push(obj.key);
+    }
+
+    if (apply && doomed.length > 0) {
+      await c.env.BUCKET.delete(doomed);
+      deleted += doomed.length;
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  return c.json({
+    ok: true,
+    current,
+    kept,
+    stale: Object.fromEntries(stale),
+    staleTotal: [...stale.values()].reduce((a, b) => a + b, 0),
+    deleted: apply ? deleted : 0,
+    applied: apply,
+  });
+});
+
+/** レンダリング済み画像（L1）のキーの接頭辞。 */
+const IMAGE_CACHE_PREFIX = 'cache/img/';
+
+/**
+ * L1 のキーから世代（`rv`）を取り出します。
+ * @param key R2オブジェクトキー
+ * @returns 取り出せなければ null
+ */
+function generationOf(key: string): string | null {
+  const rest = key.slice(IMAGE_CACHE_PREFIX.length);
+  const slash = rest.indexOf('/');
+  return slash > 0 ? rest.slice(0, slash) : null;
+}
