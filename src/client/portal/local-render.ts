@@ -2,8 +2,14 @@
  * @fileoverview ブラウザだけでレシピ画像を組み立てる処理。
  *
  * jar は手元にあるので、その中身をそのまま読み出し口にします。jar に無いもの（`minecraft:` の
- * テクスチャやモデル、`c:` のタグ）だけを配信側から引きます。サーバは素材を返すだけで、
- * 描画そのものは行いません。
+ * テクスチャやモデル、`c:` のタグ）だけを外から取ります。
+ *
+ * 取得は「描いて不足を集め、まとめて取る」の繰り返しです。素材の依存は多段で、タグを読むまで
+ * どのアイテムが要るか分からず、そのアイテムのテクスチャはさらにその先にあります。1周で止めると
+ * 入力スロットのように段数の多いものが埋まりません。新しい不足が出なくなるまで回します。
+ *
+ * 描画に何が要るかは実際に描いてみないと分からないうえ、一覧をまるごと配らせると要らないものまで
+ * 運ぶことになるため、都度必要な分だけを問い合わせます。R2 直取りなので Worker も起きません。
  *
  * レシピのSVGは文字列として組み立てられるため、ラスタライザ（wasm）は要りません。
  * ブラウザにそのまま渡せば描画されます。
@@ -13,6 +19,7 @@ import type { AssetBody, AssetReader } from '../../core/asset-reader';
 import { RECIPE_PATH } from '../../core/paths';
 import { isCraftingType } from '../../core/recipe';
 import { generateRecipeSvg } from '../../utils/image-generator/svg';
+import { TRANSPARENT_PNG } from '../../utils/minecraft/texture';
 import type { ZipLike } from '../../core/jar-assets';
 
 /** 論理パスから jar 内のパスを組み立てるための対応。 */
@@ -32,7 +39,11 @@ class LocalAssetReader implements AssetReader {
   /** 手元の描画なので、永続キャッシュには関わりません。 */
   readonly persistIcons = false;
 
-  private readonly remote = new Map<string, Promise<AssetBody | null>>();
+  /** jar に無く、外から取る必要があったもの。 */
+  readonly missing = new Set<string>();
+
+  /** 取得済みの中身。`ns:論理パス` を鍵にします。 */
+  private readonly fetched = new Map<string, ArrayBuffer>();
 
   /**
    * @param zip 展開済みの jar
@@ -45,38 +56,53 @@ class LocalAssetReader implements AssetReader {
    * @param logicalPath 論理パス（例: `textures/item/foo.png`）
    */
   async get(ns: string, logicalPath: string): Promise<AssetBody | null> {
-    const key = this.jarKeyOf(ns, logicalPath);
-    const file = key ? this.zip.files[key] : null;
+    const jarKey = this.jarKeyOf(ns, logicalPath);
+    const file = jarKey ? this.zip.files[jarKey] : null;
     if (file && !file.dir) {
       return { text: () => file.async('string'), arrayBuffer: () => file.async('arraybuffer') };
     }
-    return this.fetchRemote(ns, logicalPath);
+    // 手元に無いものは記録だけして、この回は諦めます。まとめて取ってから描き直します。
+    const key = `${ns}:${logicalPath}`;
+    const body = this.fetched.get(key);
+    if (body) return { text: async () => new TextDecoder().decode(body), arrayBuffer: async () => body };
+
+    this.missing.add(key);
+    return null;
+  }
+
+  /**
+   * 記録した不足分の在り処をまとめて問い合わせ、R2 から直接取ります。
+   * @returns 取れた件数
+   */
+  async loadMissing(): Promise<number> {
+    const wanted = [...this.missing].filter((key) => !this.fetched.has(key));
+    if (wanted.length === 0) return 0;
+
+    const res = await fetch('/api/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: wanted }),
+    }).catch(() => null);
+    if (!res || !res.ok) return 0;
+
+    const { base, keys } = (await res.json()) as { base: string; keys: Record<string, string | null> };
+    let loaded = 0;
+    await Promise.all(
+      wanted.map(async (key) => {
+        const objectKey = keys[key];
+        if (!objectKey || !base) return;
+        const body = await fetchBytes(`${base}/${objectKey.split('/').map(encodeURIComponent).join('/')}`);
+        if (!body) return;
+        this.fetched.set(key, body);
+        loaded++;
+      })
+    );
+    return loaded;
   }
 
   /** 手元の jar は build を持たないため、常に固定の世代になります。 */
   async buildOf(): Promise<string | null> {
     return null;
-  }
-
-  /**
-   * 配信側から引きます。空振りも含めて覚え、同じ問い合わせを繰り返しません。
-   * @param ns ネームスペース
-   * @param logicalPath 論理パス
-   */
-  private fetchRemote(ns: string, logicalPath: string): Promise<AssetBody | null> {
-    const cacheKey = `${ns}/${logicalPath}`;
-    let pending = this.remote.get(cacheKey);
-    if (pending) return pending;
-
-    pending = (async () => {
-      const res = await fetch(`/api/${encodeURIComponent(ns)}/asset/${logicalPath}`).catch(() => null);
-      if (!res || !res.ok) return null;
-
-      const buffer = await res.arrayBuffer();
-      return { text: async () => new TextDecoder().decode(buffer), arrayBuffer: async () => buffer };
-    })();
-    this.remote.set(cacheKey, pending);
-    return pending;
   }
 
   /**
@@ -94,8 +120,53 @@ class LocalAssetReader implements AssetReader {
   }
 }
 
+/**
+ * 不足を集めて取りに行く回数の上限。
+ *
+ * タグ→アイテム→テクスチャ、モデル→親モデル→テクスチャ、と辿る段数を吸収できれば足ります。
+ * 上限を設けるのは、解決できない参照が残ったときに往復し続けないためです。
+ */
+const MAX_RESOLVE_ROUNDS = 5;
+
 /** 素材の切り替わりを見せるコマ数の上限。Worker 側の GIF と揃えています。 */
 const MAX_FRAMES = 5;
+
+/**
+ * レシピの入力スロット数を数えます。
+ *
+ * 描けたかどうかを判断する基準になります。素材の解決に失敗したスロットは描画側が黙って飛ばすため、
+ * 枚数を突き合わせないと「欠けたまま出来上がった絵」を配ってしまいます。
+ * @param data レシピJSON
+ */
+function slotCount(data: any): number {
+  const type = String(data?.type ?? '').replace(/^minecraft:/, '');
+  if (type === 'crafting_shapeless') {
+    return Array.isArray(data.ingredients) ? Math.min(data.ingredients.length, 9) : 0;
+  }
+  if (type !== 'crafting_shaped' || !Array.isArray(data.pattern)) return 0;
+
+  let slots = 0;
+  for (const row of data.pattern.slice(0, 3)) {
+    if (typeof row !== 'string') continue;
+    for (const ch of row.slice(0, 3)) if (ch !== ' ') slots++;
+  }
+  return slots;
+}
+
+/**
+ * 素材がすべて揃った絵かどうかを判定します。
+ * @param data レシピJSON
+ * @param svg 組み立てた SVG
+ */
+function isComplete(data: any, svg: string): boolean {
+  // 透明で埋まったスロットは「解決できなかった」印です。欠けたまま配らないために弾きます。
+  if (svg.includes(TRANSPARENT_PNG)) return false;
+
+  const result = data?.result ?? data?.output;
+  // 背景 + 入力スロット + 完成品
+  const expected = 1 + slotCount(data) + (result ? 1 : 0);
+  return (svg.match(/<image /g) ?? []).length === expected;
+}
 
 /**
  * 手元で組み立てた1レシピ。
@@ -103,6 +174,14 @@ const MAX_FRAMES = 5;
  * `frames` は素材が切り替わるレシピのコマです。切り替わらないものは1つだけ入ります。
  */
 export type LocalRecipe = { id: string; svg: string; frames: string[] };
+
+/** 手元での描画結果。 */
+export type LocalRenderResult = {
+  /** 素材が揃って描けたもの */
+  recipes: LocalRecipe[];
+  /** 素材が足りず描けなかったレシピID */
+  failed: string[];
+};
 
 /**
  * jar からクラフト系のレシピを取り出し、SVGに組み立てます。
@@ -112,19 +191,28 @@ export type LocalRecipe = { id: string; svg: string; frames: string[] };
 export async function renderJarLocally(
   zip: ZipLike,
   onProgress?: (done: number, total: number) => void
-): Promise<LocalRecipe[]> {
+): Promise<LocalRenderResult> {
   const reader = new LocalAssetReader(zip);
   const recipes = await collectRecipes(zip);
 
+  // 描いては不足を取る、を新しい不足が出なくなるまで繰り返します。ここでの描画は結果を捨て、
+  // 何が要るかを知るためだけに行います。
+  for (let round = 0; round < MAX_RESOLVE_ROUNDS; round++) {
+    for (const { data } of recipes) await framesOf(data, reader).catch(() => []);
+    if ((await reader.loadMissing()) === 0) break;
+  }
+
   const out: LocalRecipe[] = [];
+  const failed: string[] = [];
   let done = 0;
   for (const { id, data } of recipes) {
-    // 1件の失敗で全体を捨てず、描けたものだけ返します。
     const frames = await framesOf(data, reader).catch(() => []);
-    if (frames.length > 0) out.push({ id, svg: frames[0], frames });
+    // 素材が欠けたものは出しません。中途半端な絵は、無いことより分かりにくい間違いになります。
+    if (frames.length > 0 && isComplete(data, frames[0])) out.push({ id, svg: frames[0], frames });
+    else failed.push(id);
     onProgress?.(++done, recipes.length);
   }
-  return out;
+  return { recipes: out, failed };
 }
 
 /**
@@ -203,4 +291,18 @@ export async function svgToPngDataUrl(svg: string, scale: number): Promise<strin
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/png');
+}
+
+/**
+ * URLの中身をバイト列で読みます。
+ * @param url 取得先
+ * @returns 取れなければ null
+ */
+async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch(url);
+    return res.ok ? await res.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
 }

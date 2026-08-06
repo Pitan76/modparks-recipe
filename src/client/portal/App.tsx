@@ -22,8 +22,8 @@ import {
   type UploadSummary,
 } from './api';
 import { AccountRow, HistoryView, JarPicker, PreviewView, ResultView, Section, SignInView } from './parts';
-import { saveDataUrlZip } from './preview-zip';
-import { renderJarLocally, svgDataUrl, svgToPngDataUrl } from './local-render';
+import { saveDataUrlZip, saveLocalZip } from './preview-zip';
+import { renderJarLocally, svgDataUrl, type LocalRecipe } from './local-render';
 import { readStored, removeStored, writeStored } from '../shared/browser';
 import type { ZipLike } from '../../core/jar-assets';
 import { messagesFor } from '../../utils/i18n/portal';
@@ -60,6 +60,8 @@ export function App({ locale }: { locale: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [localFailed, setLocalFailed] = useState(false);
+  const [local, setLocal] = useState<LocalRecipe[] | null>(null);
+  const [incomplete, setIncomplete] = useState(0);
 
   const signOut = useCallback(() => {
     removeStored(TOKEN_KEY);
@@ -96,6 +98,8 @@ export function App({ locale }: { locale: string }) {
     setResult(null);
     setPreview(null);
     setLocalFailed(false);
+    setLocal(null);
+    setIncomplete(0);
     setError('');
     void previewLocally(next);
   }
@@ -105,11 +109,13 @@ export function App({ locale }: { locale: string }) {
     setBusy(true);
     try {
       const zip = await JSZip.loadAsync(await target.arrayBuffer());
-      const rendered = await renderJarLocally(zip, (n, total) => {
+      const { recipes: rendered, failed } = await renderJarLocally(zip, (n, total) => {
         setStatus(t.previewLocal.replace('{done}', String(n)).replace('{total}', String(total)));
       });
       if (rendered.length === 0) throw new Error('no recipes');
 
+      setLocal(rendered);
+      setIncomplete(failed.length);
       setPreview({
         ids: rendered.map((r) => r.id),
         images: Object.fromEntries(rendered.map((r) => [r.id, svgDataUrl(r.svg)])),
@@ -137,6 +143,27 @@ export function App({ locale }: { locale: string }) {
     } catch (err) {
       setStatus('');
       setError(err instanceof Error ? err.message : t.errorGeneric);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * プレビューを保存します。
+   *
+   * この端末で描けているときは PNG / GIF への変換も zip 化もここで完結させます。通信が要らず、
+   * サーバの描画も呼ばないためです。サーバ描画に頼った場合だけ、受け取った画像をそのまま詰めます。
+   */
+  async function download() {
+    const name = `${fileName.replace(/\.jar$/i, '')}-recipes.zip`;
+    if (!local) return saveDataUrlZip(preview?.images ?? {}, name);
+
+    setBusy(true);
+    try {
+      await saveLocalZip(local, 2, name, (n, total) => {
+        setStatus(t.previewSaving.replace('{done}', String(n)).replace('{total}', String(total)));
+      });
+      setStatus('');
     } finally {
       setBusy(false);
     }
@@ -188,18 +215,23 @@ export function App({ locale }: { locale: string }) {
           <Section title={t.preview}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{t.previewLead}</Typography>
             {localFailed && (
-              <>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t.previewLocalFailed}</Typography>
-                <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
-              </>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t.previewLocalFailed}</Typography>
             )}
+            {incomplete > 0 && (
+              <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
+                {t.previewIncomplete.replace('{failed}', String(incomplete))}
+              </Typography>
+            )}
+            {/* この端末での描画が成功したように見えても、素材が欠けていることは見た目でしか分かりません。
+                作り直せる手段を常に残しておきます。 */}
+            <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
             {preview && (
               <Box sx={{ mt: 2 }}>
                 <PreviewView
                   t={t}
                   ids={preview.ids}
                   images={preview.images}
-                  onDownload={() => saveDataUrlZip(preview.images, `${fileName.replace(/\.jar$/i, '')}-recipes.zip`)}
+                  onDownload={() => download()}
                 />
               </Box>
             )}

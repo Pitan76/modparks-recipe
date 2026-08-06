@@ -9,7 +9,7 @@
  */
 
 import type { Env } from '../minecraft';
-import { getBlob } from './blob';
+import { getBlob, blobKey } from './blob';
 import { readChannels } from './channels';
 import { resolveChannel } from './mc-version';
 import { foldBuild } from './manifest';
@@ -86,6 +86,26 @@ export class AssetSource {
     }
     if (!this.unmigrated.has(ns)) return null;
     return this.env.BUCKET.get(legacyKey(ns, logicalPath));
+  }
+
+  /**
+   * 論理パスに対応するR2のオブジェクトキーを返します。
+   *
+   * 中身ではなく在り処だけを返します。ブラウザ側が R2 の公開ドメインから直接取りに行くための
+   * ものです。取得を Worker に通さないぶん、通信も実行時間も要りません。
+   * @param ns ネームスペース
+   * @param logicalPath 論理パス
+   * @returns 見つからなければ null
+   */
+  async keyOf(ns: string, logicalPath: string): Promise<string | null> {
+    const buildId = await this.buildOf(ns);
+    if (buildId) {
+      const folded = await foldBuild(this.env, ns, buildId);
+      const hash = folded?.files[logicalPath];
+      if (hash) return blobKey(hash);
+    }
+    if (!this.unmigrated.has(ns)) return null;
+    return legacyKey(ns, logicalPath);
   }
 }
 

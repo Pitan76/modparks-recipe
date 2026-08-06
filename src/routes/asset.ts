@@ -12,6 +12,7 @@ import { Env } from '../utils/minecraft';
 import { AssetSource } from '../utils/build/asset-source';
 import { isValidNamespace, isSafePath } from '../utils/asset-path';
 import { contentTypeForKey } from '../utils/http';
+import { runPool } from '../utils/pool';
 import { toChannel } from '../utils/build/mc-version';
 
 export const assetRoutes = new Hono<{ Bindings: Env }>();
@@ -24,7 +25,7 @@ const ALLOWED_ROOTS = ['textures/', 'models/', 'tags/', 'lang/'];
 assetRoutes.get('/api/:namespace/asset/:path{.+}', async (c) => {
   const { namespace, path } = c.req.param();
   if (!isValidNamespace(namespace) || !isSafePath(path)) return c.text('Invalid namespace or path', 400);
-  if (!ALLOWED_ROOTS.some((root) => path.startsWith(root))) return c.text('Not found', 404);
+  if (!allowed(path)) return c.text('Not found', 404);
 
   const src = new AssetSource(c.env, toChannel(c.req.query('mc') ?? ''));
   const obj = await src.get(namespace, path);
@@ -39,3 +40,65 @@ assetRoutes.get('/api/:namespace/asset/:path{.+}', async (c) => {
     },
   });
 });
+
+/** 1回で解決できる論理パスの数の上限。 */
+const MAX_RESOLVE = 500;
+
+/**
+ * 論理パスの在り処（R2のオブジェクトキー）をまとめて返します。
+ *
+ * ブラウザ側の描画で使います。中身は R2 の公開ドメインから直接取ってもらうので、Worker を通るのは
+ * この1回だけです。必要になったものだけを問い合わせる前提で、一覧をまるごと配ることはしません。
+ *
+ * リクエストボディ: { "paths": ["minecraft:textures/item/apple.png", ...] }
+ * レスポンス: { "base": "...", "keys": { "<paths の要素>": "<R2キー>" | null } }
+ */
+assetRoutes.post('/api/resolve', async (c) => {
+  let payload: any;
+  try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
+
+  const paths: string[] = Array.isArray(payload?.paths) ? payload.paths.map(String) : [];
+  if (paths.length === 0) return c.json({ base: publicBase(c.env), keys: {} });
+  if (paths.length > MAX_RESOLVE) return c.text(`Too many paths (max ${MAX_RESOLVE})`, 400);
+
+  const src = new AssetSource(c.env, toChannel(c.req.query('mc') ?? ''));
+  const keys: Record<string, string | null> = {};
+
+  await runPool(paths, 20, async (entry) => {
+    const [ns, logicalPath] = splitEntry(entry);
+    // 形が違うものは「無い」と同じ扱いにします。1件のために全体を落とす必要はありません。
+    if (!ns || !isValidNamespace(ns) || !isSafePath(logicalPath) || !allowed(logicalPath)) {
+      keys[entry] = null;
+      return;
+    }
+    keys[entry] = await src.keyOf(ns, logicalPath).catch(() => null);
+  });
+
+  return c.json({ base: publicBase(c.env), keys }, 200, { 'Cache-Control': 'public, max-age=3600' });
+});
+
+/**
+ * `ns:論理パス` を分解します。
+ * @param entry 問い合わせの1件
+ */
+function splitEntry(entry: string): [string | null, string] {
+  const colon = entry.indexOf(':');
+  if (colon <= 0) return [null, ''];
+  return [entry.slice(0, colon), entry.slice(colon + 1)];
+}
+
+/**
+ * 読み出しを許す論理パスかどうかを返します。
+ * @param logicalPath 論理パス
+ */
+function allowed(logicalPath: string): boolean {
+  return ALLOWED_ROOTS.some((root) => logicalPath.startsWith(root));
+}
+
+/**
+ * R2 の公開ドメインを返します。
+ * @param env 環境変数
+ */
+function publicBase(env: Env): string {
+  return (env.PUBLIC_IMAGE_BASE ?? '').replace(/\/$/, '');
+}

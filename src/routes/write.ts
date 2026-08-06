@@ -16,6 +16,8 @@ import { PatchCollector, stagePatch } from '../utils/build/staging';
 import { runPool } from '../utils/pool';
 import { recordUpload } from '../utils/audit';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
+import { consumeUploadQuota } from '../utils/auth/quota';
+import { isSharedNamespace } from '../core/namespaces';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
@@ -182,6 +184,13 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
 
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
+
+  // 枠を数えるのはここです。ポータルはブラウザ側で jar を展開して直接ここへ送るため、
+  // jar を丸ごと受ける経路（/api/upload）だけで数えていると、通常の投稿が素通りします。
+  // 共有ネームスペースは投稿者の持ち物ではないので数えません（1つの jar で二重に引かれるため）。
+  if (grant.identityId && !isSharedNamespace(namespace)) {
+    if (!(await consumeUploadQuota(c.env, grant.identityId))) return c.text('Daily upload limit reached', 429);
+  }
 
   let p: any;
   try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
