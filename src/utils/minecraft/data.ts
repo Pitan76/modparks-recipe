@@ -5,6 +5,25 @@
 import { Env } from './env';
 import { AssetSource, legacyAssetSource } from '../build/asset-source';
 import { parseNamespacedId } from './id';
+import { tagAliasOf } from '../../core/namespaces';
+
+/** タグJSONが置かれうるディレクトリ。単数形・複数形の両方がMCの版によって使われます。 */
+const TAG_DIRS = ['item', 'items', 'block', 'blocks'];
+
+/**
+ * タグJSONの実体を読みます。
+ * @param src アセット読み出し口
+ * @param ns ネームスペース
+ * @param path 拡張子を除いたタグのパス
+ * @returns 見つからなければ null
+ */
+async function readTagObject(src: AssetSource, ns: string, path: string): Promise<R2ObjectBody | null> {
+  for (const dir of TAG_DIRS) {
+    const obj = await src.get(ns, `tags/${dir}/${path}.json`);
+    if (obj) return obj;
+  }
+  return null;
+}
 
 /**
  * 保存されたJSON文字列を読みます。壊れていれば null を返します。
@@ -76,11 +95,10 @@ export async function getTag(id: string, env: Env, src: AssetSource = legacyAsse
     if (cached) return cached.values || [];
   }
 
-  // タグのパスは items, item, blocks, block のいずれかの配下に存在する可能性があります
-  let obj = await src.get(namespace, `tags/item/${path}.json`);
-  if (!obj) obj = await src.get(namespace, `tags/items/${path}.json`);
-  if (!obj) obj = await src.get(namespace, `tags/block/${path}.json`);
-  if (!obj) obj = await src.get(namespace, `tags/blocks/${path}.json`);
+  let obj = await readTagObject(src, namespace, path);
+  // 実体が無ければ読み替え先を見ます。`#forge:` 参照は移行後 `c:` にしか存在しません。
+  const alias = tagAliasOf(namespace);
+  if (!obj && alias) obj = await readTagObject(src, alias, path);
 
   if (!obj) return [];
 
