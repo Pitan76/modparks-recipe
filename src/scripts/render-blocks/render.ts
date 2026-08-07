@@ -24,6 +24,7 @@ import {
     project,
     uvMatrix,
     type Vec2,
+    type Vec3,
 } from '../../core/math';
 
 /** 出力画像のサイズ。 */
@@ -35,6 +36,7 @@ interface FaceData {
     img: Image;
     brightness: number;
     centroidZ: number;
+    elementZ: number;
 }
 
 /**
@@ -62,7 +64,7 @@ export async function renderModel(model: any): Promise<Buffer | null> {
 
     const faces = await collectFaces(model);
     if (faces.length === 0) return null;
-    faces.sort((a, b) => a.centroidZ - b.centroidZ);
+    faces.sort((a, b) => a.elementZ - b.elementZ || a.centroidZ - b.centroidZ);
 
     return drawFaces(faces);
 }
@@ -100,6 +102,7 @@ async function collectFaces(model: any): Promise<FaceData[]> {
     const faces: FaceData[] = [];
 
     for (const el of model.elements) {
+        const elementZ = elementDepth(el, gui);
         for (const [dir, face] of Object.entries(el.faces) as [string, any][]) {
             const corners = faceVertices(dir, el.from, el.to);
             if (!corners) continue;
@@ -119,6 +122,7 @@ async function collectFaces(model: any): Promise<FaceData[]> {
                 img,
                 brightness: faceBrightness(dir),
                 centroidZ: centroidZ(pts),
+                elementZ,
             });
         }
     }
@@ -224,3 +228,14 @@ function clipPolygon(ctx: CanvasRenderingContext2D, p: Vec2[]): void {
     ctx.closePath();
     ctx.clip();
 }
+
+function elementDepth(el: any, gui: any): number {
+    const corners: Vec3[] = [];
+    for (const dir of BOX_DIRECTIONS) {
+        const face = faceVertices(dir, el.from, el.to);
+        if (face) corners.push(...applyGuiTransform(applyElementRotation(face, el.rotation), gui));
+    }
+    return corners.length > 0 ? centroidZ(corners) : 0;
+}
+
+const BOX_DIRECTIONS = ['up', 'down', 'north', 'south', 'east', 'west'];

@@ -60,11 +60,17 @@ export function resolveTexture(texName: string, textures: any): string | null {
     while (textures?.[current]) {
         if (visited.has(current)) break;
         visited.add(current);
-        const next = textures[current];
-        if (typeof next !== 'string') return null;
+        const next = spriteOf(textures[current]);
+        if (next === null) return null;
         if (next.startsWith('#')) { current = next.substring(1); }
         else return next;
     }
     if (current && !current.startsWith('#') && visited.size === 0) return current;
+    return null;
+}
+
+function spriteOf(value: any): string | null {
+    if (typeof value === 'string') return value;
+    if (value && typeof value.sprite === 'string') return value.sprite;
     return null;
 }

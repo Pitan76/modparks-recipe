@@ -1,57 +1,45 @@
 /**
- * @fileoverview node-canvas を使用した純粋な Node.js ブロックレンダラーのCLIエントリーポイント。
- * ブラウザなどのGUI環境に依存せず、GitHub Actions上でも動作します。
+ * @fileoverview バニラのブロックアイコンPNGを焼いて R2 へ載せるCLIエントリーポイント。
  *
- * client.jar からモデルとテクスチャを読み込み、3D等角投影のブロックPNG画像をレンダリングして、
- * その結果を R2 にアップロードします。レンダリングパイプライン自体は `./render-blocks/*` 内にあり、
- * このファイルはコマンドラインのエントリーポイントです。
+ * client.jar からアイテム定義を数え上げ、Worker と同じ描画コードでアイコンを作り、`render3d/` に
+ * 上げます。GUI環境に依存しないので GitHub Actions 上でも動きます。
+ *
+ * `render3d/` に置いた絵は配信時に最優先で返され、ライブ描画へは落ちません。つまりここが焼いた
+ * 絵がそのまま見えるものになるため、描き方は Worker と一致していなければなりません。以前は
+ * node-canvas で独立に描いており、Worker 側だけ直した修正（ガラスの裏面カリング、チェストの
+ * 留め具）が反映されないままでした。
+ *
+ * 使用例:
+ *   npx tsx src/scripts/render-blocks.ts
  */
 
-import { execSync } from 'child_process';
 import path from 'path';
 import { uploadAll, describeTarget } from './upload-target';
-import { JAR_PATH, readJarJson } from './render-blocks/jar';
-import { renderBlock, renderModel } from './render-blocks/render';
-import { chestModel, CHEST_VARIANTS } from '../core/chest';
+import { JAR_PATH } from './render-blocks/jar';
+import { bakeIcon } from './render-blocks/rasterize';
+import { jarSource } from './jar-reader';
 
-const R2_PREFIX = 'assets/minecraft/textures/render3d/';
+const NAMESPACE = 'minecraft';
+const R2_PREFIX = `assets/${NAMESPACE}/textures/render3d/`;
+
+/** 進捗を出す間隔。 */
+const PROGRESS_EVERY = 50;
 
 async function main() {
-    // すべてのアイテム定義を取得します
-    const listOutput = execSync(
-        `unzip -l "${JAR_PATH}" "assets/minecraft/items/*.json" | grep "assets/minecraft/items/" | awk '{print $4}'`,
-        { encoding: 'utf-8', maxBuffer: 4 * 1024 * 1024 }
-    ).trim();
-    const itemPaths = listOutput.split('\n').filter(Boolean);
-    console.log(`Found ${itemPaths.length} item definitions`);
+    const src = await jarSource(path.isAbsolute(JAR_PATH) ? JAR_PATH : path.join(process.cwd(), JAR_PATH));
+    const ids = await src.itemIds(NAMESPACE);
+    console.log(`Found ${ids.length} item definitions`);
 
-    // 最初にシングルスレッドのCanvas処理でレンダリングを完了させ、その後、
-    // 同時実行制限を設けた1つのNodeプロセス内で結果をR2にアップロードします。
+    // 先に全部焼いてから上げます。描画は単一プロセスで直列、アップロードだけ同時実行に回すためです。
     const rendered: { name: string; png: Buffer }[] = [];
-    for (let i = 0; i < itemPaths.length; i++) {
-        const itemPath = itemPaths[i];
-        const itemName = path.basename(itemPath, '.json');
+    for (const id of ids) {
+        // 描けないものは飛ばします。専用描画が要るアイテム（旗・シュルカーボックス等）は
+        // まだ組み立てられず、ここで落ちるのが正しい振る舞いです。
+        const png = await bakeIcon(NAMESPACE, id, src).catch(() => null);
+        if (!png) continue;
 
-        try {
-            const itemData = readJarJson(itemPath);
-            if (!itemData) continue;
-
-            let modelId = itemData.model?.model;
-            if (!modelId) modelId = `minecraft:item/${itemName}`;
-            if (typeof modelId !== 'string') continue;
-
-            // チェスト（および他のブロックエンティティ）はレンダリング可能なモデルを持ちません。
-            // 代わりに、エンティティアトラスのテクスチャを用いた合成ボックスモデルを使用します。
-            const png = CHEST_VARIANTS[itemName]
-                ? await renderModel(chestModel(CHEST_VARIANTS[itemName]))
-                : await renderBlock(modelId);
-            if (!png) continue;
-
-            rendered.push({ name: itemName, png });
-            if (rendered.length % 50 === 0) console.log(`  Rendered ${rendered.length} blocks... (${itemName})`);
-        } catch (e: any) {
-            // レンダリングできないアイテムはスキップします
-        }
+        rendered.push({ name: id, png });
+        if (rendered.length % PROGRESS_EVERY === 0) console.log(`  Rendered ${rendered.length} blocks... (${id})`);
     }
 
     console.log(`\nRendered ${rendered.length} block PNGs. Uploading via ${describeTarget()}...`);
@@ -63,4 +51,7 @@ async function main() {
     console.log(`Done. Uploaded ${rendered.length} block PNGs.`);
 }
 
-main().catch(console.error);
+main().catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+});

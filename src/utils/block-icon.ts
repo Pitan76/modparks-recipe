@@ -72,8 +72,8 @@ function syntheticModel(path: string): any | null {
   return null;
 }
 
-/** scripts/render-blocks/render.ts の SIZE と一致させ、両方のパスで表示サイズが揃うようにします。 */
-const ICON_SIZE = 128;
+/** アイコンの一辺。オフラインで焼く経路も同じ値を使い、表示サイズを揃えます。 */
+export const ICON_SIZE = 128;
 
 /**
  * `ns:path` に対応するブロックを3DアイコンPNGとしてレンダリングします。レンダリングできない場合は null を返します。
