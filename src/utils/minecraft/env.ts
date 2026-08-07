@@ -18,7 +18,7 @@ export interface Env {
   MODPARKS_URL?: string;
   MODPARKS_CLIENT_ID?: string;
   MODPARKS_CLIENT_SECRET?: string;
-  // jar 解析 Worker への Service Binding。外部 jar の投稿ポータルを開く場合のみ設定します。
+  // jar 解析 Worker への Service Binding。外部 jar のアップロードを開く場合のみ設定します。
   // 未設定なら投稿口は 503 を返します。公開URLではなくバインディングなのは、jar Worker が
   // 自前の認証を持たず（`workers_dev = false` で公開していない）ためです。
   JAR_WORKER?: Fetcher;

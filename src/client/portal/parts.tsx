@@ -1,5 +1,5 @@
 /**
- * @fileoverview 投稿ポータルの表示部品。
+ * @fileoverview アップロードの表示部品。
  */
 
 import { useEffect, useState, type ReactNode } from 'react';

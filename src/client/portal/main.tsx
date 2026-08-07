@@ -1,5 +1,5 @@
 /**
- * @fileoverview 投稿ポータルのエントリ。表示言語だけをサーバから受け取ります。
+ * @fileoverview アップロードのエントリ。表示言語だけをサーバから受け取ります。
  */
 
 import { createRoot } from 'react-dom/client';

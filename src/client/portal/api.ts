@@ -1,5 +1,5 @@
 /**
- * @fileoverview 投稿ポータルが叩くAPIと、jar の取り込み。
+ * @fileoverview アップロードが叩くAPIと、jar の取り込み。
  *
  * jar の展開はページに読み込まれた `jszip` と `/extractor.js` に依存します。どちらもグローバルに
  * 生えるため、ここでは型だけ宣言します。

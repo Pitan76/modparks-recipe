@@ -32,7 +32,7 @@ app.route('/', ingestRoutes);
 // ログインと namespace の所有権API。画像APIの `/api/:namespace/:filename` に
 // `claim` や `owner.json` を拾われないよう、先に登録します。
 app.route('/', authRoutes);
-// 外部 jar の投稿ポータル。`/api/upload` は namespace 付きのパスより先に登録します。
+// 外部 jar のアップロード。`/api/upload` は namespace 付きのパスより先に登録します。
 app.route('/', uploadRoutes);
 app.route('/', previewRoutes);
 app.route('/', assetRoutes);

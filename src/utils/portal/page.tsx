@@ -1,5 +1,5 @@
 /**
- * @fileoverview 投稿ポータルのHTML。
+ * @fileoverview アップロードのHTML。
  *
  * 画面はクライアントバンドル（`src/client/portal`）が組み立てます。ここが返すのは
  * 器と、初期表示に必要な最小限（表示言語・ヘッダー・全体CSS）だけです。
@@ -14,7 +14,7 @@ import { PORTAL_STYLES } from './styles';
 type Toggle = { lang: string; label: string };
 
 /**
- * 投稿ポータルのページを組み立てます。
+ * アップロードのページを組み立てます。
  * @param locale 表示言語
  * @returns HTML文字列
  */

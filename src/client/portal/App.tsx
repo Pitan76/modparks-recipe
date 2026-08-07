@@ -1,5 +1,5 @@
 /**
- * @fileoverview 投稿ポータル本体。ログイン状態と投入の進行を持ちます。
+ * @fileoverview アップロード本体。ログイン状態と投入の進行を持ちます。
  */
 
 import { useCallback, useEffect, useState } from 'react';

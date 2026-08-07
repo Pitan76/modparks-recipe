@@ -2,7 +2,7 @@
  * @fileoverview 画面共通の MUI テーマ定義（クライアントに埋め込むJS片）。
  *
  * ModParks 本体の `getAppTheme(mode, isNewTheme: true)` に合わせています。
- * 検索ページと投稿ポータルで同じテーマを使うため、ここ1箇所に置きます。
+ * 検索ページとアップロードで同じテーマを使うため、ここ1箇所に置きます。
  */
 
 import { TOKENS } from './tokens';

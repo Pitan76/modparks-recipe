@@ -1,5 +1,5 @@
 /**
- * @fileoverview 外部 jar の投稿ポータル。
+ * @fileoverview 外部 jar のアップロード。
  *
  * jar の解析は modparks-jar Worker に委ねます（jszip を本体に載せないため）。ここは
  * 受け取り・上限・一時保管・委譲だけを持ちます。
@@ -22,7 +22,7 @@ export const uploadRoutes = new Hono<{ Bindings: Env }>();
 /** 受け付ける jar の最大サイズ。Workers のボディ上限より手前で切り、CPU時間とR2の両方を守ります。 */
 const MAX_JAR_BYTES = 32 * 1024 * 1024;
 
-/** 投稿ポータルのページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
+/** アップロードのページ。表示言語は `?lang=` か `Accept-Language` で決まります。 */
 uploadRoutes.get('/upload', (c) => {
   const locale = pickLocale(new URL(c.req.url), c.req.header('Accept-Language') ?? null, PORTAL_LOCALES);
   return c.html(portalPage(locale), 200, { 'Cache-Control': 'public, max-age=300' });
