@@ -164,6 +164,20 @@ function iconCacheKey(env: Env | null, ns: string, version: string, path: string
 }
 
 /**
+ * 拡大時の補間を切る指定を差し込みます。
+ *
+ * SVG が持つのは `image-rendering="optimizeSpeed"`（SVG 1.1 の値）で、ブラウザによっては補間されます。
+ * このアイコンはレシピのSVGに入れ子で埋め込まれ、外側に付けた指定は内側の文書へ継承されないため、
+ * ここで直接入れます。ラスタライザ側はこの値で正しく動くので、書き換えはしません。
+ * @param svg SVG文字列
+ */
+function pixelated(svg: string): string {
+  const close = svg.indexOf('>');
+  if (close < 0) return svg;
+  return `${svg.slice(0, close + 1)}<style>image{image-rendering:pixelated}</style>${svg.slice(close + 1)}`;
+}
+
+/**
  * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
  */
 async function resolveItemImage(namespace: string, path: string, env: Env | null, src: AssetReader): Promise<string> {
@@ -176,7 +190,7 @@ async function resolveItemImage(namespace: string, path: string, env: Env | null
   // ブラウザ側には resvg がありません。ラスタライズせず SVG のまま埋め込みます。
   if (!env) {
     const svg = await renderBlockIconSvg(null, namespace, path, src).catch(() => null);
-    if (svg) return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+    if (svg) return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(pixelated(svg))))}`;
   } else {
     const icon = await renderBlockIconPng(env, namespace, path, src).catch(() => null);
     if (icon) {
