@@ -66,6 +66,7 @@ export function skullModel(texture: string): any {
   // 入れ替えないと頭頂に底面（首の穴）が来て、穴が開いて見えます。
   const faces = withTexture({ ...box, up: box.down, down: box.up }, '#skin');
   return {
+    atlasUv: true,
     textures: { skin: texture },
     elements: [{ from: OFFSET, to: OFFSET.map((v) => v + HEAD_SIZE), faces }],
   };

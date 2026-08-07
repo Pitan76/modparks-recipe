@@ -28,7 +28,7 @@ interface SvgFace {
     pts2d: Vec2[];
     uv: number[];
     b64: string;
-    /** テクスチャのピクセルサイズ。UVはこのサイズを基準として定義されます。 */
+    /** UV空間における `<image>` の配置サイズ。 */
     texW: number;
     texH: number;
     brightness: number;
@@ -54,6 +54,27 @@ function pngSize(dataUrl: string): { w: number; h: number } {
     const w = be32(16), h = be32(20);
     return w > 0 && h > 0 ? { w, h } : { w: 16, h: 16 };
 }
+
+/**
+ * 面に貼る `<image>` を、そのモデルのUV空間で何単位分の大きさに置くかを返します。
+ *
+ * ブロック/アイテムモデルのUVは、テクスチャの解像度に関わらず常に 0..16 で表されます。
+ * PNGの実ピクセル数をそのまま使うと、32x32 のような高解像度テクスチャでは左上 16x16 の
+ * 一角だけが面に写ります（enhanced_quarries のクァーリー上面がその例）。
+ * アニメーションテクスチャ（縦に連なるコマ）は幅との比で高さを出すため、先頭コマだけが残ります。
+ *
+ * 一方チェストや頭などの合成モデルはアトラスのピクセル単位でUVを持つため、実サイズを使います。
+ * @param dataUrl テクスチャのPNGデータURL
+ * @param atlasUv UVがアトラスのピクセル単位なら true
+ */
+function imageSize(dataUrl: string, atlasUv: boolean): { w: number; h: number } {
+    const { w, h } = pngSize(dataUrl);
+    if (atlasUv) return { w, h };
+    return { w: UV_SIZE, h: (UV_SIZE * h) / w };
+}
+
+/** ブロック/アイテムモデルのUVが張る空間の一辺（バニラ固定値）。 */
+const UV_SIZE = 16;
 
 /**
  * 指定されたモデルIDからモデルデータを読み込み、親モデルのチェーンと再帰的にマージします。
@@ -203,7 +224,7 @@ async function collectFaces(
             const b64 = await getTextureBase64(texPath);
             if (!b64) continue;
 
-            const { w: texW, h: texH } = pngSize(b64);
+            const { w: texW, h: texH } = imageSize(b64, model.atlasUv === true);
             faces.push({
                 pts2d,
                 uv: face.uv || defaultUv(dir, el.from, el.to),

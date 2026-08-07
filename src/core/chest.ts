@@ -17,6 +17,7 @@ import { boxFaces, withTexture } from './entity-box';
  */
 export function chestModel(variant: string): any {
     return {
+        atlasUv: true,
         textures: { chest: `entity/chest/${variant}` },
         elements: [
             // 下部ボックス: 14w x 10h x 14d, アトラスオフセット (0,19)
