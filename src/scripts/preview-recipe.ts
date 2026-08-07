@@ -21,10 +21,9 @@
 import fs from 'fs';
 import path from 'path';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
-import { renderModel } from './render-blocks/render';
-import { loadModel } from './render-blocks/model';
-import { readJarBuffer, readJarJson } from './render-blocks/jar';
-import { chestModel, CHEST_VARIANTS } from '../core/chest';
+import { bakeIcon } from './render-blocks/rasterize';
+import { jarSource } from './jar-reader';
+import { JAR_PATH, readJarBuffer, readJarJson } from './render-blocks/jar';
 import {
   BACKGROUND,
   iconSvg,
@@ -57,12 +56,9 @@ function toDataUri(png: Buffer | Uint8Array): string {
 
 /**
  * アイテムIDのアイコン data URI を jar から解決する（本番 renderBlockIconSvg のローカル版）。
- * 解決順は block-icon.ts と一致させる:
- *   - チェスト等のブロックエンティティは builtin/entity でエレメントを持たないため、
- *     エンティティアトラスから合成した chestModel を使う。
- *   - それ以外は item モデル優先、無ければ block モデル。renderModel が親チェーンを見て
- *     3D（elements あり）か 2Dフラットスプライト（item/generated 系の松明・棒等）かを描き分ける。
- *   - どちらも解決できなければ平面アイテムテクスチャにフォールバック。
+ * 解決順は Worker の `renderBlockIconSvg` そのものに任せる。チェスト等のブロックエンティティも、
+ * 平面アイテムか3Dブロックかの判断も、すべて向こうが持っている。
+ * そこで描けなかったものだけ、平面アイテムテクスチャにフォールバックする。
  */
 const iconCache = new Map<string, Promise<string | null>>();
 function resolveIcon(itemId: string): Promise<string | null> {
@@ -70,20 +66,12 @@ function resolveIcon(itemId: string): Promise<string | null> {
   if (!pending) {
     pending = (async () => {
       const p = bare(itemId);
-      // 1) ブロックエンティティ（チェスト系）は合成モデルで描画
-      if (CHEST_VARIANTS[p]) {
-        const png = await renderModel(chestModel(CHEST_VARIANTS[p])).catch(() => null);
-        if (png) return toDataUri(png);
-      } else {
-        // 2) item モデル優先、無ければ block モデル（renderModel が3D/2Dを判定）
-        for (const modelId of [`item/${p}`, `block/${p}`]) {
-          const model = loadModel(modelId);
-          if (!model) continue;
-          const png = await renderModel(model).catch(() => null);
-          if (png) return toDataUri(png);
-        }
-      }
-      // 3) 平面アイテムテクスチャにフォールバック
+      // 解決順は Worker と同じ `renderBlockIconSvg` に任せます。ここで組み直すと、
+      // 片方だけ直った状態が生まれます。
+      const png = await bakeIcon('minecraft', p, await jarReader()).catch(() => null);
+      if (png) return toDataUri(png);
+
+      // 描けないものは平面アイテムテクスチャで代用します。
       const tex = readJarBuffer(`assets/minecraft/textures/item/${p}.png`);
       if (tex) return toDataUri(tex);
       return null;
@@ -91,6 +79,13 @@ function resolveIcon(itemId: string): Promise<string | null> {
     iconCache.set(itemId, pending);
   }
   return pending;
+}
+
+/** jar の読み出し口。1回だけ開いて使い回します。 */
+let reader: Promise<Awaited<ReturnType<typeof jarSource>>> | null = null;
+function jarReader() {
+  reader ??= jarSource(path.isAbsolute(JAR_PATH) ? JAR_PATH : path.join(process.cwd(), JAR_PATH));
+  return reader;
 }
 
 /** タグの最初の（tagOffset 番目の）アイテムIDを解決する。ネストしたタグ（#）も辿る。 */

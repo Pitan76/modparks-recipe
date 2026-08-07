@@ -17,7 +17,9 @@ import fs from 'fs';
 import path from 'path';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import { createCanvas, loadImage } from 'canvas';
-import { renderBlock } from './render-blocks/render';
+import { bakeIcon } from './render-blocks/rasterize';
+import { jarSource } from './jar-reader';
+import { JAR_PATH } from './render-blocks/jar';
 import {
   BACKGROUND,
   iconSvg,
@@ -75,9 +77,10 @@ async function main(): Promise<void> {
 
   await initLocalResvg();
 
-  const png = await renderBlock(modelId);
+  const src = await jarSource(path.isAbsolute(JAR_PATH) ? JAR_PATH : path.join(process.cwd(), JAR_PATH));
+  const png = await bakeIcon('minecraft', modelId.replace(/^(?:minecraft:)?(?:item|block)\//, ''), src);
   if (!png) {
-    console.error(`renderBlock("${modelId}") が null を返しました（フラットアイテム/未対応モデルの可能性）。`);
+    console.error(`bakeIcon("${modelId}") が null を返しました（専用描画が要るモデルの可能性）。`);
     process.exit(1);
   }
   const href = toDataUri(png);
