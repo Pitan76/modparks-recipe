@@ -231,6 +231,12 @@ function sourceLabel(t: Messages, source: string): string {
   return t.sourceBulk;
 }
 
+/** プレビュー画像の実寸。SVG の viewBox と同じで、拡大せずに出します。 */
+const PREVIEW_W = 236;
+
+/** プレビュー画像の実寸（高さ）。 */
+const PREVIEW_H = 112;
+
 /**
  * 保存せずに描画した結果の一覧。
  * @param images レシピIDからデータURLへの対応
@@ -252,14 +258,18 @@ export function PreviewView(props: WithMessages & {
           {t.previewDownload}
         </Button>
       </Stack>
-      <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+      {/* 実寸のまま並べます。幅に合わせて引き伸ばすと倍率が半端になり、ドットの大きさが
+          場所によって揃わなくなります（同じ絵の中で1pxが2pxになったり3pxになったりする）。 */}
+      <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: `repeat(auto-fill, ${PREVIEW_W}px)` }}>
         {shown.map((id) => (
-          <Box key={id}>
+          <Box key={id} sx={{ maxWidth: '100%' }}>
             <img
               src={props.images[id]!}
               alt={id}
               loading="lazy"
-              style={{ width: '100%', height: 'auto', imageRendering: 'pixelated' }}
+              width={PREVIEW_W}
+              height={PREVIEW_H}
+              style={{ maxWidth: '100%', height: 'auto', imageRendering: 'pixelated' }}
             />
             <Typography variant="caption" color="text.secondary" noWrap title={id} sx={{ display: 'block' }}>
               {id}

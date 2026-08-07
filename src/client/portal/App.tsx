@@ -74,6 +74,7 @@ export function App({ locale }: { locale: string }) {
   }, [token]);
 
   useEffect(() => {
+    // 未ログインでも投稿への導線は出すため、ログイン手段は常に読みます。
     if (!token) {
       fetchProviders().then(setProviders).catch(() => setProviders([]));
       return;
@@ -193,24 +194,30 @@ export function App({ locale }: { locale: string }) {
     <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 3 } }}>
       <Typography variant="h6" sx={{ mb: 0.5 }}>{t.title}</Typography>
       <Typography variant="body2" color="text.secondary">{t.lead}</Typography>
-      {!token ? (
-        <Box sx={{ mt: 3 }}>
-          <SignInView t={t} providers={providers} />
-        </Box>
-      ) : me === null ? (
+      {/* プレビューはこの端末で完結するため、ログインは要りません。認証が要るのは投稿と、
+          サーバーに描かせる経路だけです。 */}
+      {token && me === null ? (
         <Box sx={{ py: 3 }}>
           <CircularProgress size={20} />
         </Box>
       ) : (
         <>
-          <Section title={t.signedIn}>
-            <AccountRow t={t} me={me} onSignOut={signOut} />
-          </Section>
+          {token && me && (
+            <Section title={t.signedIn}>
+              <AccountRow t={t} me={me} onSignOut={signOut} />
+            </Section>
+          )}
           <Section title={t.title}>
             <JarPicker t={t} busy={busy} fileName={fileName} status={status} error={error} onPick={pick} />
-            <Button variant="contained" disabled={!file || busy} onClick={upload} sx={{ mt: 1.5 }}>
-              {t.upload}
-            </Button>
+            {token ? (
+              <Button variant="contained" disabled={!file || busy} onClick={upload} sx={{ mt: 1.5 }}>
+                {t.upload}
+              </Button>
+            ) : (
+              <Box sx={{ mt: 2 }}>
+                <SignInView t={t} providers={providers} />
+              </Box>
+            )}
           </Section>
           <Section title={t.preview}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{t.previewLead}</Typography>
@@ -223,8 +230,10 @@ export function App({ locale }: { locale: string }) {
               </Typography>
             )}
             {/* この端末での描画が成功したように見えても、素材が欠けていることは見た目でしか分かりません。
-                作り直せる手段を常に残しておきます。 */}
-            <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
+                作り直せる手段を常に残しておきます。サーバーに描かせるのでログインが要ります。 */}
+            {token && (
+              <Button variant="outlined" disabled={!file || busy} onClick={runPreview}>{t.preview}</Button>
+            )}
             {preview && (
               <Box sx={{ mt: 2 }}>
                 <PreviewView
@@ -236,8 +245,8 @@ export function App({ locale }: { locale: string }) {
               </Box>
             )}
           </Section>
-          {result && <ResultView t={t} result={result} onClaim={(ns) => claimNamespace(ns, token, t)} />}
-          <HistoryView t={t} rows={history} />
+          {result && token && <ResultView t={t} result={result} onClaim={(ns) => claimNamespace(ns, token, t)} />}
+          {token && <HistoryView t={t} rows={history} />}
         </>
       )}
     </Container>
