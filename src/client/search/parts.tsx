@@ -114,6 +114,7 @@ function FilterSelects(props: SearchFormProps) {
         ))}
       </TextField>
       <TextField label={t.format} select value={props.fmt} onChange={(ev) => props.onFmt(ev.target.value)} sx={cell(1, 110)}>
+        <MenuItem value="auto">{t.formatAuto}</MenuItem>
         <MenuItem value="png">PNG</MenuItem>
         <MenuItem value="gif">GIF</MenuItem>
         <MenuItem value="jpg">JPG</MenuItem>

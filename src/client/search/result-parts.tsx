@@ -12,6 +12,7 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import { imageCdnPath, imagePath, splitId, type Assets, type Versions } from './api';
 import { copyTitle, type WithMessages } from './parts';
+import type { FmtResolver } from './format';
 
 /** アイテム一覧の1行。 */
 export type ItemRowProps = WithMessages & {
@@ -63,7 +64,7 @@ export type ImageTileProps = WithMessages & {
   recipeId: string;
   itemId: string;
   name?: string;
-  fmt: string;
+  fmtOf: FmtResolver;
   versions: Versions | null;
   assets: Assets | null;
   scale: number;
@@ -79,7 +80,7 @@ export function ImageTile(props: ImageTileProps) {
   const { t } = props;
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const parts = splitId(props.recipeId);
-  const direct = imageCdnPath(props.recipeId, props.fmt, props.versions, props.assets, props.scale);
+  const direct = imageCdnPath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.scale);
   // 直接配信を諦めたURL。形式や拡大率を変えると direct も変わるので、その都度また直接配信から試せる。
   const [gaveUp, setGaveUp] = useState<string | null>(null);
   const useDirect = direct !== null && gaveUp !== direct;
@@ -97,7 +98,7 @@ export function ImageTile(props: ImageTileProps) {
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
       <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions, props.assets, props.scale)}
+        src={(useDirect && direct) || imagePath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.scale)}
         alt={props.recipeId}
         className="recipe-img"
         title={props.title}

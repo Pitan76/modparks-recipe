@@ -12,6 +12,7 @@ import { AppBar, SearchForm, SectionHead, ZipButton } from './parts';
 import { ShowImagesToggle } from './result-parts';
 import { ItemList } from './ItemList';
 import { useDisplayPrefs } from './preferences';
+import { useFmtResolver } from './format';
 import { useShare } from './useShare';
 import {
   INITIAL_PARAMS,
@@ -46,6 +47,7 @@ export function App({ locale }: { locale: string }) {
 
   const [q, setQ] = useState('');
   const { fmt, scale, changeFmt, changeScale } = useDisplayPrefs();
+  const fmtOf = useFmtResolver(fmt, recipes);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'default');
   const [showImages, setShowImages] = useState(() => INITIAL_PARAMS.get('view') !== 'list');
@@ -140,7 +142,7 @@ export function App({ locale }: { locale: string }) {
   useNameRequests(!!recipes, showImages ? gridItems : pagedItems, scope, !!query, request);
 
   const { copiedId, failedId, copyLink, copyImage, downloadItem, downloadRecipe } = useShare({
-    fmt,
+    fmtOf,
     scale,
     versions,
     assets,
@@ -170,11 +172,10 @@ export function App({ locale }: { locale: string }) {
    */
   async function downloadZip() {
     const ids = entries.map((e) => e.rid);
-    const animated = new Set((recipes ?? []).filter((r) => r.tagged).map((r) => r.id));
     if (ids.length === 0 || zipping) return;
 
     setZipping(t.downloadZipProgress.replace('{done}', '0').replace('{total}', String(ids.length)));
-    const blob = await buildRecipeZip(ids, fmt, (id) => animated.has(id), versions, assets, scale, (done, total) => {
+    const blob = await buildRecipeZip(ids, fmtOf, versions, assets, scale, (done, total) => {
       setZipping(t.downloadZipProgress.replace('{done}', String(done)).replace('{total}', String(total)));
     }).catch(() => null);
     setZipping(null);
@@ -248,7 +249,7 @@ export function App({ locale }: { locale: string }) {
               showImages={showImages}
               selection={selection}
               names={names}
-              fmt={fmt}
+              fmtOf={fmtOf}
               versions={versions}
               assets={assets}
               scale={scale}

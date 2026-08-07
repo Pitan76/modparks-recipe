@@ -10,6 +10,7 @@
  */
 
 import { imageCdnPath, splitId, type Assets, type Versions } from './api';
+import type { FmtResolver } from './format';
 
 /** JSZip はページに読み込まれたものを使います。 */
 declare const JSZip: {
@@ -40,8 +41,7 @@ type Sink = {
 /**
  * レシピ画像をまとめて取得し、zip の Blob を作ります。
  * @param recipeIds 対象のレシピID
- * @param fmt 静止画の形式
- * @param animated 素材が切り替わるレシピかどうかの判定。true のものは GIF にします
+ * @param extOf レシピIDから拡張子を引く関数
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報
  * @param scale 拡大率
@@ -50,8 +50,7 @@ type Sink = {
  */
 export async function buildRecipeZip(
   recipeIds: string[],
-  fmt: string,
-  animated: (recipeId: string) => boolean,
+  extOf: FmtResolver,
   versions: Versions | null,
   assets: Assets | null,
   scale: number,
@@ -60,9 +59,6 @@ export async function buildRecipeZip(
   const zip = new JSZip();
   let done = 0;
   let added = 0;
-
-  // 素材が切り替わるものだけ GIF。静止画を GIF にすると色数が落ち、PNG より重くなります。
-  const extOf = (recipeId: string) => (animated(recipeId) ? 'gif' : fmt);
 
   const sink: Sink = {
     add(recipeId, data, base64) {

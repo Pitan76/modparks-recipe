@@ -9,6 +9,7 @@ import IconButton from '@mui/material/IconButton';
 import Pagination from '@mui/material/Pagination';
 import Typography from '@mui/material/Typography';
 import { imageUrl, type Assets, type Names, type Versions } from './api';
+import type { FmtResolver } from './format';
 import { copyTitle, SectionHead, type WithMessages } from './parts';
 import { ImageTile } from './result-parts';
 import { EmptyState } from './status-parts';
@@ -26,7 +27,7 @@ export type MainPanelProps = WithMessages & {
   showImages: boolean;
   selection: Selection | null;
   names: Names;
-  fmt: string;
+  fmtOf: FmtResolver;
   versions: Versions | null;
   assets: Assets | null;
   scale: number;
@@ -70,7 +71,7 @@ function RecipeGrid(props: MainPanelProps) {
             recipeId={rid}
             itemId={item}
             name={props.names[item]}
-            fmt={props.fmt}
+            fmtOf={props.fmtOf}
             versions={props.versions}
             assets={props.assets}
             scale={props.scale}
@@ -120,14 +121,14 @@ function RecipeDetail(props: MainPanelProps & { selection: Selection }) {
             recipeId={rid}
             itemId={label}
             name={props.names[label]}
-            fmt={props.fmt}
+            fmtOf={props.fmtOf}
             versions={props.versions}
             assets={props.assets}
             scale={props.scale}
             title={t.openImage}
             copied={props.copiedId === rid}
             failed={props.failedId === rid}
-            onClick={() => window.open(imageUrl(rid, props.fmt, props.versions, props.assets, props.scale), '_blank', 'noopener')}
+            onClick={() => window.open(imageUrl(rid, props.fmtOf(rid), props.versions, props.assets, props.scale), '_blank', 'noopener')}
             onCopy={(ev) => props.onCopyImage(ev, rid)}
             onDownload={(ev) => props.onDownloadRecipe(ev, rid)}
           />

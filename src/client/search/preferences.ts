@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { DEFAULT_SCALE, SCALE_CHOICES } from './api';
+import { toFmt, type Fmt } from './format';
 import { readStored, writeStored } from '../shared/browser';
 
 /** 画像形式の保存キー。 */
@@ -14,12 +15,12 @@ const FMT_KEY = 'mpr_fmt';
 /** 拡大率の保存キー。 */
 const SCALE_KEY = 'mpr_scale';
 
-/** 既定の画像形式。 */
-const DEFAULT_FMT = 'png';
+/** 既定の画像形式。素材が切り替わるレシピだけ GIF になり、他は PNG のままです。 */
+const DEFAULT_FMT: Fmt = 'auto';
 
 /** 表示設定と、その変更手段。 */
 export interface DisplayPrefs {
-  fmt: string;
+  fmt: Fmt;
   scale: number;
   changeFmt: (next: string) => void;
   changeScale: (next: number) => void;
@@ -37,15 +38,16 @@ function storedScale(): number {
  * 表示設定を保存しつつ持ちます。
  */
 export function useDisplayPrefs(): DisplayPrefs {
-  const [fmt, setFmt] = useState(() => readStored(FMT_KEY) || DEFAULT_FMT);
+  const [fmt, setFmt] = useState<Fmt>(() => toFmt(readStored(FMT_KEY), DEFAULT_FMT));
   const [scale, setScale] = useState(() => storedScale());
 
   return {
     fmt,
     scale,
     changeFmt: (next) => {
-      setFmt(next);
-      writeStored(FMT_KEY, next);
+      const value = toFmt(next, DEFAULT_FMT);
+      setFmt(value);
+      writeStored(FMT_KEY, value);
     },
     changeScale: (next) => {
       setScale(next);

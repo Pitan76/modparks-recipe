@@ -7,6 +7,7 @@
 
 import { useState, type MouseEvent } from 'react';
 import { imagePath, imageUrl, splitId, type Assets, type Versions } from './api';
+import type { FmtResolver } from './format';
 import { copyText, downloadUrl } from '../shared/browser';
 
 /** コピー結果を出しておく時間。 */
@@ -14,7 +15,8 @@ const FLASH_MS = 2000;
 
 /** 配る操作に必要な、現在の表示設定。 */
 export interface ShareContext {
-  fmt: string;
+  /** レシピIDから実際の拡張子を引きます。 */
+  fmtOf: FmtResolver;
   scale: number;
   versions: Versions | null;
   assets: Assets | null;
@@ -56,7 +58,8 @@ export function useShare(ctx: ShareContext): Share {
 
   const downloadRecipe = (ev: MouseEvent, rid: string) => {
     ev.stopPropagation();
-    downloadUrl(imagePath(rid, ctx.fmt, ctx.versions, ctx.assets, ctx.scale), `${splitId(rid).id}.${ctx.fmt}`);
+    const ext = ctx.fmtOf(rid);
+    downloadUrl(imagePath(rid, ext, ctx.versions, ctx.assets, ctx.scale), `${splitId(rid).id}.${ext}`);
   };
 
   return {
@@ -70,7 +73,7 @@ export function useShare(ctx: ShareContext): Share {
       copy(ev, id, `${window.location.origin}${window.location.pathname}?${params.toString()}`);
     },
     // 画像タイルからは画像そのもののURLを配る。直接配信が効くならR2のURLになる。
-    copyImage: (ev, rid) => copy(ev, rid, imageUrl(rid, ctx.fmt, ctx.versions, ctx.assets, ctx.scale)),
+    copyImage: (ev, rid) => copy(ev, rid, imageUrl(rid, ctx.fmtOf(rid), ctx.versions, ctx.assets, ctx.scale)),
     downloadItem: (ev, item) => {
       ev.stopPropagation();
       for (const rid of ctx.recipesOf(item)) downloadRecipe(ev, rid);
