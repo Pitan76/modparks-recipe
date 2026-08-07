@@ -27,14 +27,14 @@ type FooterMessages = Record<keyof typeof JA, string>;
 
 const JA = {
   modparks: 'ModParks',
-  modparksNote: 'マイクラMODの配布サイト',
+  modparksNote: '',
   source: 'ソースコード',
   license: 'MIT License',
 };
 
 const EN: FooterMessages = {
   modparks: 'ModParks',
-  modparksNote: 'Minecraft mod distribution',
+  modparksNote: '',
   source: 'Source code',
   license: 'MIT License',
 };
@@ -55,7 +55,7 @@ export function PageFooter({ locale }: { locale: string }) {
           <a href={MODPARKS_URL} target="_blank" rel="noreferrer">
             {t.modparks}
           </a>
-          <span class="app-footer-note">{t.modparksNote}</span>
+          {t.modparksNote && <span class="app-footer-note">{t.modparksNote}</span>}
         </div>
         <nav class="app-footer-nav">
           <a href={REPOSITORY_URL} target="_blank" rel="noreferrer">
