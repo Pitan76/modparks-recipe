@@ -16,20 +16,59 @@ import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
-import { skullModel, SKULL_TEXTURES } from '../core/skull';
+import { skullModel, SKULL_TEXTURES, SKULL_KIND_BY_ITEM } from '../core/skull';
+import { readItemVisual, type ItemVisual } from '../core/item-definition';
+import { composeModels } from '../core/model-compose';
 import { getAssetVersion } from './cache-version';
+
+/**
+ * アイテム定義（`items/<name>.json`）を読みます。
+ *
+ * 現在のバニラはここを見た目の起点にしています。旧来の `models/item/<name>.json` を持たない
+ * アイテム（ベッドや頭部）があるため、先にこちらを見ます。
+ * @param env 環境変数
+ * @param src アセット読み出し口
+ * @param ns ネームスペース
+ * @param path アイテムのパス
+ * @returns 読めない/解釈できない場合は null
+ */
+async function itemVisual(env: Env | null, src: AssetReader, ns: string, path: string): Promise<ItemVisual | null> {
+  return memoized(env, src, ns, `items/${path}`, async () => {
+    const obj = await src.get(ns, `items/${path}.json`);
+    if (!obj) return null;
+    try {
+      return readItemVisual(JSON.parse(await obj.text()));
+    } catch {
+      return null;
+    }
+  });
+}
 
 /**
  * ブロックエンティティの合成モデルを返します。
  *
- * チェストや頭部は `builtin/entity` に解決され、モデルにエレメントがありません。絵もエンティティ用の
- * テクスチャにあるため、通常の解決経路では何も見つからず空きスロットになります。
- * @param path ブロックのパス
+ * チェストや頭部は専用描画で、モデルにエレメントがありません。絵もエンティティ用のテクスチャに
+ * あるため、通常の解決経路では何も見つからず空きスロットになります。
+ * @param special 専用描画の種類
+ * @param texture 指定されたテクスチャ名
+ * @param variant 頭部の種類
+ * @returns 合成できない場合は null
+ */
+function specialModel(special: string, texture: string | null, variant: string | null): any | null {
+  if (special === 'chest') return chestModel(texture ?? 'normal');
+  if (special === 'head' && variant && SKULL_TEXTURES[variant]) return skullModel(SKULL_TEXTURES[variant]);
+  return null;
+}
+
+/**
+ * アイテム定義を持たない場合の控え。名前から直接引きます。
+ * @param path アイテムのパス
  * @returns 合成できない場合は null
  */
 function syntheticModel(path: string): any | null {
   if (CHEST_VARIANTS[path]) return chestModel(CHEST_VARIANTS[path]);
-  if (SKULL_TEXTURES[path]) return skullModel(SKULL_TEXTURES[path]);
+  const kind = SKULL_KIND_BY_ITEM[path];
+  if (kind) return skullModel(SKULL_TEXTURES[kind]);
   return null;
 }
 
@@ -91,11 +130,12 @@ export async function renderBlockIconSvg(
   //     松明が極細スティック（実質1px単位）に潰れてバニラと別物になるため取りやめました。
   // ブロックエンティティ（チェストなど）はエレメントのない `builtin/entity` に解決されるため、
   // 代わりにエンティティのアトラスからジオメトリを合成する必要があります。
-  const synthetic = ns === 'minecraft' ? syntheticModel(path) : null;
+  const visual = await itemVisual(env, src, ns, path);
+  const synthetic = (await modelFromVisual(visual, getModel)) ?? (ns === 'minecraft' ? syntheticModel(path) : null);
 
   const candidates = synthetic
     ? [{ id: `${ns}:block/${path}`, model: synthetic }]
-    : [`${ns}:item/${path}`, `${ns}:block/${path}`].map((id) => ({ id, model: null as any }));
+    : idsFromVisual(visual, ns, path).map((id) => ({ id, model: null as any }));
 
   for (const candidate of candidates) {
     const model = candidate.model ?? (await loadModel(candidate.id, getModel));
@@ -109,6 +149,40 @@ export async function renderBlockIconSvg(
     if (svg) return svg;
   }
   return null;
+}
+
+/**
+ * アイテム定義から、直接描けるモデルを組み立てます。
+ *
+ * 専用描画はエンティティのテクスチャから、合成は複数モデルを畳んで作ります。
+ * 単一モデルを指すだけの定義はここでは作らず、通常の読み込み経路に任せます。
+ * @param visual 読み取った描き方
+ * @param getModel モデルJSONの取得
+ * @returns 組み立てない場合は null
+ */
+async function modelFromVisual(visual: ItemVisual | null, getModel: (id: string) => Promise<any>): Promise<any | null> {
+  if (visual?.kind === 'special') return specialModel(visual.special, visual.texture, visual.variant);
+  if (visual?.kind !== 'composite') return null;
+
+  const parts: { model: any; translation: number[] }[] = [];
+  for (const part of visual.parts) {
+    const model = await loadModel(part.id, getModel);
+    if (model?.elements) parts.push({ model, translation: part.translation });
+  }
+  return composeModels(parts);
+}
+
+/**
+ * 通常の読み込み経路で試すモデルIDを並べます。
+ *
+ * 定義が単一モデルを指していればそれを最優先にします。定義が無い場合は従来どおりの順に探します。
+ * @param visual 読み取った描き方
+ * @param ns ネームスペース
+ * @param path アイテムのパス
+ */
+function idsFromVisual(visual: ItemVisual | null, ns: string, path: string): string[] {
+  const fallback = [`${ns}:item/${path}`, `${ns}:block/${path}`];
+  return visual?.kind === 'model' ? [visual.id, ...fallback] : fallback;
 }
 
 /**

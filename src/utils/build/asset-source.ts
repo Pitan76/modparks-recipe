@@ -18,6 +18,7 @@ import { foldBuild } from './manifest';
 const LEGACY_ROOTS: Record<string, (ns: string) => string> = {
   textures: (ns) => `assets/${ns}/textures/`,
   models: (ns) => `assets/${ns}/models/`,
+  items: (ns) => `assets/${ns}/items/`,
   lang: (ns) => `assets/${ns}/lang/`,
   recipe: (ns) => `data/${ns}/recipe/`,
   tags: (ns) => `data/${ns}/tags/`,

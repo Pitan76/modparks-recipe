@@ -26,6 +26,7 @@ import type { ZipLike } from '../../core/jar-assets';
 const ROOTS: Record<string, (ns: string) => string> = {
   textures: (ns) => `assets/${ns}/textures/`,
   models: (ns) => `assets/${ns}/models/`,
+  items: (ns) => `assets/${ns}/items/`,
   lang: (ns) => `assets/${ns}/lang/`,
   recipe: (ns) => `data/${ns}/recipe/`,
   recipes: (ns) => `data/${ns}/recipes/`,

@@ -18,7 +18,7 @@ import { toChannel } from '../utils/build/mc-version';
 export const assetRoutes = new Hono<{ Bindings: Env }>();
 
 /** 読み出しを許す論理パスの接頭辞。レシピ描画に要るものだけを開けます。 */
-const ALLOWED_ROOTS = ['textures/', 'models/', 'tags/', 'lang/'];
+const ALLOWED_ROOTS = ['textures/', 'models/', 'items/', 'tags/', 'lang/'];
 
 // 論理パスで生アセットを返します。
 // 例: GET /api/minecraft/asset/textures/item/apple.png

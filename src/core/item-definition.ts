@@ -16,7 +16,7 @@ export type ItemVisual =
   /** 複数のモデルを位置をずらして重ねる */
   | { kind: 'composite'; parts: { id: string; translation: number[] }[] }
   /** 専用描画。エンティティのテクスチャから組み立てます */
-  | { kind: 'special'; special: string; texture: string | null };
+  | { kind: 'special'; special: string; texture: string | null; variant: string | null };
 
 /** ブロック1つ分のピクセル数。合成時のずらし幅の単位です。 */
 const BLOCK_PIXELS = 16;
@@ -76,7 +76,9 @@ function fromSpecial(node: any): ItemVisual | null {
   const texture = typeof node.model.texture === 'string'
     ? node.model.texture.replace(/^minecraft:/, '')
     : null;
-  return { kind: 'special', special, texture };
+  // 頭部は `kind`（`skeleton` など）で種類が決まります。名前の一覧を持たずに済みます。
+  const variant = typeof node.model.kind === 'string' ? node.model.kind : null;
+  return { kind: 'special', special, texture, variant };
 }
 
 /**

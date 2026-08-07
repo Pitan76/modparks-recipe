@@ -21,17 +21,32 @@ import { boxFaces, withTexture } from './entity-box';
 const HEAD_SIZE = 16;
 
 /**
- * 頭部アイテムから、絵のあるエンティティテクスチャへの対応表。
+ * 頭部の種類（アイテム定義の `kind`）から、絵のあるエンティティテクスチャへの対応表。
  *
  * プレイヤーの頭は着せ替えで中身が変わるため、既定のスキンを充てます。
  */
 export const SKULL_TEXTURES: Record<string, string> = {
-  skeleton_skull: 'entity/skeleton/skeleton',
-  wither_skeleton_skull: 'entity/skeleton/wither_skeleton',
-  zombie_head: 'entity/zombie/zombie',
-  creeper_head: 'entity/creeper/creeper',
-  piglin_head: 'entity/piglin/piglin',
-  player_head: 'entity/player/wide/steve',
+  skeleton: 'entity/skeleton/skeleton',
+  wither_skeleton: 'entity/skeleton/wither_skeleton',
+  zombie: 'entity/zombie/zombie',
+  creeper: 'entity/creeper/creeper',
+  piglin: 'entity/piglin/piglin',
+  player: 'entity/player/wide/steve',
+};
+
+/**
+ * アイテム名から頭部の種類を引く対応表。
+ *
+ * アイテム定義（`items/<name>.json`）が読めないとき用の控えです。定義が読めるならそちらの
+ * `kind` が正で、バニラが種類を増やしても追随します。
+ */
+export const SKULL_KIND_BY_ITEM: Record<string, string> = {
+  skeleton_skull: 'skeleton',
+  wither_skeleton_skull: 'wither_skeleton',
+  zombie_head: 'zombie',
+  creeper_head: 'creeper',
+  piglin_head: 'piglin',
+  player_head: 'player',
 };
 
 /**
