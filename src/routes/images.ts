@@ -168,7 +168,10 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
   // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。
   const cache = caches.default;
-  const cacheKey = buildCacheKey(c.req.url, pinned, version);
+  // `rv` はレンダラー版と共有ネームスペースを畳んだ値です。L1 のキーには入っているのにここで
+  // 落とすと、`minecraft` 側の更新で新しい絵が出来ても、エッジは古い応答を返し続けます。
+  const rv = await deliveryVersion(c.env);
+  const cacheKey = buildCacheKey(c.req.url, pinned, version, rv);
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
@@ -184,7 +187,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   // R2 に永続化しておけば、そうしたミスは R2 GET 1回で済む。キーに ns バージョンと
   // レンダラー版を含むので、更新時は別キーになり古い画像は参照されなくなる。
   const contentType = contentTypeForExt(ext);
-  const imgKey = imageCacheKey(await deliveryVersion(c.env), namespace, version, id, scale, tagOffset, ext);
+  const imgKey = imageCacheKey(rv, namespace, version, id, scale, tagOffset, ext);
   const l1 = await c.env.BUCKET.get(imgKey);
   if (l1) {
     const res = new Response(l1.body, { headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl } });
@@ -230,16 +233,19 @@ function contentTypeForExt(ext: string): string {
 }
 
 /**
- * キャッシュキーを組み立てます。`?v=` が付いている場合は URL 自体が既にバージョンを内包するため
- * そのまま使い、無い場合のみサーバ側で引いたバージョンを `__v` として足します。
+ * キャッシュキーを組み立てます。
+ *
+ * L1 のキーと同じ2つの世代（ネームスペースのバージョンと `rv`）を必ず載せます。片方でも欠けると、
+ * その欠けた側が動いたときにエッジだけが古い絵を返し続けます。`?v=` が付いていればバージョンは
+ * URL が内包しているので足しません。
  * @param url リクエストURL
  * @param pinned クライアントが指定したバージョン（無ければ undefined）
  * @param version 実効バージョン
+ * @param rv 実効のレンダラー版
  */
-function buildCacheKey(url: string, pinned: string | undefined, version: string): Request {
-  if (pinned !== undefined) return new Request(url, { method: 'GET' });
-
+function buildCacheKey(url: string, pinned: string | undefined, version: string, rv: string): Request {
   const keyUrl = new URL(url);
-  keyUrl.searchParams.set('__v', version);
+  if (pinned === undefined) keyUrl.searchParams.set('__v', version);
+  keyUrl.searchParams.set('__rv', rv);
   return new Request(keyUrl.toString(), { method: 'GET' });
 }
