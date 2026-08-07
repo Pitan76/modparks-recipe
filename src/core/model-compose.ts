@@ -19,6 +19,9 @@ export type ModelPart = { model: any; translation: number[] };
 export function composeModels(parts: ModelPart[]): any | null {
   const textures: Record<string, string> = {};
   const elements: any[] = [];
+  // 表示の向きはモデル自身が持ちます。ベッドは通常のブロックと違う角度（Y=340）が定義されており、
+  // 捨てると既定の角度で描かれて、本家と前後が逆さに見えます。
+  let display: any = undefined;
 
   parts.forEach(({ model, translation }, index) => {
     if (!model?.elements) return;
@@ -27,10 +30,11 @@ export function composeModels(parts: ModelPart[]): any | null {
     for (const [key, value] of Object.entries(model.textures ?? {})) {
       textures[prefix + key] = rename(String(value), prefix);
     }
+    if (!display && model.display) display = model.display;
     for (const element of model.elements) elements.push(moveElement(element, translation, prefix));
   });
 
-  return elements.length > 0 ? { textures, elements } : null;
+  return elements.length > 0 ? { textures, elements, ...(display ? { display } : {}) } : null;
 }
 
 /**

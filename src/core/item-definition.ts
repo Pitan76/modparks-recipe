@@ -82,13 +82,16 @@ function fromSpecial(node: any): ItemVisual | null {
 }
 
 /**
- * 合成時のずらし幅をピクセルで返します。
+ * 合成時のずらし幅をモデル座標で返します。
  *
- * 定義はブロック単位なので、モデル座標（1ブロック=16）に直します。
+ * 定義はブロック単位なので 1ブロック=16 に直します。軸はそのままです。パーツの形自体がその軸に
+ * 沿って作られているため、ずらす向きだけ変えると噛み合わなくなります。見え方の向きは
+ * 合成後のモデルをまとめて回して整えます。
  * @param child 合成の子ノード
  */
 function translationOf(child: any): number[] {
   const raw = child?.transformation?.translation;
   if (!Array.isArray(raw) || raw.length < 3) return [0, 0, 0];
+
   return raw.slice(0, 3).map((v: any) => (Number(v) || 0) * BLOCK_PIXELS);
 }
