@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../utils/minecraft';
 import type { IndexEntry } from '../utils/recipe-store';
-import { getAllVersions, getAssetVersion } from '../utils/cache-version';
+import { getAllVersions } from '../utils/cache-version';
 import { resolveNames, isValidLocale } from '../utils/lang-store';
 import { AssetSource } from '../utils/build/asset-source';
 import { readChannels } from '../utils/build/channels';
@@ -135,20 +135,16 @@ async function namespaceListing(
   if (buildId) {
     const folded = await foldBuild(env, ns, buildId);
     const recipes = (folded?.recipes ?? []) as NamedEntry[];
-    await refineTagged(c, recipes, src, `${ns}@${buildId.slice(0, 16)}`);
-    return {
-      version: buildId.slice(0, 16),
-      mc: resolveChannel(wanted, channels),
-      channels,
-      recipes,
-    };
+    const version = await imageVersion(env, src, ns);
+    await refineTagged(c, recipes, src, `${ns}@${version}`);
+    return { version, mc: resolveChannel(wanted, channels), channels, recipes };
   }
 
   // build を持つのに要求MCで解決できなかった場合、従来索引へ落とすと全チャネルの合併を
   // 返してしまう。対応していないMCには何も返さないのが正しい。
   if (!(await src.isUnmigrated(ns))) return { version: '0', mc: null, channels, recipes: [] };
 
-  const [all, version] = await Promise.all([readIndex(env), getAssetVersion(env, ns)]);
+  const [all, version] = await Promise.all([readIndex(env), imageVersion(env, src, ns)]);
   const recipes = all.filter((r) => r.id.startsWith(`${ns}:`)) as NamedEntry[];
   await refineTagged(c, recipes, src, `${ns}@${version}`);
   return { version, mc: null, channels, recipes };

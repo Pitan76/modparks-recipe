@@ -7,8 +7,7 @@ import { toChannel } from '../utils/build/mc-version';
 import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
-import { getAssetVersion } from '../utils/cache-version';
-import { imageCacheKey, deliveryVersion } from '../utils/image-cdn';
+import { imageCacheKey, deliveryVersion, imageVersion } from '../utils/image-cdn';
 import { renderBatch } from '../utils/batch-render';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
@@ -164,7 +163,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   const src = new AssetSource(c.env, requestedChannel(c));
   // build を持つ ns では build ID が世代になる。内容ハッシュなので、同じ絵に別の世代が
   // 割り当たることも、違う内容が同じ世代を共有することも起きない。
-  const version = pinned ?? (await src.buildOf(namespace))?.slice(0, 16) ?? (await getAssetVersion(c.env, namespace));
+  const version = pinned ?? (await imageVersion(c.env, src, namespace));
 
   // レシピのレンダリングには数回のR2往復通信とラスタライズのコストがかかります。また、出力はレシピやそのテクスチャが再アップロードされたときにのみ変更されます。
   // そのため、画像を再構築する代わりに、2回目以降のリクエストはエッジキャッシュから直接返します。
