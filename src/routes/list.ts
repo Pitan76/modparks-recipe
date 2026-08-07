@@ -14,7 +14,7 @@ import { AssetSource } from '../utils/build/asset-source';
 import { readChannels } from '../utils/build/channels';
 import { foldBuild } from '../utils/build/manifest';
 import { toChannel, resolveChannel } from '../utils/build/mc-version';
-import { assetDelivery, deliveryVersion } from '../utils/image-cdn';
+import { assetDelivery, deliveryVersion, imageVersion } from '../utils/image-cdn';
 import { getRecipe } from '../utils/minecraft/data';
 import { hasVariantTag } from '../utils/tag-variants';
 import { runPool } from '../utils/pool';
@@ -53,7 +53,8 @@ async function readIndex(env: Env): Promise<IndexEntry[]> {
  * インデックスとバージョンは並列に読むため、この同梱による遅延の増加はありません。
  */
 listRoutes.get('/api/list.json', async (c) => {
-  const [obj, versions] = await Promise.all([c.env.BUCKET.get(INDEX_KEY), getAllVersions(c.env)]);
+  const src = new AssetSource(c.env, null);
+  const [obj, versions] = await Promise.all([c.env.BUCKET.get(INDEX_KEY), deliveredVersions(c.env, src)]);
   const cacheControl = { 'Cache-Control': `public, max-age=${INDEX_MAX_AGE}` };
   const assets = await assetDelivery(c.env);
   // 索引が未生成のときも同じだけキャッシュさせる。ここを素通しにすると、
@@ -63,9 +64,27 @@ listRoutes.get('/api/list.json', async (c) => {
   const index = await obj.json<{ recipes?: NamedEntry[] }>();
   // ネームスペース版と同じ基準で `tagged` を揃えます。ここがずれると、同じレシピでも
   // 見る経路によって静止画とアニメーションが入れ替わります。
-  if (Array.isArray(index.recipes)) await refineTagged(c, index.recipes, new AssetSource(c.env, null), 'all');
+  if (Array.isArray(index.recipes)) await refineTagged(c, index.recipes, src, 'all');
   return c.json({ ...index, versions, assets }, 200, cacheControl);
 });
+
+/**
+ * クライアントへ配る、ネームスペースごとの画像バージョンを作ります。
+ *
+ * build を持つネームスペースでは build ID を採ります。画像ルートが `?v=` の無い要求で使う値と
+ * 同じにするためで、ここだけアセットバージョンを配ると、同じ絵が2通りのキーで L1 に書かれます。
+ * さらにアセットバージョンは同じ ns へ何か書くたびに動くため、中身が変わっていなくても
+ * R2 直リンクが一斉に 404 になり、毎回 Worker を起こし直すことになります。
+ * @param env 環境変数
+ * @param src アセット読み出し口
+ */
+async function deliveredVersions(env: Env, src: AssetSource): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  await runPool(Object.keys(await getAllVersions(env)), 10, async (ns) => {
+    out[ns] = await imageVersion(env, src, ns);
+  });
+  return out;
+}
 
 /**
  * 1ネームスペース分のレシピインデックスを返します。

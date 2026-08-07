@@ -8,9 +8,13 @@
  */
 
 import type { Env } from './minecraft';
+import type { AssetSource } from './build/asset-source';
 import { rendererVersion } from './render-version';
-import { getAllVersions } from './cache-version';
+import { getAllVersions, getAssetVersion } from './cache-version';
 import { SHARED_NAMESPACES } from '../core/namespaces';
+
+/** build ID を世代として使うときの長さ。キーを短く保つため先頭だけを採ります。 */
+const BUILD_VERSION_LENGTH = 16;
 
 /** クライアントへ渡す配信情報。`base` が空なら直接配信は無効です。 */
 export type AssetDelivery = { base: string; rv: string };
@@ -35,6 +39,27 @@ export function imageCacheKey(
   ext: string
 ): string {
   return `cache/img/${rv}/${ns}/${version}/${id}@${scale}+${tagOffset}.${ext}`;
+}
+
+/**
+ * ネームスペース1つ分の画像バージョンを返します。キーを組む側も、それをクライアントへ配る側も、
+ * 必ずここを通してください。
+ *
+ * build を持つなら build ID を採ります。中身のハッシュなので、同じ絵に別の世代が割り当たることも、
+ * 違う内容が同じ世代を共有することもありません。持たないネームスペースだけがアセットバージョンへ
+ * 落ちます。
+ *
+ * 導出を1箇所に集めているのは、配る側と組む側で食い違うと不整合が黙って進むからです。実際に
+ * アグリゲート版の索引だけがアセットバージョンを配っていたことがあり、同じ絵が2通りのキーで
+ * L1 に書かれたうえ、そのネームスペースへ何か書くたびに直リンクが一斉に 404 へ落ちていました。
+ * @param env 環境変数
+ * @param src アセット読み出し口（MCチャネルの文脈を持ちます）
+ * @param ns ネームスペース
+ */
+export async function imageVersion(env: Env, src: AssetSource, ns: string): Promise<string> {
+  const buildId = await src.buildOf(ns);
+  if (buildId) return buildId.slice(0, BUILD_VERSION_LENGTH);
+  return getAssetVersion(env, ns);
 }
 
 /**
