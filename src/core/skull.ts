@@ -35,7 +35,10 @@ export const SKULL_TEXTURES: Record<string, string> = {
  * @param texture エンティティテクスチャのパス
  */
 export function skullModel(texture: string): any {
-  const faces = withTexture(boxFaces(0, 0, HEAD_SIZE, HEAD_SIZE, HEAD_SIZE), '#skin');
+  const box = boxFaces(0, 0, HEAD_SIZE, HEAD_SIZE, HEAD_SIZE);
+  // 頭は箱そのものが上下反転して定義されるチェストと違い、そのままの向きで置かれます。
+  // 入れ替えないと頭頂に底面（首の穴）が来て、穴が開いて見えます。
+  const faces = withTexture({ ...box, up: box.down, down: box.up }, '#skin');
   return {
     textures: { skin: texture },
     elements: [{ from: [4, 0, 4], to: [12, HEAD_SIZE, 12], faces }],
