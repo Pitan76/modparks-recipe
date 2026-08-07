@@ -4,7 +4,7 @@
  * そうしないと、書き込みAPI経由で送信されたブロックが、オフラインでレンダリングされた同じブロックと異なって表示されてしまいます。
  */
 
-import { Vec3, Vec2, Axis, rotateVec, project, boundsOf } from './math';
+import { Vec3, Vec2, Axis, rotateVec, project, boundsOf, signedArea } from './math';
 
 /** バニラのデフォルト値が補完された、GUI表示のトランスフォーム。 */
 export interface GuiTransform {
@@ -138,6 +138,22 @@ export function faceVertices(dir: string, from: number[], to: number[]): Vec3[] 
  */
 export function faceBrightness(dir: string): number {
     return BRIGHTNESS[dir] ?? 1.0;
+}
+
+/**
+ * 投影後の面がカメラ側を向いているか（表面か）を判定します。
+ *
+ * バニラのGUI描画はバックフェースカリングが有効なため、奥を向いた面は描かれません。
+ * 不透明テクスチャなら手前の面が奥を塗りつぶすので差は出ませんが、ガラスのような半透明
+ * テクスチャでは奥の3面が透けてしまうため、描画前に落とす必要があります。
+ *
+ * `faceVertices` の巻き方は全方向で統一されている（0→1が+u、0→3が+v、u×vが法線の逆）ため、
+ * 正射影後の符号付き面積の符号だけで表裏が決まります。
+ * @param pts2d 投影後の頂点座標の配列
+ * @returns 表面なら true。真横を向いた（面積0の）面は描画対象外として false
+ */
+export function isFrontFacing(pts2d: Vec2[]): boolean {
+    return signedArea(pts2d) > 0;
 }
 
 /**

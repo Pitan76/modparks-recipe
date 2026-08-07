@@ -9,6 +9,7 @@ import {
     faceBrightness,
     faceVertices,
     guiTransform,
+    isFrontFacing,
     REF_SIZE,
     FRAME_MARGIN,
     FLAT_ITEM_PARENTS,
@@ -183,15 +184,18 @@ async function collectFaces(
             const corners = faceVertices(dir, el.from, el.to);
             if (!corners) continue;
 
+            const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
+            const pts2d = project(pts);
+            if (!isFrontFacing(pts2d)) continue;
+
             const texPath = resolveTexture(face.texture, model.textures);
             if (!texPath) continue;
             const b64 = await getTextureBase64(texPath);
             if (!b64) continue;
 
             const { w: texW, h: texH } = pngSize(b64);
-            const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
             faces.push({
-                pts2d: project(pts),
+                pts2d,
                 uv: face.uv || defaultUv(dir, el.from, el.to),
                 b64,
                 texW,

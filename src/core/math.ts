@@ -49,6 +49,21 @@ export function project(pts: Vec3[]): Vec2[] {
 }
 
 /**
+ * 投影後ポリゴンの符号付き面積（シューレース公式）を計算します。
+ * 正射影のため、この符号がそのまま面の表裏（カメラ側を向いているか）を表します。
+ * @param pts 2次元頂点座標の配列
+ * @returns 符号付き面積の2倍
+ */
+export function signedArea(pts: Vec2[]): number {
+    let sum = 0;
+    for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        sum += a.x * b.y - b.x * a.y;
+    }
+    return sum;
+}
+
+/**
  * ポリゴン群の境界ボックス（最小・最大座標）を計算します。
  * @param polygons 2次元ポリゴンの配列
  * @returns 境界ボックス
