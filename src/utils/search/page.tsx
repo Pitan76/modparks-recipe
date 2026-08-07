@@ -9,6 +9,7 @@ import { raw } from 'hono/html';
 import { searchMessagesFor, type SearchMessages } from '../i18n/search';
 import { SEARCH_STYLES } from './styles';
 import { CLIENT_BUNDLES } from '../../generated/client-bundles';
+import { PageFooter } from '../page-footer';
 
 /** ページ組み立てに要る値。 */
 type ShellProps = { locale: string; origin: string; t: SearchMessages };
@@ -42,6 +43,7 @@ function Shell({ locale, origin, t }: ShellProps) {
       </head>
       <body>
         <div id="root" />
+        <PageFooter locale={locale} />
         {/* まとめてzipにするときだけ使う。描画には要らないので defer で後回しにする。 */}
         <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" />
         <script>{raw(`window.MPR_LOCALE = ${JSON.stringify(locale)};`)}</script>

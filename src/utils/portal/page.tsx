@@ -8,6 +8,7 @@
 import { raw } from 'hono/html';
 import { messagesFor, type Messages } from '../i18n/portal';
 import { CLIENT_BUNDLES } from '../../generated/client-bundles';
+import { PageFooter } from '../page-footer';
 import { PORTAL_STYLES } from './styles';
 
 /** 言語切替リンクの行き先。 */
@@ -54,6 +55,7 @@ function Shell({ locale, t, toggle }: { locale: string; t: Messages; toggle: Tog
           </div>
         </header>
         <div id="root" />
+        <PageFooter locale={locale} />
         <script>{raw(`window.MPR_LOCALE = ${JSON.stringify(locale)};`)}</script>
         <script type="module" src={`/app/${CLIENT_BUNDLES.portal}`} />
       </body>

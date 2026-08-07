@@ -42,9 +42,6 @@ export function AppBar({ t, toggle, selected }: WithMessages & { toggle: { lang:
         <nav className="app-nav">
           <a href={langHref}>{toggle.label}</a>
           <a href="/upload">{t.publish}</a>
-          <a href="https://github.com/Pitan76/modparks-recipe" target="_blank" rel="noreferrer" aria-label="GitHub">
-            <i className="fa-brands fa-github" style={{ fontSize: 22 }} />
-          </a>
         </nav>
       </div>
     </header>

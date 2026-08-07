@@ -5,6 +5,7 @@
  */
 
 import { TOKENS } from '../ui/tokens';
+import { FOOTER_STYLES } from '../ui/footer-styles';
 
 export { TOKENS };
 /** ページ全体のCSS。 */
@@ -88,4 +89,7 @@ export const SEARCH_STYLES = /* css */ `
     min-height: 240px; padding: 0 16px; text-align: center; color: ${TOKENS.muted};
   }
   @media (max-width: 900px) { .empty-state { min-height: 140px; } }
+
+
+  ${FOOTER_STYLES}
 `;

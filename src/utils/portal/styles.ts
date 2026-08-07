@@ -6,6 +6,7 @@
  */
 
 import { TOKENS } from '../ui/tokens';
+import { FOOTER_STYLES } from '../ui/footer-styles';
 
 /** ページ全体のCSS。 */
 export const PORTAL_STYLES = /* css */ `
@@ -38,4 +39,7 @@ export const PORTAL_STYLES = /* css */ `
     .app-nav { gap: 14px; font-size: 13px; }
   }
 
+
+
+  ${FOOTER_STYLES}
 `;
