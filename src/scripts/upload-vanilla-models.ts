@@ -20,6 +20,7 @@ import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { existingKeys, missingOnly } from './vanilla-upload/existing';
 
 dotenv.config();
 
@@ -32,6 +33,8 @@ const BATCH_SIZE = 150;
 
 const BASE_URL = (process.argv[2] || 'http://localhost:8799').replace(/\/$/, '');
 const SECRET = process.env.UPLOAD_SECRET || process.env.ADMIN_SECRET;
+/** 既存キーの列挙用。`/admin/ls` は管理用シークレットしか受けません。 */
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 /**
  * 実行ディレクトリに client.jar が存在することを確認し、なければ最新のものを自動でダウンロードします。
@@ -97,21 +100,29 @@ async function uploadBatch(kind: keyof VanillaAssets, batch: Record<string, stri
 }
 
 /**
- * 1種別をバッチに割ってアップロードします。
+ * 1種別のうち、まだ投入先に無いものだけをバッチに割ってアップロードします。
+ *
+ * 既にあるものを送り直さないのは転送量のためだけではありません。`minecraft` は共有ネームスペース
+ * なので、bulk 1回ごとにバージョンが動いて全ネームスペースの画像キャッシュが捨てられます。
  * @param kind bulk API のボディのキー
  * @param entries パスとJSON文字列のマップ
  */
 async function uploadKind(kind: keyof VanillaAssets, entries: Record<string, string>): Promise<void> {
-  const paths = Object.keys(entries).sort();
-  // 1.21.3 以前の client.jar には `items/` が無く、0件のまま送ると空の bulk でバージョンだけが上がります。
-  if (paths.length === 0) return console.log(`No ${kind} in this client.jar. Skipping.`);
+  // 1.21.3 以前の client.jar には `items/` がありません。空の bulk はバージョンだけを上げます。
+  if (Object.keys(entries).length === 0) return console.log(`No ${kind} in this client.jar. Skipping.`);
 
-  console.log(`Uploading ${paths.length} ${kind} to ${BASE_URL} ...`);
+  const prefix = `assets/minecraft/${kind}/`;
+  const present = await existingKeys(BASE_URL, ADMIN_SECRET!, prefix);
+  const missing = missingOnly(entries, prefix, present);
+
+  const paths = Object.keys(missing).sort();
+  console.log(`${kind}: ${Object.keys(entries).length} in jar, ${present.size} already uploaded, ${paths.length} to send.`);
+  if (paths.length === 0) return;
 
   let uploaded = 0;
   for (let i = 0; i < paths.length; i += BATCH_SIZE) {
     const batch: Record<string, string> = {};
-    for (const p of paths.slice(i, i + BATCH_SIZE)) batch[p] = entries[p];
+    for (const p of paths.slice(i, i + BATCH_SIZE)) batch[p] = missing[p];
     uploaded += await uploadBatch(kind, batch);
     console.log(`  ${kind} ${uploaded}/${paths.length}`);
   }
@@ -120,6 +131,12 @@ async function uploadKind(kind: keyof VanillaAssets, entries: Record<string, str
 async function main() {
   if (!SECRET) {
     console.error('Set UPLOAD_SECRET or ADMIN_SECRET (.env or environment).');
+    process.exit(1);
+  }
+  // 差分だけを送るには投入先の中身を数え上げる必要があり、それは管理用シークレットでしか読めません。
+  // 無いまま全件送ると、既にあるものまで書き直して共有ネームスペースのキャッシュを捨てます。
+  if (!ADMIN_SECRET) {
+    console.error('Set ADMIN_SECRET (.env or environment). It is required to list what is already uploaded.');
     process.exit(1);
   }
 
