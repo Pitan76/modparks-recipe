@@ -18,7 +18,7 @@ import { boxFaces, withTexture } from './entity-box';
  * 大きさになってしまうため、フレームいっぱいに描きます。UVは全面に引き伸ばすだけなので、
  * 見た目の比率は変わりません。
  */
-const HEAD_SIZE = 16;
+const HEAD_SIZE = 14;
 
 /**
  * 頭部の種類（アイテム定義の `kind`）から、絵のあるエンティティテクスチャへの対応表。
@@ -49,6 +49,9 @@ export const SKULL_KIND_BY_ITEM: Record<string, string> = {
   player_head: 'player',
 };
 
+/** フレーム内で中央に置くためのずらし幅。 */
+const OFFSET = [(16 - HEAD_SIZE) / 2, (16 - HEAD_SIZE) / 2, (16 - HEAD_SIZE) / 2];
+
 /**
  * 頭部の合成モデルを作ります。
  *
@@ -64,6 +67,6 @@ export function skullModel(texture: string): any {
   const faces = withTexture({ ...box, up: box.down, down: box.up }, '#skin');
   return {
     textures: { skin: texture },
-    elements: [{ from: [0, 0, 0], to: [HEAD_SIZE, HEAD_SIZE, HEAD_SIZE], faces }],
+    elements: [{ from: OFFSET, to: OFFSET.map((v) => v + HEAD_SIZE), faces }],
   };
 }
