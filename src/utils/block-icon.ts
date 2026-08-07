@@ -16,7 +16,22 @@ import { loadModel, renderModelToSvg } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
+import { skullModel, SKULL_TEXTURES } from '../core/skull';
 import { getAssetVersion } from './cache-version';
+
+/**
+ * ブロックエンティティの合成モデルを返します。
+ *
+ * チェストや頭部は `builtin/entity` に解決され、モデルにエレメントがありません。絵もエンティティ用の
+ * テクスチャにあるため、通常の解決経路では何も見つからず空きスロットになります。
+ * @param path ブロックのパス
+ * @returns 合成できない場合は null
+ */
+function syntheticModel(path: string): any | null {
+  if (CHEST_VARIANTS[path]) return chestModel(CHEST_VARIANTS[path]);
+  if (SKULL_TEXTURES[path]) return skullModel(SKULL_TEXTURES[path]);
+  return null;
+}
 
 /** scripts/render-blocks/render.ts の SIZE と一致させ、両方のパスで表示サイズが揃うようにします。 */
 const ICON_SIZE = 128;
@@ -76,9 +91,7 @@ export async function renderBlockIconSvg(
   //     松明が極細スティック（実質1px単位）に潰れてバニラと別物になるため取りやめました。
   // ブロックエンティティ（チェストなど）はエレメントのない `builtin/entity` に解決されるため、
   // 代わりにエンティティのアトラスからジオメトリを合成する必要があります。
-  const synthetic = ns === 'minecraft' && CHEST_VARIANTS[path]
-    ? chestModel(CHEST_VARIANTS[path])
-    : null;
+  const synthetic = ns === 'minecraft' ? syntheticModel(path) : null;
 
   const candidates = synthetic
     ? [{ id: `${ns}:block/${path}`, model: synthetic }]
