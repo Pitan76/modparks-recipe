@@ -12,6 +12,7 @@ import { upsertIndexEntries, type IndexEntry } from '../utils/recipe-store';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { beginIngest, readIngestMeta, collectStaged, cleanupIngest, type IngestBuildInfo } from '../utils/ingest';
 import { isValidNamespace } from '../utils/asset-path';
+import { isSharedNamespace } from '../core/namespaces';
 import { toChannels } from '../utils/build/mc-version';
 import { finalizeBuild } from '../utils/build/commit';
 import { recordUpload } from '../utils/audit';
@@ -30,7 +31,12 @@ ingestRoutes.post('/api/:namespace/ingest/begin', async (c) => {
 
   const body = await c.req.json().catch(() => null);
   // trust は投入側の申告ではなく認証結果で決める。自己申告を信じると unverified が verified を名乗れる。
-  const build = buildInfoOf(body, grant.trust);
+  //
+  // 共有ネームスペースは build にしない。build は「この版の中身はこれで全部」という宣言なので、
+  // 多数の mod とバニラが書き足し続ける ns に当てると、1本の jar が持っていた断片が全体を
+  // 名乗ってしまう。実際 `minecraft` にタグ9件の build が作られ、バニラのテクスチャ約1500件が
+  // 「無いもの」として読めなくなり、全 mod のレシピ画像が空になった。
+  const build = isSharedNamespace(namespace) ? undefined : buildInfoOf(body, grant.trust);
   const session = await beginIngest(c.env, namespace, build);
   return c.json({ ok: true, namespace, session, build: build ?? null });
 });

@@ -10,6 +10,7 @@ import type { Env } from '../minecraft';
 import { updateJson } from '../r2-json';
 import { syncContentId } from './hash';
 import { resolveChannel } from './mc-version';
+import { isSharedNamespace } from '../../core/namespaces';
 
 /** MCチャネル -> build ID。 */
 export type ChannelMap = Record<string, string>;
@@ -84,6 +85,11 @@ export async function pruneVersions(env: Env, ns: string, keep: number): Promise
 
 /**
  * 指定チャネル群の指す先を build へ切り替え、解決スナップショットを更新します。
+ *
+ * 共有ネームスペースには決して切り替えません。ここが切り替わった瞬間、その ns の読み出しは
+ * build 経由だけになり、積み上げてきたフラット配置の資産が丸ごと読めなくなります。作らせない側の
+ * 入口は `ingest/begin` にありますが、失っても気づきにくい壊れ方をするため、実際に書き換える
+ * ここでも止めます。
  * @param env 環境変数
  * @param ns ネームスペース
  * @param channels 対象のMCチャネル
@@ -91,6 +97,7 @@ export async function pruneVersions(env: Env, ns: string, keep: number): Promise
  */
 export async function setChannels(env: Env, ns: string, channels: readonly string[], buildId: string): Promise<void> {
   if (channels.length === 0) return;
+  if (isSharedNamespace(ns)) return;
 
   await updateJson<ChannelMap>(env, channelsKey(ns), (current) => {
     const next = { ...(current ?? {}) };
