@@ -115,7 +115,9 @@ function FilterSelects(props: SearchFormProps) {
     <Stack direction="row" spacing={1.5} sx={{ width: { xs: '100%', sm: 'auto' }, flexShrink: 0 }}>
       <TextField label={t.namespace} select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={cell(2, 200)}>
         {props.namespaces.map((ns) => (
-          <MenuItem key={ns} value={ns}>{`${ns === 'all' ? 'All' : ns} (${props.counts[ns] ?? 0})`}</MenuItem>
+          <MenuItem key={ns} value={ns}>
+            {`${ns === 'all' ? 'All' : ns === 'default' ? 'Default' : ns} (${props.counts[ns] ?? 0})`}
+          </MenuItem>
         ))}
       </TextField>
       <TextField label={t.format} select value={props.fmt} onChange={(ev) => props.onFmt(ev.target.value)} sx={cell(1, 110)}>

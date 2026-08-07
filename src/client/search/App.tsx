@@ -53,7 +53,7 @@ export function App({ locale }: { locale: string }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [failedId, setFailedId] = useState<string | null>(null);
-  const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'all');
+  const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'default');
   const [showImages, setShowImages] = useState(() => INITIAL_PARAMS.get('view') !== 'list');
   const [page, setPage] = useState(1);
   const [itemPage, setItemPage] = useState(1);
@@ -63,15 +63,23 @@ export function App({ locale }: { locale: string }) {
   const items = useMemo(() => Object.keys(groups).sort(), [groups]);
   const counts = useNamespaceCounts(groups, items);
   const namespaces = useMemo(
-    () => Object.keys(counts).sort((a, b) => (a === 'all' ? -1 : b === 'all' ? 1 : counts[b] - counts[a] || a.localeCompare(b))),
+    () =>
+      Object.keys(counts).sort((a, b) => {
+        if (a === 'all') return -1;
+        if (b === 'all') return 1;
+        if (a === 'default') return -1;
+        if (b === 'default') return 1;
+        return counts[b] - counts[a] || a.localeCompare(b);
+      }),
     [counts]
   );
 
   const query = q.trim().toLowerCase();
-  const scope = useMemo(
-    () => (ns === 'all' ? items : items.filter((x) => namespacesOf(groups, x).includes(ns))),
-    [groups, items, ns]
-  );
+  const scope = useMemo(() => {
+    if (ns === 'all') return items;
+    if (ns === 'default') return items.filter((x) => namespacesOf(groups, x).some((n) => n !== 'minecraft'));
+    return items.filter((x) => namespacesOf(groups, x).includes(ns));
+  }, [groups, items, ns]);
   const filtered = useMemo(() => {
     if (!query) return scope;
     return scope.filter((x) => x.toLowerCase().includes(query) || (names[x] || '').toLowerCase().includes(query));
@@ -94,7 +102,7 @@ export function App({ locale }: { locale: string }) {
     }
   }, [recipes, groups, select]);
 
-  useEffect(() => replaceQuery((p) => (ns === 'all' ? p.delete('ns') : p.set('ns', ns))), [ns]);
+  useEffect(() => replaceQuery((p) => (ns === 'default' ? p.delete('ns') : p.set('ns', ns))), [ns]);
   useEffect(() => {
     replaceQuery((p) => (showImages ? p.delete('view') : p.set('view', 'list')));
     setPage(1);
@@ -107,7 +115,7 @@ export function App({ locale }: { locale: string }) {
 
   // 索引に無い namespace が ?ns= で来ると、選択肢に無い値のまま0件になる
   useEffect(() => {
-    if (ns !== 'all' && items.length > 0 && !counts[ns]) setNs('all');
+    if (ns !== 'all' && ns !== 'default' && items.length > 0 && !counts[ns]) setNs('default');
   }, [items, counts, ns]);
 
   const itemPageCount = Math.max(1, Math.ceil(filtered.length / ITEM_PAGE_SIZE));
@@ -121,7 +129,11 @@ export function App({ locale }: { locale: string }) {
       (groups[item] || []).forEach((rid) => {
         // Mod を選んでいる間は、その Mod が定義したレシピだけを見せます。バニラのアイテムを
         // 作る Mod のレシピを選んだのに、バニラ側のレシピまで並ぶと選んだ意味がなくなります。
-        if (ns !== 'all' && splitId(rid).ns !== ns) return;
+        if (ns === 'default') {
+          if (splitId(rid).ns === 'minecraft') return;
+        } else if (ns !== 'all' && splitId(rid).ns !== ns) {
+          return;
+        }
         out.push({ rid, item });
       })
     );
@@ -201,7 +213,7 @@ export function App({ locale }: { locale: string }) {
     setZipping(null);
 
     if (!blob) return window.alert(t.downloadZipEmpty);
-    saveBlob(blob, `${ns === 'all' ? 'recipes' : ns}-${fmt}.zip`);
+    saveBlob(blob, `${ns === 'all' || ns === 'default' ? 'recipes' : ns}-${fmt}.zip`);
   }
 
   function changeFmt(next: string) {

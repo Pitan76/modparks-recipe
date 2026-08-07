@@ -81,11 +81,19 @@ export function namespacesOf(groups: Groups, item: string): string[] {
  */
 export function useNamespaceCounts(groups: Groups, items: string[]): Record<string, number> {
   return useMemo(() => {
-    const counts: Record<string, number> = { all: items.length };
+    const counts: Record<string, number> = { all: items.length, default: 0 };
     items.forEach((item) => {
-      namespacesOf(groups, item).forEach((ns) => {
+      const nss = namespacesOf(groups, item);
+      let isMod = false;
+      nss.forEach((ns) => {
         counts[ns] = (counts[ns] ?? 0) + 1;
+        if (ns !== 'minecraft') {
+          isMod = true;
+        }
       });
+      if (isMod) {
+        counts.default++;
+      }
     });
     return counts;
   }, [groups, items]);
