@@ -1,33 +1,6 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
-
-/** 生成したバンドル名の受け渡し先。Worker はここを読んで script タグを書きます。 */
-const MANIFEST_FILE = 'src/generated/client-bundles.ts';
-
-/**
- * ビルド結果のファイル名をTSとして書き出すプラグイン。
- *
- * ファイル名にはハッシュが入るため、Worker 側で名前を決め打ちできません。
- * ビルドのたびにここを更新し、`?v=` を付けずとも新しい版が読まれるようにします。
- */
-function emitBundleManifest(): Plugin {
-  return {
-    name: 'emit-bundle-manifest',
-    writeBundle(_options, bundle) {
-      const entries: Record<string, string> = {};
-      for (const chunk of Object.values(bundle)) {
-        if (chunk.type === 'chunk' && chunk.isEntry) entries[chunk.name] = chunk.fileName;
-      }
-      const body =
-        '/** 自動生成。`npm run build:client` が書き換えます。手で編集しないこと。 */\n' +
-        `export const CLIENT_BUNDLES = ${JSON.stringify(entries, null, 2)} as const;\n`;
-      mkdirSync(dirname(MANIFEST_FILE), { recursive: true });
-      writeFileSync(MANIFEST_FILE, body, 'utf8');
-    },
-  };
-}
+import { existsSync } from 'fs';
 
 /**
  * 存在するエントリだけを対象にします。移行を1ページずつ進められるようにするためです。
@@ -50,7 +23,7 @@ function entries(): Record<string, string> {
 export default defineConfig({
   // outDir が public 配下にあるため、publicDir を切らないと public/* が二重に複製される
   publicDir: false,
-  plugins: [react(), emitBundleManifest()],
+  plugins: [react()],
   build: {
     outDir: 'public/app',
     emptyOutDir: true,
@@ -62,7 +35,12 @@ export default defineConfig({
       external: [/\.wasm$/],
       input: entries(),
       output: {
-        entryFileNames: '[name]-[hash].js',
+        // エントリ名は固定です。HTMLは毎回 Worker が組み立てるので名前を伝える仕組みは要らず、
+        // 逆にハッシュを入れると「HTMLだけ古いまま残り、指し先のJSは消えている」404が起きます。
+        // 常に再検証させるぶんの往復1回は、その事故を無くす対価として払います（index.ts の `onFound`）。
+        entryFileNames: '[name].js',
+        // 分割チャンクはHTMLからではなくエントリから参照されます。エントリが常に最新なら
+        // 消えたチャンクを指すことはないため、ハッシュ付きのまま永続キャッシュに載せます。
         chunkFileNames: 'chunk-[hash].js',
         assetFileNames: '[name]-[hash][extname]',
       },

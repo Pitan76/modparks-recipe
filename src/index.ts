@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { Env } from './utils/minecraft';
 import { searchPage } from './utils/search/page';
 import { pickLocale } from './utils/i18n/locale';
@@ -59,6 +59,21 @@ app.onError((err, c) => {
 });
 
 const manifestObj = typeof manifest === 'string' ? JSON.parse(manifest) : manifest;
-app.use('/*', serveStatic({ manifest: manifestObj }));
+app.use('/*', serveStatic({ manifest: manifestObj, onFound: setStaticCache }));
+
+/**
+ * 静的ファイルのキャッシュ方針を決めます。
+ *
+ * 名前にハッシュを持つチャンクは中身が変われば別のURLになるので、永続させて構いません。
+ * 一方で名前が固定のエントリJSは、古い版を抱えたまま消えたチャンクを指しに行かせないよう、
+ * 毎回再検証させます（大半は 304 で返ります）。
+ * @param path 見つかった静的ファイルのパス
+ * @param c リクエストコンテキスト
+ */
+function setStaticCache(path: string, c: Context): void {
+  if (!path.startsWith('app/')) return;
+  const immutable = path.startsWith('app/chunk-');
+  c.header('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
+}
 
 export default app;
