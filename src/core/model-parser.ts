@@ -9,6 +9,7 @@ import {
     faceBrightness,
     faceVertices,
     guiTransform,
+    guiWindingSign,
     isFrontFacing,
     REF_SIZE,
     FRAME_MARGIN,
@@ -177,6 +178,7 @@ async function collectFaces(
     getTextureBase64: (path: string) => Promise<string | null>
 ): Promise<SvgFace[]> {
     const gui = guiTransform(model);
+    const windingSign = guiWindingSign(gui);
     const faces: SvgFace[] = [];
 
     for (const el of model.elements) {
@@ -186,7 +188,7 @@ async function collectFaces(
 
             const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
             const pts2d = project(pts);
-            if (!isFrontFacing(pts2d)) continue;
+            if (!isFrontFacing(pts2d, windingSign)) continue;
 
             const texPath = resolveTexture(face.texture, model.textures);
             if (!texPath) continue;

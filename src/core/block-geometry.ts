@@ -150,10 +150,24 @@ export function faceBrightness(dir: string): number {
  * `faceVertices` の巻き方は全方向で統一されている（0→1が+u、0→3が+v、u×vが法線の逆）ため、
  * 正射影後の符号付き面積の符号だけで表裏が決まります。
  * @param pts2d 投影後の頂点座標の配列
+ * @param windingSign `guiWindingSign` が返す表面側の符号
  * @returns 表面なら true。真横を向いた（面積0の）面は描画対象外として false
  */
-export function isFrontFacing(pts2d: Vec2[]): boolean {
-    return signedArea(pts2d) > 0;
+export function isFrontFacing(pts2d: Vec2[], windingSign: number): boolean {
+    return signedArea(pts2d) * windingSign > 0;
+}
+
+/**
+ * そのGUIトランスフォーム下で表面がどちらの符号になるかを返します。
+ *
+ * 回転は向きを保ちますが、負のスケールは鏡像になり巻き方が反転します。符号を固定にすると、
+ * 鏡像指定のモデルで全面が裏と判定されアイコンが空になります。Z方向のスケールは正射影では
+ * 落ちるため、2次元の巻き方に効くのはX・Yのみです。
+ * @param gui GUIトランスフォーム
+ * @returns 表面側の符号（1 または -1）
+ */
+export function guiWindingSign(gui: GuiTransform): number {
+    return gui.scale[0] * gui.scale[1] < 0 ? -1 : 1;
 }
 
 /**

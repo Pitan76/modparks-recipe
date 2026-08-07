@@ -12,6 +12,7 @@ import {
     faceBrightness,
     faceVertices,
     guiTransform,
+    guiWindingSign,
     isFrontFacing,
     REF_SIZE,
     FRAME_MARGIN,
@@ -94,6 +95,7 @@ async function renderFlatItem(model: any): Promise<Buffer | null> {
  */
 async function collectFaces(model: any): Promise<FaceData[]> {
     const gui = guiTransform(model);
+    const windingSign = guiWindingSign(gui);
     const getTexImage = textureLoader();
     const faces: FaceData[] = [];
 
@@ -104,7 +106,7 @@ async function collectFaces(model: any): Promise<FaceData[]> {
 
             const pts = applyGuiTransform(applyElementRotation(corners, el.rotation), gui);
             const pts2d = project(pts);
-            if (!isFrontFacing(pts2d)) continue;
+            if (!isFrontFacing(pts2d, windingSign)) continue;
 
             const texPath = resolveTexture(face.texture, model.textures);
             if (!texPath) continue;
