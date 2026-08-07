@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { renderBlockIconPng, renderBlockIconSvg } from '../utils/block-icon';
 import { bumpAssetVersion, ensureAssetVersions, getAllVersions } from '../utils/cache-version';
+import { IMAGE_CACHE_PREFIX } from '../core/image-key';
 import { sweepStaleIngests } from '../utils/ingest';
 import { reindexStep, normalizeBatch } from '../utils/reindex';
 import { listUploads } from '../utils/audit';
@@ -286,9 +287,6 @@ adminRoutes.get('/admin/gc-images', async (c) => {
     applied: apply,
   });
 });
-
-/** レンダリング済み画像（L1）のキーの接頭辞。 */
-const IMAGE_CACHE_PREFIX = 'cache/img/';
 
 /**
  * L1 のキーから世代（`rv`）を取り出します。

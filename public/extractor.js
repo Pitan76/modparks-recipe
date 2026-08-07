@@ -35,11 +35,15 @@
 	//#endregion
 	//#region src/core/paths.ts
 	/**
-	* @fileoverview jar 内アセットのパス規則。
+	* @fileoverview アセット種別の唯一の出所。
 	*
-	* クライアント側の抽出（ブラウザで jar を展開する経路）と、サーバ側の抽出
-	* （jar を丸ごと受け取る経路）で同じ規則を使うための唯一の出所です。
-	* 片方だけが新しいディレクトリ名に対応する、という食い違いを防ぎます。
+	* 1つの種別は「jar のどこにあるか」「論理パスの何という根に置くか」「R2 のどのキーに落ちるか」
+	* 「中身がバイナリか」「外から読ませてよいか」を同時に持ちます。これらが別々の場所に書かれて
+	* いると、種別を1つ足すのに5ファイルを直すことになり、必ずどこかが取り残されます。実際
+	* `items/`（1.21.4以降のアイテム定義）は読み出し側だけが知っていて、投入側が丸ごと欠けたまま
+	* 動いていました。
+	*
+	* 種別を増やすときは、この表に1行足すだけで済むようにしてあります。
 	*/
 	/** data/<ns>/recipe(s)/<id>.json。1.21 以降は単数形の `recipe/`。 */
 	var RECIPE_PATH = /^data\/([^/]+)\/recipes?\/(.+)\.json$/;
@@ -50,25 +54,92 @@
 		"block",
 		"blocks"
 	].join("|")})/.+)\\.json$`);
-	/** 判定順に並べた規則表。先に一致したものを採用します。 */
-	var RULES = [
-		["recipes", RECIPE_PATH],
-		["tags", TAG_PATH],
-		["textures", /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/],
-		["models", /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/],
-		["items", /^assets\/([^/]+)\/items\/(.+)\.json$/],
-		["langs", /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/]
+	/**
+	* 種別表。`classifyAssetPath` はこの順に当てるため、狭い規則を先に置いてください。
+	*
+	* `models` を `items` より先に置いているのは、両方に当たりうるパスを従来どおり `models` として
+	* 扱うためです。順番を入れ替えると既存の分類が変わります。
+	*/
+	var ASSET_KINDS = [
+		{
+			kind: "recipes",
+			jarPath: RECIPE_PATH,
+			root: "recipe",
+			rootAliases: ["recipes"],
+			container: "data",
+			binary: false,
+			publiclyReadable: false
+		},
+		{
+			kind: "tags",
+			jarPath: TAG_PATH,
+			root: "tags",
+			rootAliases: [],
+			container: "data",
+			binary: false,
+			publiclyReadable: true
+		},
+		{
+			kind: "textures",
+			jarPath: /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/,
+			root: "textures",
+			rootAliases: [],
+			container: "assets",
+			binary: true,
+			publiclyReadable: true
+		},
+		{
+			kind: "models",
+			jarPath: /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/,
+			root: "models",
+			rootAliases: [],
+			container: "assets",
+			binary: false,
+			publiclyReadable: true
+		},
+		{
+			kind: "items",
+			jarPath: /^assets\/([^/]+)\/items\/(.+)\.json$/,
+			root: "items",
+			rootAliases: [],
+			container: "assets",
+			binary: false,
+			publiclyReadable: true
+		},
+		{
+			kind: "langs",
+			jarPath: /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/,
+			root: "lang",
+			rootAliases: [],
+			container: "assets",
+			binary: false,
+			publiclyReadable: true
+		}
 	];
+	/** 種別名から決まりごとを引く表。 */
+	var BY_KIND = new Map(ASSET_KINDS.map((spec) => [spec.kind, spec]));
+	new Map(ASSET_KINDS.flatMap((spec) => [spec.root, ...spec.rootAliases].map((root) => [root, spec])));
+	/**
+	* 種別名から決まりごとを引きます。
+	* @param kind 種別名
+	*/
+	function assetKind(kind) {
+		return BY_KIND.get(kind);
+	}
+	/** 種別ごとに空の器を作ります。 */
+	function emptyByKind(make) {
+		return Object.fromEntries(ASSET_KINDS.map((spec) => [spec.kind, make()]));
+	}
 	/**
 	* zip 内の1パスがどの種別のアセットかを判定します。
 	* @param path zip エントリの相対パス
 	* @returns 該当する種別と分解結果。対象外なら null
 	*/
 	function classifyAssetPath(path) {
-		for (const [kind, re] of RULES) {
-			const m = path.match(re);
+		for (const spec of ASSET_KINDS) {
+			const m = path.match(spec.jarPath);
 			if (m) return {
-				kind,
+				kind: spec.kind,
 				namespace: m[1],
 				id: m[2]
 			};
@@ -97,25 +168,11 @@
 	var NESTED_BUDGET_BYTES = 64 * 1024 * 1024;
 	/** 空の集計値を作ります。 */
 	function emptyCounts() {
-		return {
-			recipes: 0,
-			tags: 0,
-			textures: 0,
-			models: 0,
-			items: 0,
-			langs: 0
-		};
+		return emptyByKind(() => 0);
 	}
 	/** 空のネームスペース枠を作ります。 */
 	function emptyAssets() {
-		return {
-			recipes: {},
-			tags: {},
-			textures: {},
-			models: {},
-			items: {},
-			langs: {}
-		};
+		return emptyByKind(() => ({}));
 	}
 	/**
 	* 既定の同梱 jar 読み込み口。ページに読み込まれた JSZip をそのまま使います。
@@ -180,7 +237,7 @@
 			const hit = classifyAssetPath(path);
 			if (!hit) continue;
 			const bucket = (byNs[_hit$namespace = hit.namespace] || (byNs[_hit$namespace] = emptyAssets()))[hit.kind];
-			if (hit.kind === "textures") {
+			if (assetKind(hit.kind).binary) {
 				bucket[`${hit.id}.png`] = bytesToBase64(new Uint8Array(await entry.async("arraybuffer")));
 				continue;
 			}

@@ -2,6 +2,10 @@
  * @fileoverview 検索ページが叩くAPIと、レシピIDの扱い。
  */
 
+import { DEFAULT_SCALE, DEFAULT_TAG_OFFSET, imageCacheKey } from '../../core/image-key';
+
+export { DEFAULT_SCALE };
+
 /** 索引に載る1レシピ。 */
 export type RecipeEntry = {
   id: string;
@@ -22,14 +26,8 @@ export type Assets = { base: string; rv: string };
 /** 索引の取得結果。 */
 export type RecipeIndex = { recipes: RecipeEntry[]; versions: Versions | null; assets: Assets | null };
 
-/** Worker側の DEFAULT_SCALE。R2の直接URLを組むにはキーと同じ値が要ります。 */
-export const DEFAULT_SCALE = 2;
-
-/** 画面から選べる拡大率。Worker側の normalizeScale が受ける 1〜8 の範囲に収めています。 */
+/** 画面から選べる拡大率。`MAX_SCALE` の範囲に収めています。 */
 export const SCALE_CHOICES = [1, 2, 4, 8] as const;
-
-/** Worker側の既定 tagOffset。 */
-const DEFAULT_TAG_OFFSET = 0;
 
 /** 1回の名前解決で送るID数。 */
 const NAME_BATCH = 50;
@@ -106,7 +104,7 @@ export function imageCdnPath(
   // バージョンが無いとサーバ側が引いた値がキーに入るため、クライアントからは行き先を当てられない。
   if (!version || version === '0') return null;
 
-  const key = `cache/img/${assets.rv}/${p.ns}/${version}/${p.id}@${scale}+${DEFAULT_TAG_OFFSET}.${fmt}`;
+  const key = imageCacheKey(assets.rv, p.ns, version, p.id, scale, DEFAULT_TAG_OFFSET, fmt);
   return `${assets.base}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 

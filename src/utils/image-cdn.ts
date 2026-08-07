@@ -13,33 +13,14 @@ import { rendererVersion } from './render-version';
 import { getAllVersions, getAssetVersion } from './cache-version';
 import { SHARED_NAMESPACES } from '../core/namespaces';
 
+// キー書式そのものはブラウザ側も組み立てるため core にあります。ここから通して使わせます。
+export { imageCacheKey, IMAGE_CACHE_PREFIX } from '../core/image-key';
+
 /** build ID を世代として使うときの長さ。キーを短く保つため先頭だけを採ります。 */
 const BUILD_VERSION_LENGTH = 16;
 
 /** クライアントへ渡す配信情報。`base` が空なら直接配信は無効です。 */
 export type AssetDelivery = { base: string; rv: string };
-
-/**
- * L1（レンダリング済み画像）のR2キーを組み立てます。
- * @param rv レンダラー版
- * @param ns ネームスペース
- * @param version アセットバージョン（またはbuild ID先頭16文字）
- * @param id レシピID（ネームスペースを除いた部分）
- * @param scale 拡大率
- * @param tagOffset タグの回転位置
- * @param ext 拡張子
- */
-export function imageCacheKey(
-  rv: string,
-  ns: string,
-  version: string,
-  id: string,
-  scale: number,
-  tagOffset: number,
-  ext: string
-): string {
-  return `cache/img/${rv}/${ns}/${version}/${id}@${scale}+${tagOffset}.${ext}`;
-}
 
 /**
  * ネームスペース1つ分の画像バージョンを返します。キーを組む側も、それをクライアントへ配る側も、
