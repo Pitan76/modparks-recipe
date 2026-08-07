@@ -2,20 +2,16 @@
  * @fileoverview 検索ページの表示部品。状態は持たず、見た目と入力の受け渡しだけを担います。
  */
 
-import { useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import Box from '@mui/material/Box';
+import { type FormEvent, type ReactNode } from 'react';
 import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
-import CircularProgress from '@mui/material/CircularProgress';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { imageCdnPath, imagePath, SCALE_CHOICES, splitId, type Assets, type Versions } from './api';
+import { SCALE_CHOICES } from './api';
 import type { SearchMessages } from '../../utils/i18n/search';
 
 /** 部品が共通で受け取る文言。 */
@@ -162,144 +158,5 @@ export function ZipButton({ t, busy, onClick }: WithMessages & { busy: string | 
     <Button size="small" startIcon={<i className="fa-solid fa-file-zipper" />} disabled={!!busy} onClick={onClick}>
       {busy ?? t.downloadZip}
     </Button>
-  );
-}
-
-/** アイテム一覧の1行。 */
-export type ItemRowProps = WithMessages & {
-  item: string;
-  name: string;
-  selected: boolean;
-  copied: boolean;
-  failed: boolean;
-  onSelect: () => void;
-  onCopy: (ev: MouseEvent) => void;
-  onDownload: (ev: MouseEvent) => void;
-};
-
-export function ItemRow(props: ItemRowProps) {
-  const { t } = props;
-  return (
-    <div className={`item-row${props.selected ? ' selected' : ''}`} onClick={props.onSelect}>
-      <Typography variant="body2" fontWeight={props.selected ? 500 : 400} noWrap>
-        {props.name}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ fontFamily: 'monospace' }}>
-        {props.item}
-      </Typography>
-      <div className="item-actions">
-        <IconButton size="small" onClick={props.onDownload} title={t.download}>
-          <i className="fa-solid fa-download" style={{ fontSize: 11 }} />
-        </IconButton>
-        <IconButton size="small" onClick={props.onCopy} title={copyTitle(t, props.copied, props.failed)}>
-          <i className={props.copied ? 'fa-solid fa-check' : 'fa-regular fa-copy'} style={{ fontSize: 11 }} />
-        </IconButton>
-      </div>
-    </div>
-  );
-}
-
-/** 一覧の表示件数を切り替えるチェックボックス。 */
-export function ShowImagesToggle({ t, checked, onChange }: WithMessages & { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <FormControlLabel
-      control={<Checkbox size="small" disableRipple checked={checked} onChange={(ev) => onChange(ev.target.checked)} />}
-      label={t.showImages}
-      sx={{ mb: 0, '& .MuiFormControlLabel-label': { fontSize: 13, color: 'text.secondary' } }}
-    />
-  );
-}
-
-/** レシピ画像1枚のタイル。 */
-export type ImageTileProps = WithMessages & {
-  recipeId: string;
-  itemId: string;
-  name?: string;
-  fmt: string;
-  versions: Versions | null;
-  assets: Assets | null;
-  scale: number;
-  title?: string;
-  copied: boolean;
-  failed: boolean;
-  onClick?: () => void;
-  onCopy: (ev: MouseEvent) => void;
-  onDownload: (ev: MouseEvent) => void;
-};
-
-export function ImageTile(props: ImageTileProps) {
-  const { t } = props;
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
-  const parts = splitId(props.recipeId);
-  const direct = imageCdnPath(props.recipeId, props.fmt, props.versions, props.assets, props.scale);
-  // 直接配信を諦めたURL。形式や拡大率を変えると direct も変わるので、その都度また直接配信から試せる。
-  const [gaveUp, setGaveUp] = useState<string | null>(null);
-  const useDirect = direct !== null && gaveUp !== direct;
-
-  /** 直接配信の404はWorkerで拾い直す。それ以外の失敗は本当のエラーとして出す。 */
-  const onError = () => {
-    if (useDirect) return setGaveUp(direct);
-    setStatus('error');
-  };
-
-  return (
-    <div className="recipe-item">
-      {status === 'loading' && <CircularProgress size={20} sx={{ my: 1 }} />}
-      {status === 'error' && (
-        <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
-      )}
-      <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmt, props.versions, props.assets, props.scale)}
-        alt={props.recipeId}
-        className="recipe-img"
-        title={props.title}
-        decoding="async"
-        onLoad={() => setStatus('ok')}
-        onError={onError}
-        onClick={props.onClick}
-        style={{ display: status === 'ok' ? 'block' : 'none' }}
-      />
-      {status === 'ok' && (
-        <div className="recipe-meta">
-          {props.name && props.name !== props.itemId && <div className="recipe-name">{props.name}</div>}
-          <div className="recipe-label">{`${parts.ns}:${parts.id}`}</div>
-          <div className="recipe-actions">
-            <IconButton size="small" onClick={props.onDownload} title={t.download}>
-              <i className="fa-solid fa-download" style={{ fontSize: 11 }} />
-            </IconButton>
-            <IconButton size="small" onClick={props.onCopy} title={copyTitle(t, props.copied, props.failed, t.copyImage)}>
-              <i className={props.copied ? 'fa-solid fa-check' : 'fa-regular fa-copy'} style={{ fontSize: 11 }} />
-            </IconButton>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 何も選ばれていないときの案内。 */
-export function EmptyState({ t }: WithMessages) {
-  return (
-    <div className="empty-state">
-      <Typography variant="body2">{t.lead}</Typography>
-    </div>
-  );
-}
-
-/** 読み込み中の表示。 */
-export function Loading() {
-  return (
-    <Box sx={{ p: 2, textAlign: 'center' }}>
-      <CircularProgress size={20} />
-    </Box>
-  );
-}
-
-/** 一覧が空のときの表示。 */
-export function EmptyMessage({ text }: { text: string }) {
-  return (
-    <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
-      <Typography variant="body2">{text}</Typography>
-    </Box>
   );
 }

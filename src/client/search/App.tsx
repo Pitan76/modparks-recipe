@@ -2,13 +2,17 @@
  * @fileoverview 検索ページ本体。状態を持ち、部品へ配ります。
  */
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Pagination from '@mui/material/Pagination';
-import { DEFAULT_SCALE, imagePath, imageUrl, SCALE_CHOICES, splitId, type Names } from './api';
+import { splitId } from './api';
 import { MainPanel, PAGE_SIZE, type GridEntry, type Selection } from './MainPanel';
-import { AppBar, EmptyMessage, ItemRow, Loading, SearchForm, SectionHead, ShowImagesToggle, ZipButton } from './parts';
+import { AppBar, SearchForm, SectionHead, ZipButton } from './parts';
+import { ShowImagesToggle } from './result-parts';
+import { ItemList } from './ItemList';
+import { useDisplayPrefs } from './preferences';
+import { useShare } from './useShare';
 import {
   INITIAL_PARAMS,
   namespacesOf,
@@ -19,18 +23,11 @@ import {
   useNamespaceCounts,
   useRecipeIndex,
 } from './state';
-import { copyText, downloadUrl, readStored, writeStored } from '../shared/browser';
 import { buildRecipeZip, saveBlob } from './zip';
 import { searchMessagesFor } from '../../utils/i18n/search';
 
 /** 1ページあたりのアイテム一覧の表示件数。 */
 const ITEM_PAGE_SIZE = 50;
-
-/** 画像形式の保存キー。 */
-const FMT_KEY = 'mpr_fmt';
-
-/** 拡大率の保存キー。 */
-const SCALE_KEY = 'mpr_scale';
 
 /**
  * 表示言語に対応するMinecraftのロケールと、言語切替リンクの行き先を返します。
@@ -48,11 +45,8 @@ export function App({ locale }: { locale: string }) {
   const { names, request } = useNames(mcLocale);
 
   const [q, setQ] = useState('');
-  const [fmt, setFmt] = useState(() => readStored(FMT_KEY) || 'png');
-  const [scale, setScale] = useState(() => storedScale());
+  const { fmt, scale, changeFmt, changeScale } = useDisplayPrefs();
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [failedId, setFailedId] = useState<string | null>(null);
   const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'default');
   const [showImages, setShowImages] = useState(() => INITIAL_PARAMS.get('view') !== 'list');
   const [page, setPage] = useState(1);
@@ -145,6 +139,14 @@ export function App({ locale }: { locale: string }) {
   );
   useNameRequests(!!recipes, showImages ? gridItems : pagedItems, scope, !!query, request);
 
+  const { copiedId, failedId, copyLink, copyImage, downloadItem, downloadRecipe } = useShare({
+    fmt,
+    scale,
+    versions,
+    assets,
+    recipesOf: (item) => groups[item] || [],
+  });
+
   /** 一覧から選ぶと結果は下（モバイル）か右（PC）に出る。モバイルでは見えないので送り届ける。 */
   function pick(item: string) {
     select(item);
@@ -158,41 +160,6 @@ export function App({ locale }: { locale: string }) {
     const typed = q.trim();
     if (groups[typed]) return pick(typed);
     if (filtered.length > 0) pick(filtered[0]);
-  }
-
-  /** アイテム一覧からはページへのリンクを配りたい。画像そのものは別（{@link copyImage}）。 */
-  function copyLink(ev: MouseEvent, id: string) {
-    ev.stopPropagation();
-    const params = new URLSearchParams(window.location.search);
-    params.set('id', id);
-    copy(ev, id, `${window.location.origin}${window.location.pathname}?${params.toString()}`);
-  }
-
-  /** 画像タイルからは画像そのもののURLを配る。直接配信が効くならR2のURLになる。 */
-  function copyImage(ev: MouseEvent, rid: string) {
-    copy(ev, rid, imageUrl(rid, fmt, versions, assets, scale));
-  }
-
-  /** コピーして、その行に結果を2秒だけ出す。 */
-  function copy(ev: MouseEvent, id: string, url: string) {
-    ev.stopPropagation();
-    copyText(url).then((ok) => {
-      (ok ? setCopiedId : setFailedId)(id);
-      setTimeout(() => {
-        setCopiedId(null);
-        setFailedId(null);
-      }, 2000);
-    });
-  }
-
-  function downloadItem(ev: MouseEvent, item: string) {
-    ev.stopPropagation();
-    (groups[item] || []).forEach((rid) => downloadRecipe(ev, rid));
-  }
-
-  function downloadRecipe(ev: MouseEvent, rid: string) {
-    ev.stopPropagation();
-    downloadUrl(imagePath(rid, fmt, versions, assets, scale), `${splitId(rid).id}.${fmt}`);
   }
 
   /**
@@ -214,16 +181,6 @@ export function App({ locale }: { locale: string }) {
 
     if (!blob) return window.alert(t.downloadZipEmpty);
     saveBlob(blob, `${ns === 'all' || ns === 'default' ? 'recipes' : ns}-${fmt}.zip`);
-  }
-
-  function changeFmt(next: string) {
-    setFmt(next);
-    writeStored(FMT_KEY, next);
-  }
-
-  function changeScale(next: number) {
-    setScale(next);
-    writeStored(SCALE_KEY, String(next));
   }
 
   return (
@@ -309,55 +266,6 @@ export function App({ locale }: { locale: string }) {
           </div>
         </div>
       </Container>
-    </>
-  );
-}
-
-/**
- * 保存済みの拡大率を読みます。選択肢に無い値は既定へ落とします
- * （保存値を素通しすると、選択肢を変えたときに選択の外れたセレクトが出ます）。
- */
-function storedScale(): number {
-  const saved = Number(readStored(SCALE_KEY));
-  return SCALE_CHOICES.includes(saved as never) ? saved : DEFAULT_SCALE;
-}
-
-/** アイテム一覧の中身。読み込み中・索引なし・0件をここで出し分けます。 */
-function ItemList(props: {
-  t: ReturnType<typeof searchMessagesFor>;
-  recipes: unknown[] | null;
-  items: string[];
-  filtered: string[];
-  pagedItems: string[];
-  names: Names;
-  selection: Selection | null;
-  copiedId: string | null;
-  failedId: string | null;
-  onPick: (item: string) => void;
-  onCopy: (ev: MouseEvent, item: string) => void;
-  onDownload: (ev: MouseEvent, item: string) => void;
-}) {
-  const { t } = props;
-  if (props.recipes === null) return <Loading />;
-  if (props.items.length === 0) return <EmptyMessage text={t.listUnavailable} />;
-  if (props.filtered.length === 0) return <EmptyMessage text={t.noResults} />;
-
-  return (
-    <>
-      {props.pagedItems.map((item) => (
-        <ItemRow
-          key={item}
-          t={t}
-          item={item}
-          name={props.names[item] || item}
-          selected={!!props.selection && props.selection.label === item}
-          copied={props.copiedId === item}
-          failed={props.failedId === item}
-          onSelect={() => props.onPick(item)}
-          onCopy={(ev) => props.onCopy(ev, item)}
-          onDownload={(ev) => props.onDownload(ev, item)}
-        />
-      ))}
     </>
   );
 }

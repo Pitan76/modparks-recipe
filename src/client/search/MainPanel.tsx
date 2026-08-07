@@ -9,7 +9,9 @@ import IconButton from '@mui/material/IconButton';
 import Pagination from '@mui/material/Pagination';
 import Typography from '@mui/material/Typography';
 import { imageUrl, type Assets, type Names, type Versions } from './api';
-import { copyTitle, EmptyState, ImageTile, SectionHead, type WithMessages } from './parts';
+import { copyTitle, SectionHead, type WithMessages } from './parts';
+import { ImageTile } from './result-parts';
+import { EmptyState } from './status-parts';
 
 /** 1ページあたりのレシピ画像の表示枚数。 */
 export const PAGE_SIZE = 48;
