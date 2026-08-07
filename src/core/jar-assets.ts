@@ -6,7 +6,7 @@
  */
 
 import { isSharedNamespace } from './namespaces';
-import { classifyAssetPath, type AssetKind } from './paths';
+import { assetKind, classifyAssetPath, emptyByKind, type AssetKind } from './paths';
 
 /** JSZip のうち、ここで必要な部分だけを写した型。 */
 export interface ZipLike {
@@ -48,12 +48,12 @@ export interface ExtractedJar {
 
 /** 空の集計値を作ります。 */
 function emptyCounts(): AssetCounts {
-  return { recipes: 0, tags: 0, textures: 0, models: 0, items: 0, langs: 0 };
+  return emptyByKind(() => 0);
 }
 
 /** 空のネームスペース枠を作ります。 */
 function emptyAssets(): NamespaceAssets {
-  return { recipes: {}, tags: {}, textures: {}, models: {}, items: {}, langs: {} };
+  return emptyByKind<Record<string, string>>(() => ({}));
 }
 
 /**
@@ -126,8 +126,8 @@ async function collectAssets(byNs: Record<string, NamespaceAssets>, zip: ZipLike
     if (!hit) continue;
 
     const bucket = (byNs[hit.namespace] ||= emptyAssets())[hit.kind];
-    // テクスチャだけはバイナリなので base64 に畳み、キーに拡張子を戻します。
-    if (hit.kind === 'textures') {
+    // バイナリの種別は base64 に畳み、キーに拡張子を戻します。
+    if (assetKind(hit.kind).binary) {
       bucket[`${hit.id}.png`] = bytesToBase64(new Uint8Array(await entry.async('arraybuffer')));
       continue;
     }

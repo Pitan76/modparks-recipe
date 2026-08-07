@@ -21,17 +21,9 @@ import { isCraftingType } from '../../core/recipe';
 import { generateRecipeSvg } from '../../utils/image-generator/svg';
 import { TRANSPARENT_PNG } from '../../utils/minecraft/texture';
 import type { ZipLike } from '../../core/jar-assets';
+import { assetKindByRoot, rootPrefix } from '../../core/paths';
 
-/** 論理パスから jar 内のパスを組み立てるための対応。 */
-const ROOTS: Record<string, (ns: string) => string> = {
-  textures: (ns) => `assets/${ns}/textures/`,
-  models: (ns) => `assets/${ns}/models/`,
-  items: (ns) => `assets/${ns}/items/`,
-  lang: (ns) => `assets/${ns}/lang/`,
-  recipe: (ns) => `data/${ns}/recipe/`,
-  recipes: (ns) => `data/${ns}/recipes/`,
-  tags: (ns) => `data/${ns}/tags/`,
-};
+
 
 /**
  * jar を優先して読み、無いものだけ配信側から引く読み出し口。
@@ -125,8 +117,9 @@ class LocalAssetReader implements AssetReader {
     const slash = logicalPath.indexOf('/');
     if (slash <= 0) return null;
 
-    const root = ROOTS[logicalPath.slice(0, slash)];
-    return root ? `${root(ns)}${logicalPath.slice(slash + 1)}` : null;
+    const root = logicalPath.slice(0, slash);
+    const spec = assetKindByRoot(root);
+    return spec ? `${rootPrefix(ns, root, spec)}${logicalPath.slice(slash + 1)}` : null;
   }
 }
 

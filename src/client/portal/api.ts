@@ -9,6 +9,7 @@
  */
 
 import type { ExtractedJar, ZipLike } from '../../core/jar-assets';
+import { ASSET_KINDS } from '../../core/paths';
 import type { Messages } from '../../utils/i18n/portal';
 
 /** ログイン中の利用者。 */
@@ -134,8 +135,9 @@ async function sendExtracted(extracted: ExtractedJar, token: string, t: Messages
     })
   );
 
+  // 種別を手で並べると、増えたときに数え落とします（`items` が実際に抜けていました）。
   const count = bodies.reduce(
-    (sum, b) => sum + (b.recipes || 0) + (b.textures || 0) + (b.models || 0) + (b.tags || 0) + (b.langs || 0),
+    (sum, b) => sum + ASSET_KINDS.reduce((n, spec) => n + (b[spec.kind] || 0), 0),
     0
   );
   return { count, namespaces: extracted.namespaces };

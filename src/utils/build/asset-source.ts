@@ -13,16 +13,7 @@ import { getBlob, blobKey } from './blob';
 import { readChannels } from './channels';
 import { resolveChannel } from './mc-version';
 import { foldBuild } from './manifest';
-
-/** 論理パスの接頭辞と、従来のフラットなキーの対応。 */
-const LEGACY_ROOTS: Record<string, (ns: string) => string> = {
-  textures: (ns) => `assets/${ns}/textures/`,
-  models: (ns) => `assets/${ns}/models/`,
-  items: (ns) => `assets/${ns}/items/`,
-  lang: (ns) => `assets/${ns}/lang/`,
-  recipe: (ns) => `data/${ns}/recipe/`,
-  tags: (ns) => `data/${ns}/tags/`,
-};
+import { assetKindByRoot, rootPrefix } from '../../core/paths';
 
 /**
  * あるMCチャネルの文脈でアセットを読み出します。
@@ -130,6 +121,7 @@ function legacyKey(ns: string, logicalPath: string): string {
   const root = slash < 0 ? logicalPath : logicalPath.slice(0, slash);
   const rest = slash < 0 ? '' : logicalPath.slice(slash + 1);
 
-  const prefix = LEGACY_ROOTS[root];
-  return prefix ? `${prefix(ns)}${rest}` : `assets/${ns}/${logicalPath}`;
+  const spec = assetKindByRoot(root);
+  // 従来のフラットな配置では、レシピだけが単数形の `recipe/` に落ちます。
+  return spec ? `${rootPrefix(ns, spec.root, spec)}${rest}` : `assets/${ns}/${logicalPath}`;
 }

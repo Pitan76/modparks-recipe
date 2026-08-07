@@ -18,6 +18,7 @@ import { recordUpload } from '../utils/audit';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
 import { consumeUploadQuota } from '../utils/auth/quota';
 import { isSharedNamespace } from '../core/namespaces';
+import { assetKind, type AssetKind } from '../core/paths';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
@@ -263,35 +264,29 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     textures++;
   });
 
-  await runPool(plainEntries(p.models), 20, async ([path, val]) => {
-    if (!isSafePath(path)) {
-      skipped++;
-      return;
-    }
-    const rel = path.replace(/\.json$/, '');
-    const json = typeof val === 'string' ? val : JSON.stringify(val);
-    await c.env.BUCKET.put(`assets/${namespace}/models/${rel}.json`, json, {
-      httpMetadata: { contentType: 'application/json' },
+  // JSON をそのまま論理パスへ落とすだけの種別。増えても書き方は変わらないので、種別表を回します。
+  // `items`（1.21.4+ のアイテム定義）は `models/item/<id>.json` を持たないアイテム（時計・
+  // コンパス・ベッド・頭部）にとって唯一の見た目の起点で、モデルとは別に保存する必要があります。
+  const jsonKinds: { kind: AssetKind; bump: () => void }[] = [
+    { kind: 'models', bump: () => models++ },
+    { kind: 'items', bump: () => itemDefs++ },
+  ];
+  for (const { kind, bump } of jsonKinds) {
+    const root = assetKind(kind).root;
+    await runPool(plainEntries(p[kind]), 20, async ([path, val]) => {
+      if (!isSafePath(path)) {
+        skipped++;
+        return;
+      }
+      const rel = `${root}/${path.replace(/\.json$/, '')}.json`;
+      const json = typeof val === 'string' ? val : JSON.stringify(val);
+      await c.env.BUCKET.put(`assets/${namespace}/${rel}`, json, {
+        httpMetadata: { contentType: 'application/json' },
+      });
+      if (collector) await collector.addText(rel, json);
+      bump();
     });
-    if (collector) await collector.addText(`models/${rel}.json`, json);
-    models++;
-  });
-
-  // アイテム定義（1.21.4+ の `items/`）。`models/item/<id>.json` を持たないアイテム（時計・
-  // コンパス・ベッド・頭部）はここが唯一の見た目の起点なので、モデルとは別に保存します。
-  await runPool(plainEntries(p.items), 20, async ([path, val]) => {
-    if (!isSafePath(path)) {
-      skipped++;
-      return;
-    }
-    const rel = path.replace(/\.json$/, '');
-    const json = typeof val === 'string' ? val : JSON.stringify(val);
-    await c.env.BUCKET.put(`assets/${namespace}/items/${rel}.json`, json, {
-      httpMetadata: { contentType: 'application/json' },
-    });
-    if (collector) await collector.addText(`items/${rel}.json`, json);
-    itemDefs++;
-  });
+  }
 
   for (const [locale, val] of plainEntries(p.langs)) {
     const body = typeof val === 'string' ? val : JSON.stringify(val);

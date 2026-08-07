@@ -14,11 +14,12 @@ import { isValidNamespace, isSafePath } from '../utils/asset-path';
 import { contentTypeForKey } from '../utils/http';
 import { runPool } from '../utils/pool';
 import { toChannel } from '../utils/build/mc-version';
+import { ASSET_KINDS } from '../core/paths';
 
 export const assetRoutes = new Hono<{ Bindings: Env }>();
 
 /** 読み出しを許す論理パスの接頭辞。レシピ描画に要るものだけを開けます。 */
-const ALLOWED_ROOTS = ['textures/', 'models/', 'items/', 'tags/', 'lang/'];
+const ALLOWED_ROOTS = ASSET_KINDS.filter((spec) => spec.publiclyReadable).map((spec) => `${spec.root}/`);
 
 // 論理パスで生アセットを返します。
 // 例: GET /api/minecraft/asset/textures/item/apple.png
