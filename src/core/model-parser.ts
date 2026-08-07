@@ -21,6 +21,7 @@ import {
     project,
     uvMatrix,
     type Vec2,
+    type Vec3,
 } from './math';
 
 interface SvgFace {
@@ -32,6 +33,8 @@ interface SvgFace {
     texH: number;
     brightness: number;
     centroidZ: number;
+    /** この面が属するボックスの重心深度。並べ替えの第1キーです。 */
+    elementZ: number;
 }
 
 /**
@@ -143,7 +146,11 @@ export async function renderModelToSvg(
 
     const faces = await collectFaces(model, getTextureBase64);
     if (faces.length === 0) return null;
-    faces.sort((a, b) => a.centroidZ - b.centroidZ);
+    // まずボックス単位、次に面単位で並べます。面の重心だけで比べると、大きな面と小さな突起を
+    // 1枚の平面として扱うことになり、手前に出ているはずの突起が大きな面に上塗りされます
+    // （チェストの留め金が蓋に隠れて消えていました）。ボックスは互いに交差しないので、
+    // 箱の前後関係を先に決めてしまうのが正しい順序です。
+    faces.sort((a, b) => a.elementZ - b.elementZ || a.centroidZ - b.centroidZ);
 
     return buildSvg(faces);
 }
@@ -182,6 +189,7 @@ async function collectFaces(
     const faces: SvgFace[] = [];
 
     for (const el of model.elements) {
+        const elementZ = elementDepth(el, gui);
         for (const [dir, face] of Object.entries(el.faces) as [string, any][]) {
             const corners = faceVertices(dir, el.from, el.to);
             if (!corners) continue;
@@ -204,11 +212,32 @@ async function collectFaces(
                 texH,
                 brightness: faceBrightness(dir),
                 centroidZ: centroidZ(pts),
+                elementZ,
             });
         }
     }
     return faces;
 }
+
+/**
+ * ボックス全体の重心深度を返します。面の前後を決める第1キーです。
+ *
+ * 面ではなくボックスで比べるのは、面の重心が「その面のどこが手前か」を表さないためです。
+ * 縦に長い面は重心が端に寄り、手前に飛び出した小さな箱に勝ってしまいます。
+ * @param el モデルのエレメント
+ * @param gui GUIトランスフォーム
+ */
+function elementDepth(el: any, gui: any): number {
+    const corners: Vec3[] = [];
+    for (const dir of BOX_DIRECTIONS) {
+        const face = faceVertices(dir, el.from, el.to);
+        if (face) corners.push(...applyGuiTransform(applyElementRotation(face, el.rotation), gui));
+    }
+    return corners.length > 0 ? centroidZ(corners) : 0;
+}
+
+/** ボックスの6面。全頂点を集めるために使います。 */
+const BOX_DIRECTIONS = ['up', 'down', 'north', 'south', 'east', 'west'];
 
 /**
  * 固定の基準（フルサイズ 16³ ブロックの投影サイズ）に基づいてフレーム位置を算出します。
