@@ -15,114 +15,17 @@
  * ブラウザにそのまま渡せば描画されます。
  */
 
-import type { AssetBody, AssetReader } from '../../core/asset-reader';
+import type { AssetReader } from '../../core/asset-reader';
+import type { ZipLike } from '../../core/jar-assets';
 import { RECIPE_PATH } from '../../core/paths';
 import { isCraftingType } from '../../core/recipe';
 import { generateRecipeSvg } from '../../utils/image-generator/svg';
 import { TRANSPARENT_PNG } from '../../utils/minecraft/texture';
-import type { ZipLike } from '../../core/jar-assets';
-import { assetKindByRoot, rootPrefix } from '../../core/paths';
+import { LocalAssetReader } from './local-asset-reader';
 
-
-
-/**
- * jar を優先して読み、無いものだけ配信側から引く読み出し口。
- */
-class LocalAssetReader implements AssetReader {
-  /** 手元の描画なので、永続キャッシュには関わりません。 */
-  readonly persistIcons = false;
-
-  /** jar に無く、外から取る必要があったもの。 */
-  readonly missing = new Set<string>();
-
-  /** 取得済みの中身。`ns:論理パス` を鍵にします。 */
-  private readonly fetched = new Map<string, ArrayBuffer>();
-
-  /** 取りに行った回数。描画側のメモを周回ごとに切り替えるために使います。 */
-  private round = 0;
-
-  /**
-   * @param zip 展開済みの jar
-   */
-  constructor(private readonly zip: ZipLike) {}
-
-  /**
-   * アセットを読み出します。
-   * @param ns ネームスペース
-   * @param logicalPath 論理パス（例: `textures/item/foo.png`）
-   */
-  async get(ns: string, logicalPath: string): Promise<AssetBody | null> {
-    const jarKey = this.jarKeyOf(ns, logicalPath);
-    const file = jarKey ? this.zip.files[jarKey] : null;
-    if (file && !file.dir) {
-      return { text: () => file.async('string'), arrayBuffer: () => file.async('arraybuffer') };
-    }
-    // 手元に無いものは記録だけして、この回は諦めます。まとめて取ってから描き直します。
-    const key = `${ns}:${logicalPath}`;
-    const body = this.fetched.get(key);
-    if (body) return { text: async () => new TextDecoder().decode(body), arrayBuffer: async () => body };
-
-    this.missing.add(key);
-    return null;
-  }
-
-  /**
-   * 記録した不足分の在り処をまとめて問い合わせ、R2 から直接取ります。
-   * @returns 取れた件数
-   */
-  async loadMissing(): Promise<number> {
-    const wanted = [...this.missing].filter((key) => !this.fetched.has(key));
-    if (wanted.length === 0) return 0;
-
-    const res = await fetch('/api/resolve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: wanted }),
-    }).catch(() => null);
-    if (!res || !res.ok) return 0;
-
-    const { base, keys } = (await res.json()) as { base: string; keys: Record<string, string | null> };
-    let loaded = 0;
-    await Promise.all(
-      wanted.map(async (key) => {
-        const objectKey = keys[key];
-        if (!objectKey || !base) return;
-        const body = await fetchBytes(`${base}/${objectKey.split('/').map(encodeURIComponent).join('/')}`);
-        if (!body) return;
-        this.fetched.set(key, body);
-        loaded++;
-      })
-    );
-    if (loaded > 0) this.round++;
-    return loaded;
-  }
-
-  /**
-   * この周回を表す世代を返します。
-   *
-   * 描画側は「見つからなかった」結果もメモします。素材を取り終えたあとに引き直させるため、
-   * 周回が進むたびに別の値を返します。
-   */
-  async buildOf(): Promise<string | null> {
-    return `local-${this.round}`;
-  }
-
-  /**
-   * 論理パスを jar 内のパスへ変換します。
-   * @param ns ネームスペース
-   * @param logicalPath 論理パス
-   * @returns 対応が無ければ null
-   */
-  private jarKeyOf(ns: string, logicalPath: string): string | null {
-    const slash = logicalPath.indexOf('/');
-    if (slash <= 0) return null;
-
-    const root = logicalPath.slice(0, slash);
-    const spec = assetKindByRoot(root);
-    return spec ? `${rootPrefix(ns, root, spec)}${logicalPath.slice(slash + 1)}` : null;
-  }
-}
-
+// 表示・書き出し向けの変換は `svg-image.ts` にあります。ここを経由して読ませているのは、
+// 呼び出し側が「手元で描く」入口としてこのファイルだけを見れば済むようにするためです。
+export { svgDataUrl, svgToPngDataUrl } from './svg-image';
 /**
  * 不足を集めて取りに行く回数の上限。
  *
@@ -257,70 +160,4 @@ async function collectRecipes(zip: ZipLike): Promise<{ id: string; data: any }[]
   }
 
   return found.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/**
- * ドット絵が滲まないよう、拡大時の補間を切る指定を差し込みます。
- *
- * SVG が持つのは `image-rendering="optimizeSpeed"` です。SVG 1.1 の値で、ブラウザによっては
- * 補間されます。サーバー側のラスタライザはこの値で正しく動くため書き換えず、ブラウザへ渡すときだけ
- * 現行の指定を上から足します。
- * @param svg SVG文字列
- */
-function pixelated(svg: string): string {
-  const close = svg.indexOf('>');
-  if (close < 0) return svg;
-  return `${svg.slice(0, close + 1)}<style>image{image-rendering:pixelated}</style>${svg.slice(close + 1)}`;
-}
-
-/**
- * SVG文字列をデータURLにします。
- * @param svg SVG文字列
- */
-export function svgDataUrl(svg: string): string {
-  svg = pixelated(svg);
-  // 日本語などの非ASCIIが混じっても壊れないように、UTF-8として符号化してから base64 にします。
-  const utf8 = new TextEncoder().encode(svg);
-  let binary = '';
-  for (const byte of utf8) binary += String.fromCharCode(byte);
-  return `data:image/svg+xml;base64,${btoa(binary)}`;
-}
-
-/**
- * SVGをPNGのデータURLに変換します。
- *
- * アイコンはすべてSVGの中にデータURLとして埋まっているため、外部参照が無く canvas が汚れません。
- * @param svg SVG文字列
- * @param scale 拡大率
- */
-export async function svgToPngDataUrl(svg: string, scale: number): Promise<string | null> {
-  const image = new Image();
-  image.src = svgDataUrl(svg);
-  await image.decode().catch(() => undefined);
-  if (!image.width) return null;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = image.width * scale;
-  canvas.height = image.height * scale;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  // ドット絵なので、拡大時に補間させません。
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/png');
-}
-
-/**
- * URLの中身をバイト列で読みます。
- * @param url 取得先
- * @returns 取れなければ null
- */
-async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
-  try {
-    const res = await fetch(url);
-    return res.ok ? await res.arrayBuffer() : null;
-  } catch {
-    return null;
-  }
 }

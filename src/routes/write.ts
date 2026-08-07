@@ -18,7 +18,7 @@ import { recordUpload } from '../utils/audit';
 import { isValidNamespace, isSafePath, isSafeAssetTarget } from '../utils/asset-path';
 import { consumeUploadQuota } from '../utils/auth/quota';
 import { isSharedNamespace } from '../core/namespaces';
-import { assetKind, type AssetKind } from '../core/paths';
+import { ingestBulk, totalOf } from '../utils/bulk-ingest';
 
 // ---- 書き込みAPI (認証付き) ----------------------------------------------
 // ModがバニラのJARパイプラインに依存せず、独自のレシピやテクスチャをプッシュできるようにします。
@@ -204,100 +204,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   // build を作るセッションでは、同じ内容を blob にも積む。commit で build マニフェストに畳まれる。
   const collector = meta?.build ? new PatchCollector(c.env) : null;
 
-  const indexEntries: { fullId: string; data: any }[] = [];
-  const staged: StagedEntry[] = [];
-  // 安全でないパスや型違いは書かずに数えるだけにします。1件のミスで残り全部を落とすと、
-  // 投入側は数百件を再送する羽目になります。
-  let recipes = 0, tags = 0, textures = 0, models = 0, itemDefs = 0, langs = 0, skipped = 0;
-
-  for (const [id, val] of plainEntries(p.recipes)) {
-    if (!isSafePath(id)) {
-      skipped++;
-      continue;
-    }
-    const body = typeof val === 'string' ? val : JSON.stringify(val);
-    let data: any;
-    try { data = JSON.parse(body); } catch { skipped++; continue; }
-    await putRecipeBody(c.env, namespace, id, body);
-    const fullId = `${namespace}:${id}`;
-    if (collector) {
-      await collector.addText(`recipe/${id}.json`, body);
-      collector.addRecipe(fullId, isCraftingType(data?.type) ? indexEntryOf(fullId, data) : null);
-    }
-    if (session) {
-      staged.push({ id: fullId, entry: isCraftingType(data?.type) ? indexEntryOf(fullId, data) : null });
-    } else {
-      indexEntries.push({ fullId, data });
-    }
-    recipes++;
-  }
-
-  if (session) await stageEntries(c.env, namespace, session, staged);
-  else await updateIndexMany(c.env, indexEntries);
-
-  // 共有ネームスペースでは1件ごとに既存を読んで統合するため、直列だと往復が積み上がります。
-  // テクスチャ・モデルと同じく同時実行で流します（保存先はタグごとに異なるため衝突しません）。
-  await runPool(plainEntries(p.tags), 20, async ([path, val]) => {
-    if (!isSafePath(path)) {
-      skipped++;
-      return;
-    }
-    const body = typeof val === 'string' ? val : JSON.stringify(val);
-    try { JSON.parse(body); } catch { skipped++; return; }
-    const id = path.replace(/\.json$/, '');
-    const stored = await putTagBody(c.env, namespace, id, body);
-    if (collector) await collector.addText(`tags/${id}.json`, stored);
-    tags++;
-  });
-
-  await runPool(plainEntries(p.textures), 20, async ([path, b64]) => {
-    if (!isSafePath(path) || typeof b64 !== 'string') {
-      skipped++;
-      return;
-    }
-    const key = `assets/${namespace}/textures/${path}`;
-    const bytes = decodeBase64(b64);
-    await c.env.BUCKET.put(key, bytes, {
-      httpMetadata: { contentType: contentTypeForKey(key) },
-    });
-    if (collector) await collector.addBinary(`textures/${path}`, bytes, contentTypeForKey(key));
-    textures++;
-  });
-
-  // JSON をそのまま論理パスへ落とすだけの種別。増えても書き方は変わらないので、種別表を回します。
-  // `items`（1.21.4+ のアイテム定義）は `models/item/<id>.json` を持たないアイテム（時計・
-  // コンパス・ベッド・頭部）にとって唯一の見た目の起点で、モデルとは別に保存する必要があります。
-  const jsonKinds: { kind: AssetKind; bump: () => void }[] = [
-    { kind: 'models', bump: () => models++ },
-    { kind: 'items', bump: () => itemDefs++ },
-  ];
-  for (const { kind, bump } of jsonKinds) {
-    const root = assetKind(kind).root;
-    await runPool(plainEntries(p[kind]), 20, async ([path, val]) => {
-      if (!isSafePath(path)) {
-        skipped++;
-        return;
-      }
-      const rel = `${root}/${path.replace(/\.json$/, '')}.json`;
-      const json = typeof val === 'string' ? val : JSON.stringify(val);
-      await c.env.BUCKET.put(`assets/${namespace}/${rel}`, json, {
-        httpMetadata: { contentType: 'application/json' },
-      });
-      if (collector) await collector.addText(rel, json);
-      bump();
-    });
-  }
-
-  for (const [locale, val] of plainEntries(p.langs)) {
-    const body = typeof val === 'string' ? val : JSON.stringify(val);
-    if (!isValidLocale(locale) || !isValidLangBody(body)) {
-      skipped++;
-      continue;
-    }
-    await putLang(c.env, namespace, locale, body);
-    if (collector) await collector.addText(`lang/${locale}.json`, body);
-    langs++;
-  }
+  const counts = await ingestBulk({ env: c.env, namespace, session: session ?? null, collector }, p);
 
   if (collector && !collector.isEmpty) await stagePatch(c.env, namespace, session!, collector.toPatch());
 
@@ -306,7 +213,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   // 誰が入れたかを残す。所有権は移りうるので、投入時点の主体を別に持っておく必要がある。
   await recordUpload(c.env, {
     identityId: grant.identityId, ns: namespace, source: 'bulk',
-    items: recipes + tags + textures + models + itemDefs + langs,
+    items: totalOf(counts),
   });
-  return c.json({ ok: true, namespace, recipes, tags, textures, models, items: itemDefs, langs, skipped, session: session ?? null });
+  return c.json({ ok: true, namespace, ...counts, session: session ?? null });
 });
