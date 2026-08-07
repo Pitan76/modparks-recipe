@@ -26,11 +26,19 @@ export const TEXTURE_PATH = /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.p
 /** assets/<ns>/models/(item|block)/<id>.json */
 export const MODEL_PATH = /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/;
 
+/**
+ * assets/<ns>/items/<id>.json。1.21.4 以降のアイテムモデル定義。
+ *
+ * ここが見た目の起点で、`models/item/<id>.json` を持たないアイテム（時計・コンパス・ベッド・頭部）が
+ * あるため、モデルとは別に取り込む必要があります。
+ */
+export const ITEM_DEF_PATH = /^assets\/([^/]+)\/items\/(.+)\.json$/;
+
 /** assets/<ns>/lang/<locale>.json */
 export const LANG_PATH = /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/;
 
 /** 抽出対象の種別。bulk 投入APIのボディのキーと一致させています。 */
-export type AssetKind = 'recipes' | 'tags' | 'textures' | 'models' | 'langs';
+export type AssetKind = 'recipes' | 'tags' | 'textures' | 'models' | 'items' | 'langs';
 
 /** パスを種別・ネームスペース・種別内IDに分解した結果。 */
 export interface ClassifiedAsset {
@@ -46,6 +54,7 @@ const RULES: readonly [AssetKind, RegExp][] = [
   ['tags', TAG_PATH],
   ['textures', TEXTURE_PATH],
   ['models', MODEL_PATH],
+  ['items', ITEM_DEF_PATH],
   ['langs', LANG_PATH],
 ];
 

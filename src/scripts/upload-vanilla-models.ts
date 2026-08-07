@@ -1,8 +1,11 @@
 /**
- * @fileoverview バニラのモデルJSON（assets/minecraft/models/**.json）を R2 にアップロードするスクリプト。
+ * @fileoverview バニラのモデルJSON（assets/minecraft/models/**.json）とアイテム定義（assets/minecraft/items/**.json）を
+ * R2 にアップロードするスクリプト。
  *
  * Modのブロックモデルはバニラの親モデルを継承するため（"parent": "minecraft:block/cube" など）、
  * これらがないと Worker はModブロックのジオメトリを解決できず、平面的な2Dテクスチャにフォールバックしてしまいます。
+ * アイテム定義は 1.21.4 以降の見た目の起点で、`models/item/<id>.json` を持たないアイテム（時計・コンパス・
+ * ベッド・頭部）はこれが無いと何も描けず空きスロットになります。
  * 認証付きの一括書き込み API を介してアップロードするため、アップロード用シークレットのみが必要で、R2 S3 の認証情報は不要です。
  *
  * 使用例:
@@ -23,6 +26,8 @@ dotenv.config();
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
 const JAR_PATH = path.join(process.cwd(), 'client.jar');
 const MODEL_RE = /^assets\/minecraft\/models\/(.+)\.json$/;
+/** 1.21.4 以降のアイテムモデル定義。`models/item/<id>.json` を持たないアイテムはここだけが見た目の起点。 */
+const ITEM_RE = /^assets\/minecraft\/items\/(.+)\.json$/;
 const BATCH_SIZE = 150;
 
 const BASE_URL = (process.argv[2] || 'http://localhost:8799').replace(/\/$/, '');
@@ -52,36 +57,64 @@ async function ensureJar(): Promise<void> {
   });
 }
 
+/** 抽出結果。bulk API のボディのキーと一致させています。 */
+type VanillaAssets = { models: Record<string, string>; items: Record<string, string> };
+
 /**
- * `models/` 配下のパス（例: "block/cube"）をキーとして、すべてのバニラモデルを抽出します。
+ * `models/` 配下のパス（例: "block/cube"）と `items/` 配下のパスをキーに、バニラ定義を抽出します。
  */
-async function readModels(): Promise<Record<string, string>> {
-  const models: Record<string, string> = {};
+async function readAssets(): Promise<VanillaAssets> {
+  const out: VanillaAssets = { models: {}, items: {} };
   const zip = fs.createReadStream(JAR_PATH).pipe(unzipper.Parse({ forceStream: true }));
   for await (const entry of zip) {
-    const m = MODEL_RE.exec(entry.path);
-    if (!m) {
+    const model = MODEL_RE.exec(entry.path);
+    const item = model ? null : ITEM_RE.exec(entry.path);
+    if (!model && !item) {
       entry.autodrain();
       continue;
     }
-    models[m[1]] = (await entry.buffer()).toString('utf-8');
+    const body = (await entry.buffer()).toString('utf-8');
+    if (model) out.models[model[1]] = body;
+    else out.items[item![1]] = body;
   }
-  return models;
+  return out;
 }
 
 /**
- * 指定されたモデルバッチを一括API経由でアップロードします。
- * @param batch モデル名とモデルJSON文字列のマップ
- * @returns アップロード成功したモデル数
+ * 指定されたバッチを一括API経由でアップロードします。
+ * @param kind bulk API のボディのキー（`models` または `items`）
+ * @param batch パスとJSON文字列のマップ
+ * @returns アップロード成功した件数
  */
-async function uploadBatch(batch: Record<string, string>): Promise<number> {
+async function uploadBatch(kind: keyof VanillaAssets, batch: Record<string, string>): Promise<number> {
   const res = await fetch(`${BASE_URL}/api/minecraft/bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` },
-    body: JSON.stringify({ models: batch }),
+    body: JSON.stringify({ [kind]: batch }),
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  return ((await res.json()) as any).models ?? 0;
+  return ((await res.json()) as any)[kind] ?? 0;
+}
+
+/**
+ * 1種別をバッチに割ってアップロードします。
+ * @param kind bulk API のボディのキー
+ * @param entries パスとJSON文字列のマップ
+ */
+async function uploadKind(kind: keyof VanillaAssets, entries: Record<string, string>): Promise<void> {
+  const paths = Object.keys(entries).sort();
+  // 1.21.3 以前の client.jar には `items/` が無く、0件のまま送ると空の bulk でバージョンだけが上がります。
+  if (paths.length === 0) return console.log(`No ${kind} in this client.jar. Skipping.`);
+
+  console.log(`Uploading ${paths.length} ${kind} to ${BASE_URL} ...`);
+
+  let uploaded = 0;
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    const batch: Record<string, string> = {};
+    for (const p of paths.slice(i, i + BATCH_SIZE)) batch[p] = entries[p];
+    uploaded += await uploadBatch(kind, batch);
+    console.log(`  ${kind} ${uploaded}/${paths.length}`);
+  }
 }
 
 async function main() {
@@ -91,20 +124,13 @@ async function main() {
   }
 
   await ensureJar();
-  console.log('Extracting vanilla models from client.jar...');
-  const models = await readModels();
-  const paths = Object.keys(models).sort();
-  console.log(`Found ${paths.length} models. Uploading to ${BASE_URL} ...`);
+  console.log('Extracting vanilla models and item definitions from client.jar...');
+  const assets = await readAssets();
 
-  let uploaded = 0;
-  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-    const batch: Record<string, string> = {};
-    for (const p of paths.slice(i, i + BATCH_SIZE)) batch[p] = models[p];
-    uploaded += await uploadBatch(batch);
-    console.log(`  ${uploaded}/${paths.length}`);
-  }
+  await uploadKind('models', assets.models);
+  await uploadKind('items', assets.items);
 
-  console.log(`Done. Uploaded ${uploaded} vanilla model JSONs.`);
+  console.log('Done.');
 }
 
 main().catch((e) => {

@@ -56,6 +56,7 @@
 		["tags", TAG_PATH],
 		["textures", /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png$/],
 		["models", /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/],
+		["items", /^assets\/([^/]+)\/items\/(.+)\.json$/],
 		["langs", /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/]
 	];
 	/**
@@ -101,6 +102,7 @@
 			tags: 0,
 			textures: 0,
 			models: 0,
+			items: 0,
 			langs: 0
 		};
 	}
@@ -111,6 +113,7 @@
 			tags: {},
 			textures: {},
 			models: {},
+			items: {},
 			langs: {}
 		};
 	}

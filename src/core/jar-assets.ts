@@ -48,12 +48,12 @@ export interface ExtractedJar {
 
 /** 空の集計値を作ります。 */
 function emptyCounts(): AssetCounts {
-  return { recipes: 0, tags: 0, textures: 0, models: 0, langs: 0 };
+  return { recipes: 0, tags: 0, textures: 0, models: 0, items: 0, langs: 0 };
 }
 
 /** 空のネームスペース枠を作ります。 */
 function emptyAssets(): NamespaceAssets {
-  return { recipes: {}, tags: {}, textures: {}, models: {}, langs: {} };
+  return { recipes: {}, tags: {}, textures: {}, models: {}, items: {}, langs: {} };
 }
 
 /**

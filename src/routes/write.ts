@@ -207,7 +207,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   const staged: StagedEntry[] = [];
   // 安全でないパスや型違いは書かずに数えるだけにします。1件のミスで残り全部を落とすと、
   // 投入側は数百件を再送する羽目になります。
-  let recipes = 0, tags = 0, textures = 0, models = 0, langs = 0, skipped = 0;
+  let recipes = 0, tags = 0, textures = 0, models = 0, itemDefs = 0, langs = 0, skipped = 0;
 
   for (const [id, val] of plainEntries(p.recipes)) {
     if (!isSafePath(id)) {
@@ -277,6 +277,22 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
     models++;
   });
 
+  // アイテム定義（1.21.4+ の `items/`）。`models/item/<id>.json` を持たないアイテム（時計・
+  // コンパス・ベッド・頭部）はここが唯一の見た目の起点なので、モデルとは別に保存します。
+  await runPool(plainEntries(p.items), 20, async ([path, val]) => {
+    if (!isSafePath(path)) {
+      skipped++;
+      return;
+    }
+    const rel = path.replace(/\.json$/, '');
+    const json = typeof val === 'string' ? val : JSON.stringify(val);
+    await c.env.BUCKET.put(`assets/${namespace}/items/${rel}.json`, json, {
+      httpMetadata: { contentType: 'application/json' },
+    });
+    if (collector) await collector.addText(`items/${rel}.json`, json);
+    itemDefs++;
+  });
+
   for (const [locale, val] of plainEntries(p.langs)) {
     const body = typeof val === 'string' ? val : JSON.stringify(val);
     if (!isValidLocale(locale) || !isValidLangBody(body)) {
@@ -295,7 +311,7 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   // 誰が入れたかを残す。所有権は移りうるので、投入時点の主体を別に持っておく必要がある。
   await recordUpload(c.env, {
     identityId: grant.identityId, ns: namespace, source: 'bulk',
-    items: recipes + tags + textures + models + langs,
+    items: recipes + tags + textures + models + itemDefs + langs,
   });
-  return c.json({ ok: true, namespace, recipes, tags, textures, models, langs, skipped, session: session ?? null });
+  return c.json({ ok: true, namespace, recipes, tags, textures, models, items: itemDefs, langs, skipped, session: session ?? null });
 });
