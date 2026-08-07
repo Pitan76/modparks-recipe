@@ -10,8 +10,15 @@
 
 import { boxFaces, withTexture } from './entity-box';
 
-/** 頭部の一辺（ピクセル）。 */
-const HEAD_SIZE = 8;
+/**
+ * 頭部の一辺（ピクセル）。
+ *
+ * ゲーム中の頭は半ブロックですが、アイコンはフルサイズのブロックを基準にした固定フレームで
+ * 描かれます（`model-parser.ts` の `viewBox`）。半ブロックのまま作ると他のブロックの半分の
+ * 大きさになってしまうため、フレームいっぱいに描きます。UVは全面に引き伸ばすだけなので、
+ * 見た目の比率は変わりません。
+ */
+const HEAD_SIZE = 16;
 
 /**
  * 頭部アイテムから、絵のあるエンティティテクスチャへの対応表。
@@ -35,12 +42,13 @@ export const SKULL_TEXTURES: Record<string, string> = {
  * @param texture エンティティテクスチャのパス
  */
 export function skullModel(texture: string): any {
-  const box = boxFaces(0, 0, HEAD_SIZE, HEAD_SIZE, HEAD_SIZE);
+  // UVはテクスチャ上の頭の領域（8x8x8）を指すため、箱の大きさとは別に固定です。
+  const box = boxFaces(0, 0, 8, 8, 8);
   // 頭は箱そのものが上下反転して定義されるチェストと違い、そのままの向きで置かれます。
   // 入れ替えないと頭頂に底面（首の穴）が来て、穴が開いて見えます。
   const faces = withTexture({ ...box, up: box.down, down: box.up }, '#skin');
   return {
     textures: { skin: texture },
-    elements: [{ from: [4, 0, 4], to: [12, HEAD_SIZE, 12], faces }],
+    elements: [{ from: [0, 0, 0], to: [HEAD_SIZE, HEAD_SIZE, HEAD_SIZE], faces }],
   };
 }
