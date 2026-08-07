@@ -43,9 +43,23 @@ function fromModelNode(node: any): ItemVisual | null {
   if (type === 'special') return fromSpecial(node);
   // 条件つきの差し替えは既定を採ります。`select` は日付や持ち方で切り替わるためです。
   if (type === 'select' || type === 'condition' || type === 'range_dispatch') {
-    return fromModelNode(node.fallback ?? node.on_false);
+    return fromModelNode(node.fallback ?? node.on_false) ?? fromLowestEntry(node);
   }
   return null;
+}
+
+/**
+ * `range_dispatch` の既定が無い場合に、しきい値が最小の候補を採ります。
+ *
+ * 時計やコンパスは `fallback` を持たず `entries` だけで表され、しきい値0の姿が標準の見た目です。
+ * @param node `range_dispatch` ノード
+ */
+function fromLowestEntry(node: any): ItemVisual | null {
+  if (!Array.isArray(node.entries) || node.entries.length === 0) return null;
+
+  const lowest = node.entries.reduce((a: any, b: any) =>
+    (Number(b?.threshold) || 0) < (Number(a?.threshold) || 0) ? b : a);
+  return fromModelNode(lowest?.model);
 }
 
 /**
