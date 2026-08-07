@@ -23,6 +23,9 @@ export function chestModel(variant: string): any {
             { from: [1, 0, 1], to: [15, 10, 15], faces: withTexture(boxFaces(0, 19, 14, 10, 14), '#chest') },
             // 蓋部ボックス: 14w x 5h x 14d （上部乗せ）, アトラスオフセット (0,0)
             { from: [1, 10, 1], to: [15, 15, 15], faces: withTexture(boxFaces(0, 0, 14, 5, 14), '#chest') },
+            // 留め金: 2w x 4h x 1d, アトラスオフセット (0,0)。蓋と本体の境目に前面へ突き出します。
+            // これが無いと、正面の錠前が抜けた見た目になります。
+            { from: [7, 8, 0], to: [9, 12, 1], faces: withTexture(boxFaces(0, 0, 2, 4, 1), '#chest') },
         ],
     };
 }
