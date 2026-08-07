@@ -131,17 +131,28 @@ export function toBuildPatch(staged: StagedPatch, parent: FoldedBuild | null, fu
   if (!full || !parent) return patch;
 
   // 空の取り込みからは何も読み取れません。種別ごとに独立して判断します（レシピだけ落ちて
-  // アセットは揃っている、という今回のような偏った失敗があるためです）。
+  // アセットは揃っている、という偏った失敗が実際に起きるためです）。
+  const keepRecipes = staged.recipes.length === 0;
+
   if (Object.keys(staged.files).length > 0) {
-    patch.removedFiles = Object.keys(parent.files).filter((p) => !(p in staged.files));
+    // レシピを残すと決めたなら、その本体も残さなければなりません。索引にだけ残って中身が消えると、
+    // 一覧には出るのに開けない、という最悪の壊れ方をします（実際にそうなりました）。
+    patch.removedFiles = Object.keys(parent.files).filter(
+      (p) => !(p in staged.files) && !(keepRecipes && isRecipeFile(p))
+    );
   }
-  if (staged.recipes.length === 0) return patch;
+  if (keepRecipes) return patch;
 
   const present = new Set(staged.recipes.map((r) => r.id));
   for (const entry of parent.recipes) {
     if (!present.has(entry.id)) removedRecipes.push(entry.id);
   }
   return patch;
+}
+
+/** レシピ本体のファイルかどうか。論理パスの根で判断します。 */
+function isRecipeFile(logicalPath: string): boolean {
+  return logicalPath.startsWith('recipe/');
 }
 
 /**

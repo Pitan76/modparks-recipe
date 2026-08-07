@@ -70,10 +70,14 @@ export async function getRecipe(id: string, env: Env | null, src: AssetReader = 
   if (data.result && data.result.id) resultItem = data.result.id;
   else if (data.result && typeof data.result === 'string') resultItem = data.result;
 
-  // バックグラウンドで非同期にキャッシュ保存を実行
-  env?.DB.prepare('INSERT OR REPLACE INTO recipes (id, result_item, data) VALUES (?, ?, ?)')
-    .bind(cacheId, resultItem, dataStr)
-    .run().catch(console.error);
+  // Workersのインスタンスが処理完了後に凍結（Freeze）されて非同期のD1書き込みが途切れたり、
+  // 次のリクエスト時に競合エラーを引き起こしたりするのを防ぐため、完了を同期的に待ちます。
+  if (env) {
+    await env.DB.prepare('INSERT OR REPLACE INTO recipes (id, result_item, data) VALUES (?, ?, ?)')
+      .bind(cacheId, resultItem, dataStr)
+      .run()
+      .catch(console.error);
+  }
 
   return data;
 }
@@ -106,9 +110,14 @@ export async function getTag(id: string, env: Env | null, src: AssetReader = leg
   const data = parseStored(dataStr);
   if (!data) return [];
 
-  env?.DB.prepare('INSERT OR REPLACE INTO tags (id, data) VALUES (?, ?)')
-    .bind(cacheId, dataStr)
-    .run().catch(console.error);
+  // Workersのインスタンスが処理完了後に凍結（Freeze）されて非同期のD1書き込みが途切れたり、
+  // 次のリクエスト時に競合エラーを引き起こしたりするのを防ぐため、完了を同期的に待ちます。
+  if (env) {
+    await env.DB.prepare('INSERT OR REPLACE INTO tags (id, data) VALUES (?, ?)')
+      .bind(cacheId, dataStr)
+      .run()
+      .catch(console.error);
+  }
 
   return data.values || [];
 }
