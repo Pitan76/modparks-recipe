@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "npm run build:client && wrangler dev src/index.ts",
     "dev:remote": "npm run build:client && wrangler dev --remote src/index.ts",
-    "deploy": "npm run gen:render-version && npm run build:client && npm run check:bundles && npm run check:render-version && wrangler deploy --minify src/index.ts",
+    "deploy": "npm run gen:render-version && npm run build:client && npm run check:bundles && npm run check:render-version && npm run check:icons && wrangler deploy --minify src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
     "fetch-common-tags": "tsx src/scripts/fetch-common-tags.ts",
@@ -16,7 +16,9 @@
     "build:client": "vite build --config vite.client.config.ts && vite build --config vite.extractor.config.ts",
     "check:bundles": "node scripts/check-bundles.mjs",
     "gen:render-version": "node scripts/gen-render-version.mjs",
-    "check:render-version": "node scripts/gen-render-version.mjs --check"
+    "check:render-version": "node scripts/gen-render-version.mjs --check",
+    "gen:icon-baseline": "tsx src/scripts/check-icons.ts --update",
+    "check:icons": "tsx src/scripts/check-icons.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",

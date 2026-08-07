@@ -7,33 +7,33 @@
  * 記録が減った（＝直った）ときも失敗させます。直したのに記録が古いままだと、その項目が再び
  * 壊れても「元から空だった」と見なされ、二度と気づけなくなるためです。
  *
- * 記録には「何を前提に確かめたか」も残します。アイコンの絵はレンダリング系ソースと素材でしか
- * 決まらないため、どちらも変わっていなければ結果は変わりようがなく、検証を丸ごと省けます。
- * デプロイのたびに5秒払わずに済ませつつ、描画を触ったときは必ず確かめられる形にするためです。
+ * 保存先を2つに分けています。片方は「まだ描けないもの」という主張で、人が読んで意味があり、
+ * 増減がそのままレビュー対象になるため追跡します。もう片方は「何を前提に確かめ終えたか」という
+ * 手元の事情で、client.jar のハッシュを含むため人によって値が違い、共有する意味がありません。
+ * 1つのファイルに混ぜると、デプロイのたびに追跡ファイルが書き換わって差分が濁ります。
  */
 
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 
-/** 記録の置き場。生成物として作業ツリーに残します。 */
+/** 描けないアイテムの記録。主張なので追跡します。 */
 export const BASELINE_PATH = path.join('src', 'generated', 'icon-baseline.json');
+
+/** 検証済みの印。手元の事情なので追跡しません。 */
+const VERIFIED_PATH = path.join('node_modules', '.cache', 'icon-check.json');
 
 /** 素材の指紋として載せる長さ。 */
 const FINGERPRINT_LENGTH = 16;
 
-/** ネームスペース1つ分の記録。 */
-export interface NamespaceBaseline {
-  /** 確かめたときのレンダラー版。 */
-  renderVersion: string;
-  /** 確かめたときの素材の指紋。 */
-  assetFingerprint: string;
-  /** 描けないと分かっているアイテムID。 */
-  empty: string[];
-}
+/** ネームスペースごとの、描けないと分かっているアイテムID。 */
+export type Baseline = Record<string, string[]>;
 
-/** ネームスペースごとの記録。 */
-export type Baseline = Record<string, NamespaceBaseline>;
+/** 何を前提に確かめ終えたか。 */
+interface Verified {
+  renderVersion: string;
+  assetFingerprint: string;
+}
 
 /** 記録と現状の差。 */
 export interface BaselineDiff {
@@ -44,27 +44,50 @@ export interface BaselineDiff {
 }
 
 /**
+ * JSONを読みます。
+ * @param file 読み出し先
+ * @returns 無ければ、または壊れていれば空
+ */
+function readJson<T>(file: string): T | null {
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * JSONを書きます。
+ * @param file 書き出し先
+ * @param value 中身
+ */
+function writeJson(file: string, value: unknown): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+/**
  * 記録を読みます。
  * @returns まだ無ければ空
  */
 export function readBaseline(): Baseline {
-  if (!fs.existsSync(BASELINE_PATH)) return {};
-
-  const parsed = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
-  return parsed && typeof parsed === 'object' ? (parsed as Baseline) : {};
+  return readJson<Baseline>(BASELINE_PATH) ?? {};
 }
 
 /**
  * 記録を書き換えます。
  * @param ns ネームスペース
- * @param entry このネームスペースの記録
+ * @param empty 描けないアイテムID
  */
-export function writeBaseline(ns: string, entry: NamespaceBaseline): void {
-  const next: Baseline = { ...readBaseline(), [ns]: { ...entry, empty: [...entry.empty].sort() } };
-  const ordered = Object.fromEntries(Object.keys(next).sort().map((key) => [key, next[key]]));
+export function writeBaseline(ns: string, empty: string[]): void {
+  const next: Baseline = { ...readBaseline() };
+  // 空になるものが無くなったネームスペースは行ごと消します。空配列を残すと、
+  // 「未確認」と「確認済みで0件」の区別が付きません。
+  if (empty.length === 0) delete next[ns];
+  else next[ns] = [...empty].sort();
 
-  fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
-  fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(ordered, null, 2)}\n`, 'utf8');
+  writeJson(BASELINE_PATH, Object.fromEntries(Object.keys(next).sort().map((key) => [key, next[key]])));
 }
 
 /**
@@ -73,7 +96,7 @@ export function writeBaseline(ns: string, entry: NamespaceBaseline): void {
  * @param empty 現状の空アイテムID
  */
 export function diffBaseline(ns: string, empty: string[]): BaselineDiff {
-  const known = new Set(readBaseline()[ns]?.empty ?? []);
+  const known = new Set(readBaseline()[ns] ?? []);
   const now = new Set(empty);
 
   return {
@@ -88,10 +111,21 @@ export function diffBaseline(ns: string, empty: string[]): BaselineDiff {
  * @param renderVersion 現在のレンダラー版
  * @param assetFingerprint 現在の素材の指紋
  */
-export function isUpToDate(ns: string, renderVersion: string, assetFingerprint: string): boolean {
-  const known = readBaseline()[ns];
+export function isVerified(ns: string, renderVersion: string, assetFingerprint: string): boolean {
+  const known = readJson<Record<string, Verified>>(VERIFIED_PATH)?.[ns];
   if (!known) return false;
   return known.renderVersion === renderVersion && known.assetFingerprint === assetFingerprint;
+}
+
+/**
+ * 確かめ終えた前提を残します。
+ * @param ns ネームスペース
+ * @param renderVersion 現在のレンダラー版
+ * @param assetFingerprint 現在の素材の指紋
+ */
+export function markVerified(ns: string, renderVersion: string, assetFingerprint: string): void {
+  const all = readJson<Record<string, Verified>>(VERIFIED_PATH) ?? {};
+  writeJson(VERIFIED_PATH, { ...all, [ns]: { renderVersion, assetFingerprint } });
 }
 
 /**
