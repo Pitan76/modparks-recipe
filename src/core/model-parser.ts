@@ -70,12 +70,19 @@ export async function loadModel(
     const parent = await loadModel(parentId, getModelJson);
     if (!parent) return model;
 
-    return {
+    const merged = {
         ...parent, ...model,
         textures: { ...(parent.textures || {}), ...(model.textures || {}) },
         elements: model.elements || parent.elements,
         display: { ...(parent.display || {}), ...(model.display || {}) },
     };
+
+    // 平面アイテムかどうかは `parent` を1段見るだけで判定されます。チェーンの途中に中継モデル
+    // （音楽ディスクの `template_music_disc` など）が挟まると、その1段が中継の名前になり、
+    // 平面アイテムだと分からなくなって何も描かれません。祖先が平面なら名前を引き継ぎます。
+    // 親は再帰済みなので、何段挟まっても先頭まで伝わります。
+    if (!merged.elements && FLAT_ITEM_PARENTS.has(parent.parent)) merged.parent = parent.parent;
+    return merged;
 }
 
 /**
@@ -91,12 +98,26 @@ export function resolveTexture(texName: string, textures: any): string | null {
     while (textures && textures[current]) {
         if (visited.has(current)) break;
         visited.add(current);
-        const next = textures[current];
-        if (typeof next !== 'string') return null;
+        const next = spriteOf(textures[current]);
+        if (next === null) return null;
         if (!next.startsWith('#')) return next;
         current = next.substring(1);
     }
     if (current && !current.startsWith('#') && visited.size === 0) return current;
+    return null;
+}
+
+/**
+ * テクスチャ定義の値からスプライト名を取り出します。
+ *
+ * 値は素の文字列のほか、`{ "sprite": "...", "force_translucent": true }` という形も取ります
+ * （ガラスや色付きガラスなど）。描き分けに使う旗は読まず、どのスプライトを指すかだけを見ます。
+ * @param value テクスチャ定義の値
+ * @returns 取り出せなければ null
+ */
+function spriteOf(value: any): string | null {
+    if (typeof value === 'string') return value;
+    if (value && typeof value.sprite === 'string') return value.sprite;
     return null;
 }
 

@@ -21,6 +21,9 @@ const JAR_PATH = path.join(process.cwd(), 'client.jar');
 /** 同時に描く本数。サーバ経由では1件ごとに複数回の資産取得が走るため、控えめにします。 */
 const CONCURRENCY = 16;
 
+/** 空で正しいもの。空気には見た目がありません。 */
+const EXPECTED_EMPTY = new Set(['air']);
+
 /**
  * 引数から読み出し口を選びます。
  * @param baseUrl 指定されていればサーバ経由、無ければ手元の jar
@@ -58,8 +61,10 @@ async function main() {
   const ns = process.argv[3] || 'minecraft';
 
   const src = await sourceFor(baseUrl);
-  const ids = await src.itemIds(ns);
-  if (ids.length === 0) throw new Error(`No items found for namespace "${ns}".`);
+  const all = await src.itemIds(ns);
+  if (all.length === 0) throw new Error(`No items found for namespace "${ns}".`);
+
+  const ids = all.filter((id) => !EXPECTED_EMPTY.has(id));
 
   console.log(`Checking ${ids.length} icons for "${ns}" via ${baseUrl ?? JAR_PATH} ...`);
   const empty = await findEmpty(ids, src, ns);
