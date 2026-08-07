@@ -12,7 +12,7 @@
 import type { Env } from './minecraft';
 
 /** 手動管理のレンダラー版。レンダリング出力が変わる変更のたびに上げる。 */
-const RENDERER_VERSION_FALLBACK = 'r3';
+const RENDERER_VERSION_FALLBACK = 'r4';
 
 /**
  * 実効レンダラー版を返します。
