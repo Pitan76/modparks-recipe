@@ -67,9 +67,11 @@ function computeVersion() {
 
   const hash = createHash('sha256');
   // ファイル名も混ぜます。中身を別ファイルへ移しただけの変更でも版が動くようにするためです。
+  // 改行は揃えてから畳みます。生バイトのままだと、チェックアウトの仕方（Windows での CRLF 変換）
+  // だけで版が変わり、OS の違う環境からデプロイするたびに全画像が無駄に作り直されます。
   for (const file of files) {
     hash.update(file.replace(/\\/g, '/'));
-    hash.update(readFileSync(file));
+    hash.update(readFileSync(file, 'utf8').replace(/\r\n/g, '\n'));
   }
   return `${PREFIX}${hash.digest('hex').slice(0, FINGERPRINT_LENGTH)}`;
 }
