@@ -27,6 +27,22 @@ Minecraftのレシピ画像をjarのdata, assetsから動的に生成、配信�
 | `GET` | `/api/:namespace/lang.json` | 登録済みロケールの一覧を返します。 |
 | `GET` | `/api/:namespace/lang/:locale.json` | 言語ファイル（翻訳キー→表示名）を返します。 |
 | `GET` | `/api/names` | アイテムIDをまとめて表示名に解決します。 |
+| `GET` | `/api/names.json` | 表示名の静的索引を返します。 |
+| `GET` | `/api/:namespace/batch` | 複数レシピの画像を1回でまとめて返します（データURL）。 |
+| `POST` | `/api/:namespace/batch` | 同上（IDが多くURLに載らない場合）。 |
+| `GET` | `/api/:namespace/sprite` | 複数レシピを1枚のスプライトシートにして返します。 |
+| `GET` | `/api/:namespace/asset/:path` | 生アセット（テクスチャ/モデル/タグ/言語）を返します。読み取り専用。 |
+| `POST` | `/api/resolve` | 論理パスの一覧を渡し、R2上の在り処をまとめて返します。 |
+| `POST` | `/api/preview` | jarを受け取りその場で画像を返します。保存も投稿枠の消費もしません（要 ログイン）。 |
+| `GET` | `/api/:namespace/owner.json` | 名前空間の所有状況を返します。 |
+| `POST` | `/api/:namespace/claim` | 名前空間の所有権を取得します（要 ログイン）。 |
+| `GET` | `/upload` | アップロードページ。 |
+| `POST` | `/api/upload` | jarを丸ごと投稿します（要 ログイン）。ブラウザ側の展開が失敗したときの経路。 |
+| `GET` | `/auth/providers.json` | ログイン手段の一覧を返します。 |
+| `GET` | `/auth/:provider/start` | ログインを開始します。 |
+| `GET` | `/auth/:provider/callback` | ログインから戻る先。 |
+| `GET` | `/auth/me` | ログイン中の利用者と残り投稿枠を返します。 |
+| `GET` | `/auth/me/uploads` | 自分の投稿履歴を返します。 |
 | `POST` | `/api/:namespace/recipe/:id/bundle` | レシピ＋テクスチャ＋モデルを一括アップロード（要 認証）。 |
 | `POST` | `/api/:namespace/bulk` | レシピ/タグ/テクスチャ/モデルを大量一括投入（要 認証）。 |
 | `POST` | `/api/:namespace/ingest/begin` | 取り込みセッションを開始（要 認証）。 |
@@ -40,11 +56,19 @@ Minecraftのレシピ画像をjarのdata, assetsから動的に生成、配信�
 | `GET` | `/admin/ls` | R2の中身を一覧します（読み取り専用。要 `secret`）。 |
 | `GET` | `/admin/render3d/:namespace/:path` | ブロック1つを3D描画して返します（保存しない。要 `secret`）。 |
 | `GET` | `/admin/purge/:namespace` | 生成済み3Dアイコンとエッジキャッシュを破棄します（要 `secret`）。 |
+| `GET` | `/admin/gc-images` | 参照されなくなった世代の画像を数え、`?delete=1` で削除します（要 `secret`）。 |
+| `GET` | `/admin/uploads` | 投稿履歴を照会します（要 `secret`）。 |
+| `GET` | `/admin/gc/namespaces` | build を持つ名前空間を一覧します（要 `secret`）。 |
+| `POST` | `/admin/gc/:namespace` | 参照されない build を掃除します（要 `secret`）。 |
+| `POST` | `/admin/gc/blobs` | どの build からも参照されない blob を掃除します（要 `secret`）。 |
+| `POST` | `/admin/migrate/:namespace/begin` | 従来配置から build への移行を開始します（要 `secret`）。 |
+| `POST` | `/admin/migrate/:namespace/step` | 移行を1段進めます（要 `secret`）。 |
+| `POST` | `/admin/migrate/:namespace/finish` | 移行を確定します（要 `secret`）。 |
 
 ### レシピ索引API
 
 - `GET /api/list.json`
-  - 全名前空間の索引（`{ count, generatedAt, versions, recipes: [{ id, result, type }] }`）。mp-recipe の検索ページが使います。アイテム名は含みません。
+  - 全名前空間の索引（`{ count, generatedAt, versions, recipes: [{ id, result, type, tagged }] }`）。mp-recipe の検索ページが使います。アイテム名は含みません。
 
 - `GET /api/:namespace/list.json`
   - 名前空間1つ分の索引。1つのModのページを描くのに全Modの索引を転送しないで済みます。
@@ -56,12 +80,13 @@ Minecraftのレシピ画像をjarのdata, assetsから動的に生成、配信�
       "version": "m2k9x1",
       "count": 1,
       "recipes": [
-        { "id": "mymod:widget", "result": "mymod:widget", "type": "crafting_shaped", "name": "ウィジェット" }
+        { "id": "mymod:widget", "result": "mymod:widget", "type": "crafting_shaped", "tagged": true, "name": "ウィジェット" }
       ]
     }
     ```
   - `version` をそのまま画像URLの `?v=` に使えます（`0` は未設定を意味するので付けないでください）。
   - `assets: { base, rv }` はR2からの直接配信用です（「R2からの直接配信」を参照）。`base` が空なら無効です。
+  - `tagged` は「素材が実際に切り替わる」ことを表します。タグを使っていても構成アイテムが1つなら偽です。閲覧側はこれが真のものだけ `.gif` を要求してください。静止画を GIF で配ると色数が落ち、PNG より重くなります。判定にはタグ本体の読み出しが要るため配信時に行い、結果は `cache/tagged/<rv>/...` に残して使い回します。初回だけは索引が持つ粗い値のまま返し、判定は裏で作ります。
 
 ### アイテム名API
 
@@ -231,9 +256,40 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
 
 送出順は「依存される側（テクスチャ→モデル→タグ→レシピ）」で送ります。存在しない/失効したセッションへの bulk・commit は `409` を返します。失効セッションは30分でクリーンアップ対象になり、`/admin/sweep-ingests` で掃除できます。
 
+## アップロード（`/upload`）
+
+Mod 作者が jar を投げてレシピを取り込むためのページです。ログインすると1日あたりの投稿枠が与えられ、
+残りは `/auth/me` が返します。枠は ModParks 側の Mod 作者に優先して回すため、こちらは少なめです
+（[src/utils/auth/quota.ts](src/utils/auth/quota.ts) の `DAILY_UPLOAD_LIMIT`）。
+
+枠を数えるのは `POST /api/:namespace/bulk` です。ポータルは jar をブラウザ側で展開して bulk へ直接
+送るため、jar を丸ごと受ける `POST /api/upload`（展開に失敗したときの退避経路）だけで数えると素通り
+します。共有名前空間（`c` など）への書き込みは投稿者の持ち物ではないので数えません。
+
+### プレビュー（保存しない描画）
+
+jar を選ぶと、**アップロードせずに**画像だけを作れます。投稿枠は消費しません。経路は2つあります。
+
+- **この端末で描く**（既定・ログイン不要）
+  ブラウザが jar を展開し、`generateRecipeSvg()` をそのまま呼びます。レシピのSVGは文字列として
+  組み立てられるため、ラスタライザ（wasm）は要りません。手元に無い素材（`minecraft:` のテクスチャや
+  モデル、`c:` のタグ）は `POST /api/resolve` で在り処をまとめて聞き、R2 から直接取ります。
+  素材の依存は多段（タグ→アイテム→テクスチャ、モデル→親モデル→テクスチャ）なので、
+  新しい不足が出なくなるまで「描いて集めて取る」を繰り返します。
+  素材が揃わなかったレシピは**出力しません**。欠けた絵は、無いことより分かりにくい間違いになるためです。
+- **サーバーで描く**（`POST /api/preview`、要ログイン）
+  jar を送ってその場で描き、画像を返します。R2 にもインデックスにも何も書きません。
+  保存しない描画が既存のキャッシュを汚さないよう、解決済みアイコンを永続化せず
+  （`AssetReader.persistIcons = false`）、アイコンのメモもリクエストごとに別世代にします。
+
+どちらも結果を PNG / GIF の zip でまとめて保存できます。端末で描いた場合は変換も zip 化もその場で
+行うため、通信は発生しません。
+
 ## アイテムアイコンの解決仕様
 
-レシピ画像の各スロットに描くアイコンは、`getItemImageBase64()`（[src/utils/minecraft.ts](src/utils/minecraft.ts)）が名前空間付きID `ns:path` から次の順で解決します。**最初に成功した段階を採用**します。
+レシピ画像の各スロットに描くアイコンは、`getItemImageBase64()`（[src/utils/minecraft/texture.ts](src/utils/minecraft/texture.ts)）が名前空間付きID `ns:path` から次の順で解決します。**最初に成功した段階を採用**します。
+
+読み出し先は `AssetReader`（[src/core/asset-reader.ts](src/core/asset-reader.ts)）に抽象化されています。Worker は R2 と build マニフェストから読み、ブラウザは手元の jar と `/api/resolve` から読みます。描画そのものは同じコードです。
 
 | # | 参照先 | 内容 |
 | --- | --- | --- |
@@ -255,6 +311,10 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
 **必須の前提**: MODのブロックモデルはバニラの親モデルを継承します（例: `"parent": "minecraft:block/cube"`）。したがって `assets/minecraft/models/**.json` がR2に存在しないと**MODブロックの形状を解決できず、3D化は行われません**。バニラのモデルJSONは `npm run fetch-mc-data`、または後述の `upload-vanilla-models.ts` で投入します。
 
 **設計上の約束**: 親モデルが解決できず `elements`（実形状）が得られなかった場合は、**必ず null を返して段階4のフラットテクスチャへフォールバック**します。テクスチャ一覧から代替の立方体を組み立てるような処理は行いません。実物と異なる形が描かれてしまい、2D表示より悪化するためです。
+
+**ブロックエンティティ**: チェストと頭部（スケルトン/ウィザースケルトン/ゾンビ/クリーパー/ピグリン/プレイヤー）は `builtin/entity` に解決されてエレメントを持たず、絵もエンティティ用テクスチャの中にあります。そのままでは何も見つからず空きスロットになるため、箱モデルとUVを合成しています（[src/core/chest.ts](src/core/chest.ts) / [src/core/skull.ts](src/core/skull.ts)、展開規則は [src/core/entity-box.ts](src/core/entity-box.ts) で共通）。ドラゴンの頭は単純な箱ではないため対象外です。
+
+**未対応**: 時計やコンパスのように状態で絵が変わるアイテムは、通常のパスにテクスチャが無いため解決できません（透明になります）。
 
 ### 管理者API
 
@@ -316,9 +376,9 @@ Modが自分のレシピ・テクスチャを直接R2へ投入するためのAPI
 
 L0/L1 のアイコンキャッシュがなぜ効くか: アイテムは数千種なのに対しレシピは数万件あり、同じアイコンが極端に使い回されます。1アイコンの解決は最大5段の直列R2プローブ（失敗時1秒超）を伴うため、これを畳み込む効果が大きいです。**解決失敗（透明アイコン）はL1に永続化しません** — テクスチャ未着の投入中に透明を固定してしまうのを防ぐためです（L0には短命に記録）。
 
-**レンダラー版**（`RENDERER_VERSION`、[src/utils/render-version.ts](src/utils/render-version.ts)）はL1キーに含まれます。レンダリング系コードを変えたら値を上げると、過去のL1が自動的に参照されなくなります。環境変数 `RENDERER_VERSION` が設定されていればそれを優先します（CIがソースのハッシュを注入する運用に対応）。
+**レンダラー版**（`RENDERER_VERSION`、[src/utils/render-version.ts](src/utils/render-version.ts)）はL1キーに含まれます。実際にキーへ載る `rv` は、これに共有名前空間（`c` / `forge` / `neoforge` / `minecraft`）のアセットバージョンの指紋を足したものです。1枚の画像は自分の名前空間だけで完結せず、共通タグを辿って素材を決めるため、共有側の更新が依存する画像へ伝わる必要があります。レンダリング系コードを変えたら値を上げると、過去のL1が自動的に参照されなくなります。環境変数 `RENDERER_VERSION` が設定されていればそれを優先します（CIがソースのハッシュを注入する運用に対応）。
 
-**L1のゴミ掃除**: `rv`/バージョンが変わると古い `cache/` オブジェクトは参照されなくなりますが残ります。R2 の lifecycle rule で `cache/` プレフィックスに期限（例: 30日）を設定して自動削除するのが運用不要でおすすめです（wrangler.toml では設定できず、ダッシュボード操作が必要）。
+**L1のゴミ掃除**: `rv`/バージョンが変わると古い `cache/` オブジェクトは参照されなくなりますが残ります。`GET /admin/gc-images?secret=...` で世代別の件数を数え、`&delete=1` を付けると現行世代以外を削除します（ModParks の管理画面からも実行できます）。R2 の lifecycle rule で `cache/` プレフィックスに期限を設定しておくのも有効です（wrangler.toml では設定できず、ダッシュボード操作が必要）。
 
 ### R2からの直接配信
 
@@ -391,6 +451,13 @@ npm install
 # R2にMinecraft公式アセットを抽出・アップロード（要 .env 設定）
 npm run fetch-mc-data
 
+# ローダーが定義するタグ（c: と neoforge:）の基盤データを投入
+# （要 MP_RECIPE_URL と UPLOAD_SECRET。書き込みAPI経由なので build へ正しく載ります）
+npm run fetch-common-tags
+
+# 既存の索引に tagged を埋める（1回だけ。無くても配信時に補われます）
+npm run backfill-tagged
+
 # ローカルサーバー起動（D1/R2はローカルのエミュレータ＝空）
 npm run dev
 
@@ -400,6 +467,11 @@ npm run dev:remote
 # Cloudflareへデプロイ
 npm run deploy
 ```
+
+`npm run deploy` は先にクライアントのバンドルを作ります。**ビルドが失敗した状態でデプロイしないでください。**
+出力先は毎回空にしてから作り直すため、失敗すると `public/app` が空のまま、
+[src/generated/client-bundles.ts](src/generated/client-bundles.ts) だけが古いファイル名を指し、
+ページが真っ白になります。`R2_DRY_RUN=1` を付けると、R2 を使うスクリプトは書き込まず内容だけ表示します。
 
 ### 本番データを見ながらデバッグする
 
