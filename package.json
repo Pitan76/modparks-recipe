@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "npm run build:client && wrangler dev src/index.ts",
     "dev:remote": "npm run build:client && wrangler dev --remote src/index.ts",
-    "deploy": "npm run build:client && wrangler deploy --minify src/index.ts",
+    "deploy": "npm run build:client && npm run check:bundles && wrangler deploy --minify src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "fetch-mc-data": "tsx src/scripts/fetch-mc-data.ts",
     "fetch-common-tags": "tsx src/scripts/fetch-common-tags.ts",
@@ -13,7 +13,8 @@
     "upload-lang": "tsx src/scripts/upload-lang.ts",
     "migrate-builds": "tsx src/scripts/migrate-builds.ts",
     "gc-builds": "tsx src/scripts/gc-builds.ts",
-    "build:client": "vite build --config vite.client.config.ts && vite build --config vite.extractor.config.ts"
+    "build:client": "vite build --config vite.client.config.ts && vite build --config vite.extractor.config.ts",
+    "check:bundles": "node scripts/check-bundles.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
