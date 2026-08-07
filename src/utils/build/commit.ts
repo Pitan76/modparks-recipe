@@ -9,7 +9,7 @@ import type { Env } from '../minecraft';
 import type { IngestBuildInfo } from '../ingest';
 import { readChannels, registerVersion, setChannels } from './channels';
 import { commitBuild, foldBuild, type FoldedBuild } from './manifest';
-import { collectPatches, toBuildPatch } from './staging';
+import { collectPatches, incompleteKinds, toBuildPatch } from './staging';
 import { compareChannels } from './mc-version';
 
 /** 確定結果。 */
@@ -20,6 +20,13 @@ export type CommitResult = {
   channels: string[];
   files: number;
   recipes: number;
+  /**
+   * 全量の取り込みなのに中身が空で、削除の判断を見送った種別。
+   *
+   * 空でなければ、その種別は親の内容がそのまま残っています。取り込み側は失敗として扱うか、
+   * 少なくとも利用者に知らせてください。黙って通すと「更新したのに古いまま」になります。
+   */
+  incomplete: string[];
 };
 
 /**
@@ -42,6 +49,7 @@ export async function finalizeBuild(
 
   const staged = await collectPatches(env, ns, session);
   const patch = toBuildPatch(staged, parent, info.full);
+  const incomplete = incompleteKinds(staged, parent, info.full);
 
   const { buildId, deduped } = await commitBuild(env, ns, parentId, patch, {
     mcChannels: info.mcChannels,
@@ -60,6 +68,7 @@ export async function finalizeBuild(
     channels: info.mcChannels,
     files: Object.keys(staged.files).length,
     recipes: staged.recipes.length,
+    incomplete,
   };
 }
 

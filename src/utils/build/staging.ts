@@ -116,6 +116,11 @@ export async function collectPatches(env: Env, ns: string, session: string): Pro
  *
  * jar 1本を丸ごと入れる取り込み（`full`）では、親にあって今回来なかったものは
  * 「その版で削除された」ことを意味します。単発の書き込み（`partial`）では追加・更新しか起きません。
+ *
+ * ただし「1件も来なかった」場合だけは、削除だと読み取りません。取り込みが途中でこけたのか、
+ * 本当に空の版なのかを区別できないためです。実際、レシピが1件も抽出されなかった jar 取り込みが、
+ * 親の31件すべてを削除扱いにして丸ごと見えなくしたことがあります。全消しは取り返しがつかない一方、
+ * 消し損ねは次の取り込みで直せるので、疑わしいときは残す側に倒します。
  * @param staged ステージング結果
  * @param parent 親 build の畳み込み結果（初回は null）
  * @param full jar 全体の取り込みかどうか
@@ -125,13 +130,36 @@ export function toBuildPatch(staged: StagedPatch, parent: FoldedBuild | null, fu
   const patch: BuildPatch = { changedFiles: staged.files, changedRecipes: staged.recipes, removedRecipes };
   if (!full || !parent) return patch;
 
-  patch.removedFiles = Object.keys(parent.files).filter((p) => !(p in staged.files));
+  // 空の取り込みからは何も読み取れません。種別ごとに独立して判断します（レシピだけ落ちて
+  // アセットは揃っている、という今回のような偏った失敗があるためです）。
+  if (Object.keys(staged.files).length > 0) {
+    patch.removedFiles = Object.keys(parent.files).filter((p) => !(p in staged.files));
+  }
+  if (staged.recipes.length === 0) return patch;
 
   const present = new Set(staged.recipes.map((r) => r.id));
   for (const entry of parent.recipes) {
     if (!present.has(entry.id)) removedRecipes.push(entry.id);
   }
   return patch;
+}
+
+/**
+ * 全量の取り込みなのに中身が欠けていて、削除の判断を見送った種別を返します。
+ *
+ * 取り込んだ側に黙って握りつぶさず伝えるためのものです。「更新したのに古いレシピが残っている」
+ * という状態は、理由が分からないまま放置されると次の不具合の温床になります。
+ * @param staged ステージング結果
+ * @param parent 親 build の畳み込み結果
+ * @param full jar 全体の取り込みかどうか
+ */
+export function incompleteKinds(staged: StagedPatch, parent: FoldedBuild | null, full: boolean): string[] {
+  if (!full || !parent) return [];
+
+  const kinds: string[] = [];
+  if (Object.keys(staged.files).length === 0 && Object.keys(parent.files).length > 0) kinds.push('files');
+  if (staged.recipes.length === 0 && parent.recipes.length > 0) kinds.push('recipes');
+  return kinds;
 }
 
 /**

@@ -81,14 +81,17 @@ async function ingestRecipes(ctx: BulkContext, entries: unknown, counts: BulkCou
   const indexEntries: { fullId: string; data: any }[] = [];
   const staged: StagedEntry[] = [];
 
-  for (const [id, val] of plainEntries(entries)) {
+  // 本体の書き込みは他の種別と同じく同時実行で流します。直列だと1件ずつR2の往復を待つことになり、
+  // 数十件で呼び出し側の待ち時間を超えます。実際、48件のレシピを送った取り込みが応答を返せず、
+  // 送信側からは失敗と見なされたまま commit まで進み、既存のレシピが全部消えたことがあります。
+  await runPool(plainEntries(entries), CONCURRENCY, async ([id, val]) => {
     if (!isSafePath(id)) {
       counts.skipped++;
-      continue;
+      return;
     }
     const body = typeof val === 'string' ? val : JSON.stringify(val);
     let data: any;
-    try { data = JSON.parse(body); } catch { counts.skipped++; continue; }
+    try { data = JSON.parse(body); } catch { counts.skipped++; return; }
 
     await putRecipeBody(env, namespace, id, body);
     const fullId = `${namespace}:${id}`;
@@ -100,7 +103,12 @@ async function ingestRecipes(ctx: BulkContext, entries: unknown, counts: BulkCou
     if (session) staged.push({ id: fullId, entry });
     else indexEntries.push({ fullId, data });
     counts.recipes++;
-  }
+  });
+
+  // 同時実行なので積まれる順が実行ごとに変わります。並べ直して、同じ入力からは同じ build が
+  // 出来るようにします（build ID は内容のハッシュなので、順序が揺れると別物になります）。
+  staged.sort((a, b) => a.id.localeCompare(b.id));
+  indexEntries.sort((a, b) => a.fullId.localeCompare(b.fullId));
 
   if (session) await stageEntries(env, namespace, session, staged);
   else await updateIndexMany(env, indexEntries);
