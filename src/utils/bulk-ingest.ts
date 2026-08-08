@@ -44,7 +44,7 @@ export interface BulkCounts {
 }
 
 /** 同時に流す本数。保存先が別なので衝突しません。 */
-const CONCURRENCY = 20;
+const CONCURRENCY = 30;
 
 /**
  * bulk ボディを取り込みます。

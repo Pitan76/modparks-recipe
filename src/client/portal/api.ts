@@ -110,16 +110,28 @@ export async function uploadJar(
   t: Messages,
   onProgress: OnProgress
 ): Promise<UploadSummary> {
+  const extracted = await extractLocally(file);
+  // 丸ごと送る経路には刻みが無いので、進捗は出しません。
+  if (!extracted) return sendWholeJar(file, token, t);
+
+  // 送信の失敗はそのまま伝えます。ここで丸ごと送信へ逃がすと、途中まで入った投入の上に
+  // 同じ jar をもう一度流し込むことになり、失敗した理由も進捗も消えます。
+  return sendExtracted(extracted, token, t, onProgress);
+}
+
+/**
+ * この端末で jar を展開します。
+ * @param file 選ばれた jar
+ * @returns 展開結果。展開できなければ null（サーバ側へ丸ごと送る）
+ */
+async function extractLocally(file: File): Promise<ExtractedJar | null> {
   try {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const extracted = await analyzeJar(zip);
-    if (extracted.namespaces.length === 0) throw new Error(t.errorGeneric);
-    return await sendExtracted(extracted, token, t, onProgress);
+    return extracted.namespaces.length > 0 ? extracted : null;
   } catch (err) {
     console.warn('Client extraction failed, falling back to server side:', err);
-    // 丸ごと送る経路には刻みが無いので、途中まで進んだ表示は消してから切り替えます。
-    onProgress([]);
-    return sendWholeJar(file, token, t);
+    return null;
   }
 }
 

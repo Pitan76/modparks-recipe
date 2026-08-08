@@ -12,6 +12,7 @@
 import type { ExtractedJar, NamespaceAssets } from '../../core/jar-assets';
 import type { AssetKind } from '../../core/paths';
 import type { Messages } from '../../utils/i18n/portal';
+import { runPool } from '../../utils/pool';
 
 /** 手順の識別子。文言キーと1対1で対応します。 */
 export type StepKind = 'begin' | AssetKind | 'commit';
@@ -46,6 +47,22 @@ const PHASES: { kind: AssetKind; maxCount: number; maxBytes: number }[] = [
   { kind: 'langs', maxCount: 10, maxBytes: 6_000_000 },
   { kind: 'recipes', maxCount: 200, maxBytes: Infinity },
 ];
+
+/**
+ * 並行送信に切り替える分割数。
+ *
+ * 往復が数回で済むうちは直列のほうが素直です。数百件のモデルやテクスチャを持つ大きい mod で、
+ * 往復待ちが積み上がる場合にだけ効かせます。
+ */
+const PARALLEL_THRESHOLD = 4;
+
+/**
+ * 同じ ns の中で同時に流すチャンク数。
+ *
+ * サーバは1リクエストにつき30本並列で書くため、ここを上げるほど掛け算で同時書き込みが増えます。
+ * 往復待ちを埋めるだけなら2本で足ります。
+ */
+const CHUNK_CONCURRENCY = 2;
 
 /** エントリ数と（任意で）バイト数を上限にレコードを分割します。 */
 function chunkRecord(obj: Record<string, string>, maxCount: number, maxBytes: number): Record<string, string>[] {
@@ -189,9 +206,8 @@ export async function sendWithSession(
 /**
  * 1フェーズ分を送ります。
  *
- * ns どうしは別のセッション・別の保存先なので同時に流します。同じ ns の中は直列のままです。
- * チャンクまで同時に流すと、サーバ側が1リクエストにつき20並列で書くため、書き込みの同時数が
- * 掛け算で増えます。
+ * ns どうしは別のセッション・別の保存先なので同時に流します。同じ ns の中は、分割が
+ * `PARALLEL_THRESHOLD` を超えたときだけ `CHUNK_CONCURRENCY` 本まで並行にします。
  *
  * 途中で落ちても残りの完了を待ってから投げ直します。飛行中の書き込みを残したまま abort すると、
  * 消したはずのステージングへ後から書き足されます。
@@ -207,12 +223,16 @@ async function runPhase(
 ): Promise<number> {
   const results = await Promise.allSettled(
     sessions.map(async ({ ns, session }) => {
+      const chunks = chunkRecord(bucketOf(extracted, ns)[phase.kind] ?? {}, phase.maxCount, phase.maxBytes);
       let count = 0;
-      const entries = bucketOf(extracted, ns)[phase.kind] ?? {};
-      for (const chunk of chunkRecord(entries, phase.maxCount, phase.maxBytes)) {
+
+      // 分割が少ないうちは直列のままにします。往復が数回なら並行にしても縮まらず、
+      // 進捗の数字が飛ぶぶんだけ分かりにくくなります。
+      const limit = chunks.length >= PARALLEL_THRESHOLD ? CHUNK_CONCURRENCY : 1;
+      await runPool(chunks, limit, async (chunk) => {
         count += await postBulk(ns, session, { [phase.kind]: chunk }, headers, t);
         progress.advance(phase.kind, Object.keys(chunk).length);
-      }
+      });
       return count;
     })
   );
@@ -258,7 +278,7 @@ async function postBulk(
   const query = session ? `?session=${encodeURIComponent(session)}` : '';
   const res = await fetch(`/api/${ns}/bulk${query}`, { method: 'POST', headers, body: JSON.stringify(part) });
   if (res.status === 429) throw new Error(t.errorLimit);
-  if (!res.ok) throw await detailedError(res, t, `${ns} ${Object.keys(part).join(',')}`);
+  if (!res.ok) throw await detailedError(res, t, whereOf(ns, part));
 
   const body = (await res.json()) as Record<string, number>;
   return Object.keys(part).reduce((n, kind) => n + (body[kind] || 0), 0);
@@ -279,6 +299,21 @@ async function endSession(
   }
   const res = await fetch(url, { method: 'POST', headers });
   if (!res.ok) throw await detailedError(res, t, `commit ${ns}`);
+}
+
+/**
+ * 失敗した送信が「どの ns の、どの種別の、どのファイル群か」を1行にします。
+ *
+ * ns と種別だけでは、数百件のうちどれが原因かを探せません。チャンクの件数と先頭・末尾のキーが
+ * あれば、jar の中の該当ファイルまで辿れます。
+ * @param ns ネームスペース
+ * @param part 送ろうとした中身
+ */
+function whereOf(ns: string, part: Partial<Record<AssetKind, Record<string, string>>>): string {
+  const [kind, entries] = Object.entries(part)[0] as [string, Record<string, string>];
+  const keys = Object.keys(entries);
+  const range = keys.length > 1 ? `${keys[0]}…${keys[keys.length - 1]}` : keys[0];
+  return `${ns} ${kind} ${keys.length}件 ${range}`;
 }
 
 /**
