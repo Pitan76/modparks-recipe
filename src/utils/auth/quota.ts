@@ -7,6 +7,7 @@
  */
 
 import type { Env } from '../minecraft';
+import { isDevMode } from '../dev';
 
 /**
  * 1 identity が1日に投稿できる jar の本数。
@@ -23,6 +24,9 @@ export const DAILY_UPLOAD_LIMIT = 3;
  * @returns 枠内なら true、使い切っていれば false
  */
 export async function consumeUploadQuota(env: Env, identityId: string): Promise<boolean> {
+  // 手元で試すたびに枠が減ると、1日3本で開発が止まります。
+  if (isDevMode(env)) return true;
+
   const day = new Date().toISOString().slice(0, 10);
 
   // 先に加算して、加算後の値で判定します。読んでから書くと、同時投稿で上限を超えられます。
@@ -43,6 +47,8 @@ export async function consumeUploadQuota(env: Env, identityId: string): Promise<
  * @param identityId 主体のID
  */
 export async function remainingUploads(env: Env, identityId: string): Promise<number> {
+  if (isDevMode(env)) return DAILY_UPLOAD_LIMIT;
+
   const day = new Date().toISOString().slice(0, 10);
   const row = await env.DB.prepare('SELECT used FROM upload_quota WHERE identity_id = ? AND day = ?')
     .bind(identityId, day)

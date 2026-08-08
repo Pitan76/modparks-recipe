@@ -164,19 +164,13 @@ export async function sendWithSession(
   try {
     for (const phase of PHASES) {
       progress.start(phase.kind);
-      for (const { ns, session } of sessions) {
-        const entries = bucketOf(extracted, ns)[phase.kind] ?? {};
-        for (const chunk of chunkRecord(entries, phase.maxCount, phase.maxBytes)) {
-          count += await postBulk(ns, session, { [phase.kind]: chunk }, headers, t);
-          progress.advance(phase.kind, Object.keys(chunk).length);
-        }
-      }
+      count += await runPhase(extracted, sessions, phase, headers, t, progress);
       progress.finish(phase.kind);
     }
 
     progress.start('commit');
     for (const { ns, session } of sessions) {
-      if (session) await endSession(ns, session, 'commit', headers);
+      if (session) await endSession(ns, session, 'commit', headers, t);
       progress.advance('commit', 1);
     }
     progress.finish('commit');
@@ -184,12 +178,48 @@ export async function sendWithSession(
     progress.fail();
     // 途中で落ちた分は公開しない。半分だけ入った mod を出すより、何も変えないほうが害が小さい。
     for (const { ns, session } of sessions) {
-      if (session) await endSession(ns, session, 'abort', headers);
+      if (session) await endSession(ns, session, 'abort', headers, t);
     }
     throw err;
   }
 
   return count;
+}
+
+/**
+ * 1フェーズ分を送ります。
+ *
+ * ns どうしは別のセッション・別の保存先なので同時に流します。同じ ns の中は直列のままです。
+ * チャンクまで同時に流すと、サーバ側が1リクエストにつき20並列で書くため、書き込みの同時数が
+ * 掛け算で増えます。
+ *
+ * 途中で落ちても残りの完了を待ってから投げ直します。飛行中の書き込みを残したまま abort すると、
+ * 消したはずのステージングへ後から書き足されます。
+ * @returns このフェーズで取り込まれた件数
+ */
+async function runPhase(
+  extracted: ExtractedJar,
+  sessions: Session[],
+  phase: (typeof PHASES)[number],
+  headers: Record<string, string>,
+  t: Messages,
+  progress: Progress
+): Promise<number> {
+  const results = await Promise.allSettled(
+    sessions.map(async ({ ns, session }) => {
+      let count = 0;
+      const entries = bucketOf(extracted, ns)[phase.kind] ?? {};
+      for (const chunk of chunkRecord(entries, phase.maxCount, phase.maxBytes)) {
+        count += await postBulk(ns, session, { [phase.kind]: chunk }, headers, t);
+        progress.advance(phase.kind, Object.keys(chunk).length);
+      }
+      return count;
+    })
+  );
+
+  const failed = results.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+  return results.reduce((n, r) => n + (r.status === 'fulfilled' ? r.value : 0), 0);
 }
 
 /**
@@ -204,7 +234,11 @@ async function beginSession(ns: string, headers: Record<string, string>): Promis
     // 素性の無い build はチャネルに載らず、置き場所だけを消費します。
     body: JSON.stringify({ source: 'portal' }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // 黙って落とすと、以降が非トランザクションで進んだことに誰も気付けません。
+    console.warn(`ingest/begin failed for ${ns}: ${res.status} ${await res.text()}`);
+    return null;
+  }
 
   const body = (await res.json()) as { session?: string };
   return body.session ?? null;
@@ -224,7 +258,7 @@ async function postBulk(
   const query = session ? `?session=${encodeURIComponent(session)}` : '';
   const res = await fetch(`/api/${ns}/bulk${query}`, { method: 'POST', headers, body: JSON.stringify(part) });
   if (res.status === 429) throw new Error(t.errorLimit);
-  if (!res.ok) throw new Error(t.errorGeneric);
+  if (!res.ok) throw await detailedError(res, t, `${ns} ${Object.keys(part).join(',')}`);
 
   const body = (await res.json()) as Record<string, number>;
   return Object.keys(part).reduce((n, kind) => n + (body[kind] || 0), 0);
@@ -235,7 +269,8 @@ async function endSession(
   ns: string,
   session: string,
   action: 'commit' | 'abort',
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  t: Messages
 ): Promise<void> {
   const url = `/api/${ns}/ingest/${action}?session=${encodeURIComponent(session)}`;
   if (action === 'abort') {
@@ -243,5 +278,19 @@ async function endSession(
     return;
   }
   const res = await fetch(url, { method: 'POST', headers });
-  if (!res.ok) throw new Error(`commit failed for ${ns}`);
+  if (!res.ok) throw await detailedError(res, t, `commit ${ns}`);
+}
+
+/**
+ * 失敗した応答から、原因の分かるエラーを作ります。
+ *
+ * 表示文言だけだと、どの ns のどの種別で何が起きたのかが残りません。翻訳済みの文言の後ろに、
+ * 状況と応答本文を付けます（サーバ側は理由を素の文字列で返すため）。
+ * @param res 失敗した応答
+ * @param t 文言表
+ * @param where どの手順か
+ */
+async function detailedError(res: Response, t: Messages, where: string): Promise<Error> {
+  const body = await res.text().catch(() => '');
+  return new Error(`${t.errorGeneric} [${where}: ${res.status} ${body.slice(0, 200)}]`);
 }

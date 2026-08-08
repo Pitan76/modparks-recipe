@@ -26,19 +26,33 @@ export type UploadRecord = UploadEvent & { id: number; displayName: string | nul
 
 /**
  * 投入を1件記録します。
+ *
+ * 記録に失敗しても取り込み自体は成功として扱います。ここで投げると、R2への書き込みが
+ * 終わったあとの commit だけが 500 になり、投稿者には「失敗した」としか見えないまま
+ * データは入っている、という食い違いが起きます（未適用のマイグレーションで実際に起きました）。
  * @param env 環境変数
  * @param event 記録する投入
  */
 export async function recordUpload(env: Env, event: UploadEvent): Promise<void> {
-  await env.DB.prepare(
-    'INSERT INTO upload_events (identity_id, ns, source, items, build_id) VALUES (?, ?, ?, ?, ?)'
-  )
-    .bind(event.identityId, event.ns, event.source, event.items, event.buildId ?? null)
-    .run();
+  try {
+    await env.DB.prepare(
+      'INSERT INTO upload_events (identity_id, ns, source, items, build_id) VALUES (?, ?, ?, ?, ?)'
+    )
+      .bind(event.identityId, event.ns, event.source, event.items, event.buildId ?? null)
+      .run();
+  } catch (e) {
+    console.error('Failed to record upload event:', e);
+  }
 }
 
-/** 照会の絞り込み条件。 */
-export type UploadQuery = { ns?: string; identityId?: string; limit: number };
+/**
+ * 照会の絞り込み条件。
+ *
+ * `nonEmpty` は1件も入らなかった記録を落とします。共有ネームスペースの確定は索引に載る
+ * レシピを持たないため必ず0件になり、本人の履歴が「0件」で埋まります。管理側の照会では
+ * 使いません（何も入らなかった投入こそ原因調査の手掛かりになるため）。
+ */
+export type UploadQuery = { ns?: string; identityId?: string; nonEmpty?: boolean; limit: number };
 
 /**
  * 投入履歴を新しい順に返します。
@@ -50,6 +64,8 @@ export async function listUploads(env: Env, query: UploadQuery): Promise<UploadR
   const binds: unknown[] = [];
   if (query.ns) { where.push('e.ns = ?'); binds.push(query.ns); }
   if (query.identityId) { where.push('e.identity_id = ?'); binds.push(query.identityId); }
+  // 絞り込みはSQL側で行います。取得後に落とすと、1ページ分に満たない件数しか返らなくなります。
+  if (query.nonEmpty) where.push('e.items > 0');
 
   const sql =
     `SELECT e.id, e.identity_id, e.ns, e.source, e.items, e.build_id, e.created_at, i.display_name

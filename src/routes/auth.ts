@@ -15,16 +15,41 @@ import { issueToken, verifyToken } from '../utils/auth/tokens';
 import { claimNamespace, getOwnership, type Trust } from '../utils/auth/ownership';
 import { remainingUploads } from '../utils/auth/quota';
 import { listUploads } from '../utils/audit';
+import { isDevMode } from '../utils/dev';
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
 /** ポータル用トークンの有効期間。長すぎると漏れたときの被害が伸びるため、投稿作業に足る長さにとどめます。 */
 const UPLOAD_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * ローカル開発用のログイン手段。
+ *
+ * OAuth プロバイダは redirect_uri を登録済みのものとしか照合しないため、localhost からは
+ * 認可画面を通せません（`redirect_uri is not registered`）。開発中に投稿を試すためだけの
+ * 抜け道なので、`.dev.vars` の `DEV_LOGIN` が立っているときにしか存在しません。
+ */
+const DEV_PROVIDER = { id: 'dev', name: 'Local (dev)' };
+
 /** 有効なログイン手段の一覧。ポータルがボタンを出し分けるために使います。 */
 authRoutes.get('/auth/providers.json', (c) => {
   const providers = [...providersOf(c.env).values()].map((p) => ({ id: p.id, name: p.name }));
+  if (isDevMode(c.env)) providers.push(DEV_PROVIDER);
   return c.json({ providers });
+});
+
+// ローカル開発でのみ、プロバイダを通さず固定の identity でトークンを発行します。
+// `/auth/:provider/start` より先に置く必要があります（Hono は登録順に照合するため）。
+authRoutes.get('/auth/dev/start', async (c) => {
+  if (!isDevMode(c.env)) return c.text('Not found', 404);
+
+  const identity = await resolveIdentity(c.env, DEV_PROVIDER.id, 'local', DEV_PROVIDER.name, '');
+  const token = await issueToken(c.env, identity.id, 'upload', UPLOAD_TOKEN_TTL_MS);
+
+  // 本番の経路と同じく、トークンはフラグメントに載せて戻します。
+  const back = c.req.query('redirect');
+  const to = back?.startsWith('/') && !back.startsWith('//') ? back : '/';
+  return c.redirect(`${to}#token=${token}`);
 });
 
 // 認可画面へ送ります。state は Cookie に控え、コールバックで突き合わせます。
