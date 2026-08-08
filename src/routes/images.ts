@@ -8,8 +8,7 @@ import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet, MAX_GIF_FRAMES } from '../utils/image-generator';
 import { imageCacheKey, deliveryVersion, imageVersion } from '../utils/image-cdn';
-import { parseTagNamespaces } from '../core/tag-namespaces';
-import { normalizeCrop, renderOptionsKey, type RenderOptions } from '../core/render-options';
+import { parseTagNamespaces, tagNamespaceKey } from '../core/tag-namespaces';
 import { renderBatch } from '../utils/batch-render';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
@@ -35,12 +34,9 @@ imageRoutes.post('/api/:namespace/batch', async (c) => {
   const ext = String(payload.ext || 'png').toLowerCase();
   const scale = normalizeScale(payload.scale);
   const tagOffset = parseInt(String(payload.tagOffset ?? 0), 10) || 0;
-  const options: RenderOptions = {
-    tagNamespaces: parseTagNamespaces(payload.tagNs == null ? null : String(payload.tagNs)),
-    crop: normalizeCrop(payload.crop),
-  };
+  const tagNamespaces = parseTagNamespaces(payload.tagNs == null ? null : String(payload.tagNs));
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), options);
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), tagNamespaces);
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -61,9 +57,9 @@ imageRoutes.get('/api/:namespace/batch', async (c) => {
   const ext = String(c.req.query('ext') || 'png').toLowerCase();
   const scale = normalizeScale(c.req.query('scale'));
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10) || 0;
-  const options: RenderOptions = { tagNamespaces: parseTagNamespaces(c.req.query('tagNs')), crop: normalizeCrop(c.req.query('crop')) };
+  const tagNamespaces = parseTagNamespaces(c.req.query('tagNs'));
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), options);
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), tagNamespaces);
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -185,13 +181,10 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   const scale = normalizeScale(c.req.query('scale'));
-  // `tagNs` はタグを絵に落とすときに使うアイテムのネームスペース（既定はバニラのみ、指定は追加、
-  // `*` で全部）、`crop` は上下左右から削る余白のネイティブpx。どちらも絵そのものを変えるため、
-  // L1 のキーに載せないと別指定の絵が混ざって返ります。
-  const options: RenderOptions = {
-    tagNamespaces: parseTagNamespaces(c.req.query('tagNs')),
-    crop: normalizeCrop(c.req.query('crop')),
-  };
+  // `tagNs` はタグを絵に落とすときに使うアイテムのネームスペース。既定はバニラのみで、指定は
+  // そこへの追加、`*` で全部。描かれるアイテムが変わるため、L1 のキーに載せないと混ざります。
+  // （余白のクリップは絵を作り直さずCSSで足りるので、ここには入れません。）
+  const tagNamespaces = parseTagNamespaces(c.req.query('tagNs'));
   const cacheControl = pinned
     ? 'public, max-age=31536000, immutable'
     : 'public, max-age=86400';
@@ -201,7 +194,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   // R2 に永続化しておけば、そうしたミスは R2 GET 1回で済む。キーに ns バージョンと
   // レンダラー版を含むので、更新時は別キーになり古い画像は参照されなくなる。
   const contentType = contentTypeForExt(ext);
-  const imgKey = imageCacheKey(rv, namespace, version, id, scale, tagOffset, ext, renderOptionsKey(options));
+  const imgKey = imageCacheKey(rv, namespace, version, id, scale, tagOffset, ext, tagNamespaceKey(tagNamespaces));
   const l1 = await c.env.BUCKET.get(imgKey);
   if (l1) {
     const res = new Response(l1.body, { headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl } });
@@ -222,11 +215,11 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
 
   let body: Uint8Array;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, MAX_GIF_FRAMES, scale, src, options);
+    body = await renderRecipeGif(recipeData, c.env, MAX_GIF_FRAMES, scale, src, tagNamespaces);
   } else if (ext === 'jpg' || ext === 'jpeg') {
-    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src, options);
+    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src, tagNamespaces);
   } else {
-    body = await renderRecipePng(recipeData, c.env, tagOffset, scale, src, options);
+    body = await renderRecipePng(recipeData, c.env, tagOffset, scale, src, tagNamespaces);
   }
 
   const response = new Response(body, {

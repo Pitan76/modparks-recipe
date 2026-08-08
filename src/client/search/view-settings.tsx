@@ -11,7 +11,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Popover from '@mui/material/Popover';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import { MAX_CROP } from '../../core/render-options';
+import { MAX_CROP } from '../../core/crop';
 import { SCALE_CHOICES, type ViewOptions } from './api';
 import type { SearchMessages } from '../../utils/i18n/search';
 

@@ -10,7 +10,7 @@ import { encodeGif } from '../gif-encoder';
 import { ensureWasm } from '../wasm';
 import { generateRecipeSvg } from './svg';
 import { DEFAULT_SCALE, zoomForScale } from './render';
-import { DEFAULT_RENDER_OPTIONS, type RenderOptions } from '../../core/render-options';
+import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../../core/tag-namespaces';
 
 /**
  * GIFのコマ数の天井。
@@ -40,16 +40,16 @@ function samePixels(a: Uint8Array, b: Uint8Array): boolean {
  * 1枚目と同じ絵に戻ります。そこで打ち切らないと、同じ絵のラスタライズを maxFrames 回
  * 繰り返したうえで、静止画を無駄に maxFrames コマのGIFとして配ることになります。
  *
- * @param options 見た目の指定。タグ構成アイテムのネームスペースは既定でバニラのみです。
+ * @param tagNamespaces コマとして回すタグ構成アイテムのネームスペース。既定はバニラのみです。
  *   共通タグ（`#c:planks` など）は木材を足す mod が入るほど膨らみ、既定を全部にすると
  *   見た人の知らない mod のアイテムばかりが並ぶコマになります。
  */
-export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = MAX_GIF_FRAMES, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env), options: RenderOptions = DEFAULT_RENDER_OPTIONS): Promise<Uint8Array> {
+export async function renderRecipeGif(recipeData: any, env: Env, maxFrames: number = MAX_GIF_FRAMES, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env), tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES): Promise<Uint8Array> {
   await ensureWasm();
   const frames = [];
 
   for (let i = 0; i < maxFrames; i++) {
-    const svg = await generateRecipeSvg(recipeData, env, i, src, options);
+    const svg = await generateRecipeSvg(recipeData, env, i, src, tagNamespaces);
     const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
     const rendered = resvg.render();
     if (i > 0 && samePixels(rendered.pixels, frames[0].pixels)) break;

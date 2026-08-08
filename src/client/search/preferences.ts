@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { DEFAULT_SCALE, DEFAULT_VIEW, SCALE_CHOICES, type ViewOptions } from './api';
-import { normalizeCrop } from '../../core/render-options';
+import { normalizeCrop } from '../../core/crop';
 import { toFmt, type Fmt } from './format';
 import { readStored, writeStored } from '../shared/browser';
 

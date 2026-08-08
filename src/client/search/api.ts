@@ -3,8 +3,8 @@
  */
 
 import { DEFAULT_SCALE, DEFAULT_TAG_OFFSET, imageCacheKey } from '../../core/image-key';
-import { DEFAULT_CROP, normalizeCrop, renderOptionsKey, type RenderOptions } from '../../core/render-options';
-import { parseTagNamespaces } from '../../core/tag-namespaces';
+import { DEFAULT_CROP, normalizeCrop } from '../../core/crop';
+import { parseTagNamespaces, tagNamespaceKey } from '../../core/tag-namespaces';
 
 export { DEFAULT_SCALE, DEFAULT_CROP };
 
@@ -13,19 +13,14 @@ export { DEFAULT_SCALE, DEFAULT_CROP };
  *
  * `tagNs` は入力された生の文字列（カンマ区切り、`*` で全部、空なら既定のバニラのみ）です。
  * 解釈は {@link parseTagNamespaces} に任せ、ここでは持ち回るだけにします。
+ *
+ * `crop` はサーバーへ送りません。絵そのものは変わらず、切り抜きはブラウザ側で行うためです。
+ * URLやキーに載せると、クリップ量ごとに同じ絵を作り直して保管することになります。
  */
 export type ViewOptions = { scale: number; tagNs: string; crop: number };
 
 /** 何も選ばれていないときの表示設定。 */
 export const DEFAULT_VIEW: ViewOptions = { scale: DEFAULT_SCALE, tagNs: '', crop: DEFAULT_CROP };
-
-/**
- * 画面の表示設定を、キーやクエリの組み立てに使う形へ直します。
- * @param view 画面の表示設定
- */
-function toRenderOptions(view: ViewOptions): RenderOptions {
-  return { tagNamespaces: parseTagNamespaces(view.tagNs), crop: normalizeCrop(view.crop) };
-}
 
 /**
  * 既定と異なる表示設定だけをクエリに載せます。
@@ -37,7 +32,6 @@ function toRenderOptions(view: ViewOptions): RenderOptions {
 function appendViewQuery(query: URLSearchParams, view: ViewOptions): void {
   if (view.scale !== DEFAULT_SCALE) query.set('scale', String(view.scale));
   if (view.tagNs) query.set('tagNs', view.tagNs);
-  if (normalizeCrop(view.crop) !== DEFAULT_CROP) query.set('crop', String(normalizeCrop(view.crop)));
 }
 
 /** 索引に載る1レシピ。 */
@@ -138,7 +132,7 @@ export function imageCdnPath(
   // バージョンが無いとサーバ側が引いた値がキーに入るため、クライアントからは行き先を当てられない。
   if (!version || version === '0') return null;
 
-  const key = imageCacheKey(assets.rv, p.ns, version, p.id, view.scale, DEFAULT_TAG_OFFSET, fmt, renderOptionsKey(toRenderOptions(view)));
+  const key = imageCacheKey(assets.rv, p.ns, version, p.id, view.scale, DEFAULT_TAG_OFFSET, fmt, tagNamespaceKey(parseTagNamespaces(view.tagNs)));
   return `${assets.base}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 

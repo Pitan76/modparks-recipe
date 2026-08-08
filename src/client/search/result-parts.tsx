@@ -11,6 +11,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import { imageCdnPath, imagePath, splitId, type Assets, type Versions, type ViewOptions } from './api';
+import { CropFrame } from './crop-frame';
 import { copyTitle, type WithMessages } from './parts';
 import type { FmtResolver } from './format';
 
@@ -97,17 +98,18 @@ export function ImageTile(props: ImageTileProps) {
       {status === 'error' && (
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
-      <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.view)}
-        alt={props.recipeId}
-        className="recipe-img"
-        title={props.title}
-        decoding="async"
-        onLoad={() => setStatus('ok')}
-        onError={onError}
-        onClick={props.onClick}
-        style={{ display: status === 'ok' ? 'block' : 'none' }}
-      />
+      <CropFrame crop={props.view.crop} hidden={status !== 'ok'}>
+        <img
+          src={(useDirect && direct) || imagePath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.view)}
+          alt={props.recipeId}
+          className="recipe-img"
+          title={props.title}
+          decoding="async"
+          onLoad={() => setStatus('ok')}
+          onError={onError}
+          onClick={props.onClick}
+        />
+      </CropFrame>
       {status === 'ok' && (
         <div className="recipe-meta">
           {props.name && props.name !== props.itemId && <div className="recipe-name">{props.name}</div>}

@@ -5,8 +5,7 @@
 import { legacyAssetSource } from '../build/asset-source';
 import type { AssetReader } from '../../core/asset-reader';
 import { getItemImageBase64, getTag, Env } from '../minecraft';
-import { pickTagCandidates, type TagNamespaceFilter } from '../../core/tag-namespaces';
-import { DEFAULT_RENDER_OPTIONS, type RenderOptions } from '../../core/render-options';
+import { DEFAULT_TAG_NAMESPACES, pickTagCandidates, type TagNamespaceFilter } from '../../core/tag-namespaces';
 
 // レイアウト定数と純粋な描画ヘルパーは layout.ts に集約し、ここから再エクスポートします。
 // （ローカルのプレビュー/検証スクリプトが wasm/R2 依存を引き込まずに再利用できるようにするため。）
@@ -35,7 +34,6 @@ import {
   ICON,
   iconSvg,
   countSvg,
-  viewPortOf,
 } from './layout';
 
 /**
@@ -53,7 +51,7 @@ export class IconCache {
    */
   constructor(
     readonly src: AssetReader,
-    readonly tagNamespaces: TagNamespaceFilter = DEFAULT_RENDER_OPTIONS.tagNamespaces
+    readonly tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
   ) {}
 
   /**
@@ -222,16 +220,16 @@ export async function createRecipeGrid(
 
 /**
  * レシピ全体のUIを表現するSVG文字列を生成します。
- * @param options 見た目の指定（採用ネームスペース・余白のクリップ）
+ * @param tagNamespaces タグの構成アイテムとして採用するネームスペース（既定はバニラのみ）
  */
 export async function generateRecipeSvg(
   recipeData: any,
   env: Env | null,
   tagOffset: number = 0,
   src: AssetReader = legacyAssetSource(env!),
-  options: RenderOptions = DEFAULT_RENDER_OPTIONS
+  tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
 ) {
-  const cache = new IconCache(src, options.tagNamespaces);
+  const cache = new IconCache(src, tagNamespaces);
 
   const result = recipeData.result ?? recipeData.output;
   const resultId = result
@@ -262,7 +260,6 @@ export async function generateRecipeSvg(
     }
   }
 
-  const view = viewPortOf(options.crop);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}"`
-    + ` viewBox="${view.x} ${view.y} ${view.width} ${view.height}" shape-rendering="crispEdges">${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}"`
+    + ` viewBox="0 0 ${CANVAS_W} ${CANVAS_H}" shape-rendering="crispEdges">${body}</svg>`;
 }
