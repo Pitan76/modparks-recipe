@@ -9,8 +9,8 @@
  */
 
 import type { ExtractedJar, ZipLike } from '../../core/jar-assets';
-import { ASSET_KINDS } from '../../core/paths';
 import type { Messages } from '../../utils/i18n/portal';
+import { sendWithSession, type OnProgress } from './upload-flow';
 
 /** ログイン中の利用者。 */
 export type Me = { displayName: string; remaining: number };
@@ -102,15 +102,23 @@ export async function claimNamespace(ns: string, token: string, t: Messages): Pr
  * @param file 選ばれた jar
  * @param token 投稿者のトークン
  * @param t 文言表
+ * @param onProgress 進行の通知
  */
-export async function uploadJar(file: File, token: string, t: Messages): Promise<UploadSummary> {
+export async function uploadJar(
+  file: File,
+  token: string,
+  t: Messages,
+  onProgress: OnProgress
+): Promise<UploadSummary> {
   try {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const extracted = await analyzeJar(zip);
     if (extracted.namespaces.length === 0) throw new Error(t.errorGeneric);
-    return await sendExtracted(extracted, token, t);
+    return await sendExtracted(extracted, token, t, onProgress);
   } catch (err) {
     console.warn('Client extraction failed, falling back to server side:', err);
+    // 丸ごと送る経路には刻みが無いので、途中まで進んだ表示は消してから切り替えます。
+    onProgress([]);
     return sendWholeJar(file, token, t);
   }
 }
@@ -121,25 +129,14 @@ export async function uploadJar(file: File, token: string, t: Messages): Promise
  * @param token 投稿者のトークン
  * @param t 文言表
  */
-async function sendExtracted(extracted: ExtractedJar, token: string, t: Messages): Promise<UploadSummary> {
-  const bodies = await Promise.all(
-    extracted.namespaces.map(async (ns) => {
-      const res = await fetch(`/api/${ns}/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...auth(token) },
-        body: JSON.stringify(extracted.byNs[ns]),
-      });
-      if (res.status === 429) throw new Error(t.errorLimit);
-      if (!res.ok) throw new Error(t.errorGeneric);
-      return (await res.json()) as Record<string, number>;
-    })
-  );
-
-  // 種別を手で並べると、増えたときに数え落とします（`items` が実際に抜けていました）。
-  const count = bodies.reduce(
-    (sum, b) => sum + ASSET_KINDS.reduce((n, spec) => n + (b[spec.kind] || 0), 0),
-    0
-  );
+async function sendExtracted(
+  extracted: ExtractedJar,
+  token: string,
+  t: Messages,
+  onProgress: OnProgress
+): Promise<UploadSummary> {
+  const headers = { 'Content-Type': 'application/json', ...auth(token) };
+  const count = await sendWithSession(extracted, headers, t, onProgress);
   return { count, namespaces: extracted.namespaces };
 }
 

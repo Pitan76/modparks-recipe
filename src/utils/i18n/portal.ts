@@ -57,6 +57,14 @@ const JA = {
   sourceJar: 'jar',
   sourceBulk: '一括API',
   sourceCommit: '取り込み確定',
+  stepBegin: '取り込みを開始',
+  stepTextures: 'テクスチャを送信',
+  stepModels: 'モデルを送信',
+  stepItems: 'アイテム定義を送信',
+  stepTags: 'タグを送信',
+  stepLangs: '言語ファイルを送信',
+  stepRecipes: 'レシピを送信',
+  stepCommit: '取り込みを確定',
 } as const;
 
 const EN: Messages = {
@@ -103,6 +111,14 @@ const EN: Messages = {
   sourceJar: 'jar',
   sourceBulk: 'Bulk API',
   sourceCommit: 'Ingest commit',
+  stepBegin: 'Starting ingest',
+  stepTextures: 'Sending textures',
+  stepModels: 'Sending models',
+  stepItems: 'Sending item definitions',
+  stepTags: 'Sending tags',
+  stepLangs: 'Sending language files',
+  stepRecipes: 'Sending recipes',
+  stepCommit: 'Committing ingest',
 };
 
 const TABLES: Record<string, Messages> = { ja: JA, en: EN };

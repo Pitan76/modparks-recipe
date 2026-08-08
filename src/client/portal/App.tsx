@@ -22,6 +22,8 @@ import {
   type UploadSummary,
 } from './api';
 import { AccountRow, HistoryView, JarPicker, PreviewView, ResultView, Section, SignInView } from './parts';
+import { UploadProgress } from './progress';
+import type { Step } from './upload-flow';
 import { saveDataUrlZip, saveLocalZip } from './preview-zip';
 import { renderJarLocally, svgDataUrl, type LocalRecipe } from './local-render';
 import { readStored, removeStored, writeStored } from '../shared/browser';
@@ -62,6 +64,7 @@ export function App({ locale }: { locale: string }) {
   const [localFailed, setLocalFailed] = useState(false);
   const [local, setLocal] = useState<LocalRecipe[] | null>(null);
   const [incomplete, setIncomplete] = useState(0);
+  const [steps, setSteps] = useState<Step[]>([]);
 
   const signOut = useCallback(() => {
     removeStored(TOKEN_KEY);
@@ -101,6 +104,7 @@ export function App({ locale }: { locale: string }) {
     setLocalFailed(false);
     setLocal(null);
     setIncomplete(0);
+    setSteps([]);
     setError('');
     void previewLocally(next);
   }
@@ -137,12 +141,14 @@ export function App({ locale }: { locale: string }) {
     setBusy(true);
     setStatus(t.uploading);
     setError('');
+    setSteps([]);
     try {
-      setResult(await uploadJar(file, token, t));
+      setResult(await uploadJar(file, token, t, setSteps));
       setStatus('');
       loadHistory();
     } catch (err) {
       setStatus('');
+      // 失敗した手順は赤のまま残す。どこで止まったかが分かるのは、消えた後では取り返せない。
       setError(err instanceof Error ? err.message : t.errorGeneric);
     } finally {
       setBusy(false);
@@ -218,6 +224,7 @@ export function App({ locale }: { locale: string }) {
                 <SignInView t={t} providers={providers} />
               </Box>
             )}
+            <UploadProgress t={t} steps={steps} />
           </Section>
           <Section title={t.preview}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{t.previewLead}</Typography>

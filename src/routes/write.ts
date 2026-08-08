@@ -184,13 +184,6 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
 
-  // 枠を数えるのはここです。ポータルはブラウザ側で jar を展開して直接ここへ送るため、
-  // jar を丸ごと受ける経路（/api/upload）だけで数えていると、通常の投稿が素通りします。
-  // 共有ネームスペースは投稿者の持ち物ではないので数えません（1つの jar で二重に引かれるため）。
-  if (grant.identityId && !isSharedNamespace(namespace)) {
-    if (!(await consumeUploadQuota(c.env, grant.identityId))) return c.text('Daily upload limit reached', 429);
-  }
-
   let p: any;
   try { p = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
 
@@ -198,6 +191,16 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   const session = c.req.query('session');
   const meta = session ? await readIngestMeta(c.env, namespace, session) : null;
   if (session && !meta) return c.text('Unknown or expired ingest session', 409);
+
+  // 枠を数えるのはここです。ポータルはブラウザ側で jar を展開して直接ここへ送るため、
+  // jar を丸ごと受ける経路（/api/upload）だけで数えていると、通常の投稿が素通りします。
+  // 共有ネームスペースは投稿者の持ち物ではないので数えません（1つの jar で二重に引かれるため）。
+  //
+  // セッション中は数えません。1回の投稿が数十回の bulk に分かれるため、ここで数えると
+  // 分割の細かさがそのまま枠の消費になります。セッションを開いた時点で1回だけ数えます。
+  if (grant.identityId && !isSharedNamespace(namespace) && !session) {
+    if (!(await consumeUploadQuota(c.env, grant.identityId))) return c.text('Daily upload limit reached', 429);
+  }
 
   // build を作るセッションでは、同じ内容を blob にも積む。commit で build マニフェストに畳まれる。
   const collector = meta?.build ? new PatchCollector(c.env) : null;

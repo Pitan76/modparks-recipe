@@ -13,6 +13,7 @@ import { bumpAssetVersion } from '../utils/cache-version';
 import { beginIngest, readIngestMeta, collectStaged, cleanupIngest, type IngestBuildInfo } from '../utils/ingest';
 import { isValidNamespace } from '../utils/asset-path';
 import { isSharedNamespace } from '../core/namespaces';
+import { consumeUploadQuota } from '../utils/auth/quota';
 import { toChannels } from '../utils/build/mc-version';
 import { finalizeBuild } from '../utils/build/commit';
 import { recordUpload } from '../utils/audit';
@@ -28,6 +29,12 @@ ingestRoutes.post('/api/:namespace/ingest/begin', async (c) => {
 
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
+
+  // 枠はセッション単位で数えます。bulk 側はセッション中を数えないため、ここが唯一の消費点です。
+  // 共有ネームスペースは投稿者の持ち物ではないので数えません（1つの jar で二重に引かれるため）。
+  if (grant.identityId && !isSharedNamespace(namespace)) {
+    if (!(await consumeUploadQuota(c.env, grant.identityId))) return c.text('Daily upload limit reached', 429);
+  }
 
   const body = await c.req.json().catch(() => null);
   // trust は投入側の申告ではなく認証結果で決める。自己申告を信じると unverified が verified を名乗れる。
