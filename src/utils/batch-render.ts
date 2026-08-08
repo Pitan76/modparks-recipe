@@ -8,6 +8,7 @@ import { Env, getRecipe } from './minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg } from './image-generator';
 import { bytesToBase64 } from './http';
 import { runPool } from './pool';
+import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../core/tag-namespaces';
 
 /**
  * 同時に走らせるレンダリング数。
@@ -27,19 +28,21 @@ export type BatchResult = { images: Record<string, string | null>; missing: stri
  * @param env 環境変数
  * @param scale スケール倍率
  * @param tagOffset タグオフセット
+ * @param tagNs タグ構成アイテムとして採用するネームスペース
  */
 function rendererFor(
   ext: string,
   env: Env,
   scale: number,
   tagOffset: number,
-  src: AssetReader
+  src: AssetReader,
+  tagNs: TagNamespaceFilter
 ): { mime: string; render: (recipe: any) => Promise<Uint8Array> } {
-  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale, src) };
+  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale, src, tagNs) };
   if (ext === 'jpg' || ext === 'jpeg') {
-    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src) };
+    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src, tagNs) };
   }
-  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale, src) };
+  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale, src, tagNs) };
 }
 
 /**
@@ -73,6 +76,7 @@ async function renderOrNull(
  * @param ext 拡張子（png, gif, jpg）
  * @param scale スケール倍率
  * @param tagOffset タグオフセット
+ * @param tagNs タグ構成アイテムとして採用するネームスペース（既定はバニラのみ）
  * @returns レンダリングされた画像データのマップと不足しているIDのリスト
  */
 export async function renderBatch(
@@ -82,9 +86,10 @@ export async function renderBatch(
   ext: string,
   scale: number,
   tagOffset: number,
-  src: AssetReader = legacyAssetSource(env)
+  src: AssetReader = legacyAssetSource(env),
+  tagNs: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
 ): Promise<BatchResult> {
-  const { mime, render } = rendererFor(ext, env, scale, tagOffset, src);
+  const { mime, render } = rendererFor(ext, env, scale, tagOffset, src, tagNs);
 
   const images: Record<string, string | null> = {};
   const missing: string[] = [];

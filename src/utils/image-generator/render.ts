@@ -10,6 +10,7 @@ import { Env } from '../minecraft';
 import { ensureWasm } from '../wasm';
 import { generateRecipeSvg } from './svg';
 import { DEFAULT_SCALE } from '../../core/image-key';
+import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../../core/tag-namespaces';
 import { Buffer } from 'buffer'; // ensure we have Buffer for jpeg-js if needed
 
 // 拡大率の定義はブラウザ側も同じ値でキーを組むため core にあります。ここから通して使わせます。
@@ -30,9 +31,9 @@ export function zoomForScale(scale: number): number {
 /**
  * レシピJSONデータをPNG画像（バイナリ）としてレンダリングします。
  */
-export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env)): Promise<Uint8Array> {
+export async function renderRecipePng(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env), tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES): Promise<Uint8Array> {
   await ensureWasm();
-  const svg = await generateRecipeSvg(recipeData, env, tagOffset, src);
+  const svg = await generateRecipeSvg(recipeData, env, tagOffset, src, tagNamespaces);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
   return resvg.render().asPng();
 }
@@ -40,9 +41,9 @@ export async function renderRecipePng(recipeData: any, env: Env, tagOffset: numb
 /**
  * レシピJSONデータをJPEG画像（バイナリ）としてレンダリングします。
  */
-export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env)): Promise<Uint8Array> {
+export async function renderRecipeJpg(recipeData: any, env: Env, tagOffset: number = 0, scale: number = DEFAULT_SCALE, src: AssetReader = legacyAssetSource(env), tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES): Promise<Uint8Array> {
   await ensureWasm();
-  const svg = await generateRecipeSvg(recipeData, env, tagOffset, src);
+  const svg = await generateRecipeSvg(recipeData, env, tagOffset, src, tagNamespaces);
   const resvg = new Resvg(svg, { fitTo: { mode: 'zoom', value: zoomForScale(scale) }, shapeRendering: 0, imageRendering: 1 });
   const rendered = resvg.render();
   const { width, height, pixels } = rendered;

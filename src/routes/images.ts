@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
 import { imageCacheKey, deliveryVersion, imageVersion } from '../utils/image-cdn';
+import { parseTagNamespaces, tagNamespaceKey } from '../core/tag-namespaces';
 import { renderBatch } from '../utils/batch-render';
 
 export const imageRoutes = new Hono<{ Bindings: Env }>();
@@ -33,8 +34,9 @@ imageRoutes.post('/api/:namespace/batch', async (c) => {
   const ext = String(payload.ext || 'png').toLowerCase();
   const scale = normalizeScale(payload.scale);
   const tagOffset = parseInt(String(payload.tagOffset ?? 0), 10) || 0;
+  const tagNamespaces = parseTagNamespaces(payload.tagNs == null ? null : String(payload.tagNs));
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)));
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), tagNamespaces);
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -55,8 +57,9 @@ imageRoutes.get('/api/:namespace/batch', async (c) => {
   const ext = String(c.req.query('ext') || 'png').toLowerCase();
   const scale = normalizeScale(c.req.query('scale'));
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10) || 0;
+  const tagNamespaces = parseTagNamespaces(c.req.query('tagNs'));
 
-  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)));
+  const result = await renderBatch(c.env, namespace, ids, ext, scale, tagOffset, new AssetSource(c.env, requestedChannel(c)), tagNamespaces);
   return c.json(result, 200, { 'Cache-Control': 'public, max-age=86400' });
 });
 
@@ -178,6 +181,9 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   const [, id, ext] = match;
   const tagOffset = parseInt(c.req.query('tagOffset') || '0', 10);
   const scale = normalizeScale(c.req.query('scale'));
+  // `tagNs` はタグを絵に落とすときに使うアイテムのネームスペース。既定はバニラのみで、
+  // 指定はそこへの追加、`*` で全部。共通タグを持つレシピの見た目が変わるため、L1 のキーに載せます。
+  const tagNamespaces = parseTagNamespaces(c.req.query('tagNs'));
   const cacheControl = pinned
     ? 'public, max-age=31536000, immutable'
     : 'public, max-age=86400';
@@ -187,7 +193,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
   // R2 に永続化しておけば、そうしたミスは R2 GET 1回で済む。キーに ns バージョンと
   // レンダラー版を含むので、更新時は別キーになり古い画像は参照されなくなる。
   const contentType = contentTypeForExt(ext);
-  const imgKey = imageCacheKey(rv, namespace, version, id, scale, tagOffset, ext);
+  const imgKey = imageCacheKey(rv, namespace, version, id, scale, tagOffset, ext, tagNamespaceKey(tagNamespaces));
   const l1 = await c.env.BUCKET.get(imgKey);
   if (l1) {
     const res = new Response(l1.body, { headers: { 'Content-Type': contentType, 'Cache-Control': cacheControl } });
@@ -208,11 +214,11 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
 
   let body: Uint8Array;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, 5, scale, src); // 5フレーム
+    body = await renderRecipeGif(recipeData, c.env, 5, scale, src, tagNamespaces); // 5フレーム
   } else if (ext === 'jpg' || ext === 'jpeg') {
-    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src);
+    body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src, tagNamespaces);
   } else {
-    body = await renderRecipePng(recipeData, c.env, tagOffset, scale, src);
+    body = await renderRecipePng(recipeData, c.env, tagOffset, scale, src, tagNamespaces);
   }
 
   const response = new Response(body, {

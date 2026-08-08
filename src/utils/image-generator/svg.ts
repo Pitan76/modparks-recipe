@@ -5,6 +5,7 @@
 import { legacyAssetSource } from '../build/asset-source';
 import type { AssetReader } from '../../core/asset-reader';
 import { getItemImageBase64, getTag, Env } from '../minecraft';
+import { DEFAULT_TAG_NAMESPACES, pickTagCandidates, type TagNamespaceFilter } from '../../core/tag-namespaces';
 
 // レイアウト定数と純粋な描画ヘルパーは layout.ts に集約し、ここから再エクスポートします。
 // （ローカルのプレビュー/検証スクリプトが wasm/R2 依存を引き込まずに再利用できるようにするため。）
@@ -46,8 +47,12 @@ export class IconCache {
 
   /**
    * @param src アセット読み出し口
+   * @param tagNamespaces タグの構成アイテムとして採用するネームスペース
    */
-  constructor(readonly src: AssetReader) {}
+  constructor(
+    readonly src: AssetReader,
+    readonly tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
+  ) {}
 
   /**
    * メモ済みのアイコンを返します。
@@ -142,7 +147,7 @@ async function resolveTag(
   if (trail.tags.has(id)) return null;
   trail.tags.add(id);
 
-  const tagItems = await getTag(id, env, cache.src);
+  const tagItems = pickTagCandidates(await getTag(id, env, cache.src), cache.tagNamespaces);
   if (tagItems.length === 0) return null;
   return resolveIngredient(tagItems[tagOffset % tagItems.length], env, tagOffset, cache, trail);
 }
@@ -215,14 +220,16 @@ export async function createRecipeGrid(
 
 /**
  * レシピ全体のUIを表現するSVG文字列を生成します。
+ * @param tagNamespaces タグの構成アイテムとして採用するネームスペース（既定はバニラのみ）
  */
 export async function generateRecipeSvg(
   recipeData: any,
   env: Env | null,
   tagOffset: number = 0,
-  src: AssetReader = legacyAssetSource(env!)
+  src: AssetReader = legacyAssetSource(env!),
+  tagNamespaces: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
 ) {
-  const cache = new IconCache(src);
+  const cache = new IconCache(src, tagNamespaces);
 
   const result = recipeData.result ?? recipeData.output;
   const resultId = result

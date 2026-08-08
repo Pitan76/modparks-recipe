@@ -48,6 +48,7 @@ export function normalizeScale(value: unknown): number {
  * @param scale 拡大率
  * @param tagOffset タグの回転位置
  * @param ext 拡張子
+ * @param tagNs タグ構成アイテムの絞り込み（既定なら空文字。既定の絵のキーを動かさないため）
  */
 export function imageCacheKey(
   rv: string,
@@ -56,7 +57,8 @@ export function imageCacheKey(
   id: string,
   scale: number,
   tagOffset: number,
-  ext: string
+  ext: string,
+  tagNs: string = ''
 ): string {
-  return `${IMAGE_CACHE_PREFIX}${rv}/${ns}/${version}/${id}@${scale}+${tagOffset}.${ext}`;
+  return `${IMAGE_CACHE_PREFIX}${rv}/${ns}/${version}/${id}@${scale}+${tagOffset}${tagNs}.${ext}`;
 }
