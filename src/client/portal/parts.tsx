@@ -66,6 +66,11 @@ function remainingLabel(t: Messages, remaining: number): string {
   return t.remaining.replace('{remaining}', String(remaining));
 }
 
+function nsUsageLabel(t: Messages, used: number, limit: number): string {
+  const limitStr = limit < 0 ? t.remainingUnlimited : String(limit);
+  return t.nsUsage.replace('{used}', String(used)).replace('{limit}', limitStr);
+}
+
 /** ログイン中の表示とログアウト。 */
 export function AccountRow({ t, me, onSignOut }: WithMessages & { me: Me; onSignOut: () => void }) {
   return (
@@ -73,6 +78,7 @@ export function AccountRow({ t, me, onSignOut }: WithMessages & { me: Me; onSign
       <Typography variant="body2" sx={{ flexGrow: 1, minWidth: 0 }}>
         {me.displayName}
       </Typography>
+      <Chip size="small" variant="outlined" label={nsUsageLabel(t, me.nsCount, me.nsLimit)} />
       <Chip size="small" variant="outlined" label={remainingLabel(t, me.remaining)} />
       <Button size="small" variant="outlined" onClick={onSignOut}>
         {t.signOut}

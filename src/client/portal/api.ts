@@ -13,7 +13,7 @@ import type { Messages } from '../../utils/i18n/portal';
 import { sendWithSession, type OnProgress } from './upload-flow';
 
 /** ログイン中の利用者。 */
-export type Me = { displayName: string; remaining: number };
+export type Me = { displayName: string; remaining: number; nsLimit: number; nsCount: number };
 
 /** ログイン手段。 */
 export type Provider = { id: string; name: string };

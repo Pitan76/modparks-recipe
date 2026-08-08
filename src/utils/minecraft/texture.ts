@@ -11,6 +11,7 @@ import { getAssetVersion } from '../cache-version';
 import { rendererVersion } from '../render-version';
 import { legacyAssetSource } from '../build/asset-source';
 import type { AssetReader } from '../../core/asset-reader';
+import { pngSize } from '../../core/model-parser';
 
 /**
  * ArrayBufferをbase64のdataURLに変換します。
@@ -76,16 +77,37 @@ function pickModelTexture(textures: Record<string, string>): string | null {
   return null;
 }
 
+async function cropFirstFrame(env: Env | null, b64: string): Promise<string> {
+  const { w, h } = pngSize(b64);
+  if (h <= w) return b64;
+
+  const svg = `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
+    + `<image href="${b64}" width="${w}" height="${h}" preserveAspectRatio="xMinYMin slice" image-rendering="optimizeSpeed"/></svg>`;
+
+  if (!env) {
+    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+  } else {
+    const { ensureWasm, svgToPng } = await import('../wasm');
+    await ensureWasm();
+    const pngBytes = svgToPng(svg, {
+      fitTo: { mode: 'width', value: w },
+      shapeRendering: 0,
+      imageRendering: 1,
+    });
+    return `data:image/png;base64,${bytesToBase64(pngBytes)}`;
+  }
+}
+
 /**
  * アイテム/ブロックのモデルJSONを介して、そのテクスチャパスを解決します（IDとテクスチャのファイル名が異なるアイテム用）。
  */
-async function resolveViaModel(namespace: string, path: string, src: AssetReader): Promise<string | null> {
+async function resolveViaModel(namespace: string, path: string, env: Env | null, src: AssetReader): Promise<string | null> {
   for (const kind of ['item', 'block']) {
     const textures = await mergedModelTextures(namespace, `${kind}/${path}`, src, new Set());
     const texId = pickModelTexture(textures);
     if (texId) {
       const url = await textureDataUrl(texId, namespace, src);
-      if (url) return url;
+      if (url) return cropFirstFrame(env, url);
     }
   }
   return null;
@@ -188,7 +210,7 @@ async function resolveItemImage(namespace: string, path: string, env: Env | null
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   obj = await src.get(namespace, `textures/item/${path}.png`);
-  if (obj) return pngDataUrl(await obj.arrayBuffer());
+  if (obj) return cropFirstFrame(env, pngDataUrl(await obj.arrayBuffer()));
 
   // ブラウザ側には resvg がありません。ラスタライズせず SVG のまま埋め込みます。
   if (!env) {
@@ -206,9 +228,9 @@ async function resolveItemImage(namespace: string, path: string, env: Env | null
   }
 
   obj = await src.get(namespace, `textures/block/${path}.png`);
-  if (obj) return pngDataUrl(await obj.arrayBuffer());
+  if (obj) return cropFirstFrame(env, pngDataUrl(await obj.arrayBuffer()));
 
-  const viaModel = await resolveViaModel(namespace, path, src);
+  const viaModel = await resolveViaModel(namespace, path, env, src);
   if (viaModel) return viaModel;
 
   return TRANSPARENT_PNG;
