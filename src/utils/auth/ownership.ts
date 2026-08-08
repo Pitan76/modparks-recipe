@@ -9,6 +9,7 @@
  */
 
 import type { Env } from '../minecraft';
+import { limitsFor, withinLimit } from './limits';
 
 /** 所有権の信頼度。 */
 export type Trust = 'verified' | 'unverified';
@@ -61,7 +62,7 @@ export async function claimNamespace(
 ): Promise<ClaimResult> {
   const current = await getOwnership(env, ns);
   if (current && !canTakeOver(current, identityId, trust)) return { ok: false, reason: 'owned' };
-  if (!current && trust === 'unverified' && (await countOwned(env, identityId)) >= MAX_UNVERIFIED_NAMESPACES) {
+  if (!current && trust === 'unverified' && !(await canClaimMore(env, identityId))) {
     return { ok: false, reason: 'limit' };
   }
 
@@ -85,6 +86,20 @@ export async function claimNamespace(
 function canTakeOver(current: Ownership, identityId: string, trust: Trust): boolean {
   if (current.ownerId === identityId) return true;
   return current.trust === 'unverified' && trust === 'verified';
+}
+
+/**
+ * もう1つ namespace を確保してよいかを返します。
+ *
+ * 上限は identity ごとに上書きできます（`identity_limits`）。依存 mod を含む jar は1本で
+ * 複数の namespace を持ち込むため、既定値だけでは投稿者ごとの実態に合いません。
+ * @param env 環境変数
+ * @param identityId 主体のID
+ */
+async function canClaimMore(env: Env, identityId: string): Promise<boolean> {
+  const { nsLimit } = await limitsFor(env, identityId);
+  // これから1つ増える前提で数えます。
+  return withinLimit((await countOwned(env, identityId)) + 1, nsLimit);
 }
 
 /**
