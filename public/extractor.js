@@ -89,6 +89,15 @@
 			publiclyReadable: true
 		},
 		{
+			kind: "mcmetas",
+			jarPath: /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png\.mcmeta$/,
+			root: "textures",
+			rootAliases: [],
+			container: "assets",
+			binary: false,
+			publiclyReadable: true
+		},
+		{
 			kind: "models",
 			jarPath: /^assets\/([^/]+)\/models\/((?:item|block)\/.+)\.json$/,
 			root: "models",
