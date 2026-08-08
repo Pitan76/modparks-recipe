@@ -35,6 +35,7 @@ const SOURCES = [
   'src/core/math.ts',
   'src/core/mcmeta.ts',
   'src/utils/block-icon.ts',
+  'src/utils/minecraft',
   'src/utils/image-generator',
 ];
 

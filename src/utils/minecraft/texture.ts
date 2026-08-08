@@ -82,7 +82,9 @@ async function cropFirstFrame(env: Env | null, b64: string): Promise<string> {
   if (h <= w) return b64;
 
   const svg = `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
-    + `<image href="${b64}" width="${w}" height="${h}" preserveAspectRatio="xMinYMin slice" image-rendering="optimizeSpeed"/></svg>`;
+    + `<clipPath id="c"><rect width="${w}" height="${w}"/></clipPath>`
+    + `<image href="${b64}" width="${w}" height="${h}" clip-path="url(#c)" image-rendering="optimizeSpeed"/>`
+    + `</svg>`;
 
   if (!env) {
     return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;

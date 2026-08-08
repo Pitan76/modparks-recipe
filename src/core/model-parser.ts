@@ -206,7 +206,8 @@ async function flatItemSvg(
         }
     }
     return `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
-        + `<image href="${b64}" width="${w}" height="${h}" y="${yOffset}" preserveAspectRatio="xMinYMin slice"`
+        + `<clipPath id="c"><rect width="${w}" height="${w}"/></clipPath>`
+        + `<image href="${b64}" width="${w}" height="${h}" y="${yOffset}" clip-path="url(#c)"`
         + ` image-rendering="optimizeSpeed"/></svg>`;
 }
 
