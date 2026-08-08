@@ -10,7 +10,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
-import { imageCdnPath, imagePath, splitId, type Assets, type Versions } from './api';
+import { imageCdnPath, imagePath, splitId, type Assets, type Versions, type ViewOptions } from './api';
 import { copyTitle, type WithMessages } from './parts';
 import type { FmtResolver } from './format';
 
@@ -67,7 +67,7 @@ export type ImageTileProps = WithMessages & {
   fmtOf: FmtResolver;
   versions: Versions | null;
   assets: Assets | null;
-  scale: number;
+  view: ViewOptions;
   title?: string;
   copied: boolean;
   failed: boolean;
@@ -80,8 +80,8 @@ export function ImageTile(props: ImageTileProps) {
   const { t } = props;
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const parts = splitId(props.recipeId);
-  const direct = imageCdnPath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.scale);
-  // 直接配信を諦めたURL。形式や拡大率を変えると direct も変わるので、その都度また直接配信から試せる。
+  const direct = imageCdnPath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.view);
+  // 直接配信を諦めたURL。形式や表示設定を変えると direct も変わるので、その都度また直接配信から試せる。
   const [gaveUp, setGaveUp] = useState<string | null>(null);
   const useDirect = direct !== null && gaveUp !== direct;
 
@@ -98,7 +98,7 @@ export function ImageTile(props: ImageTileProps) {
         <Typography variant="caption" color="error">{`${props.recipeId} ${t.cannotDisplay}`}</Typography>
       )}
       <img
-        src={(useDirect && direct) || imagePath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.scale)}
+        src={(useDirect && direct) || imagePath(props.recipeId, props.fmtOf(props.recipeId), props.versions, props.assets, props.view)}
         alt={props.recipeId}
         className="recipe-img"
         title={props.title}

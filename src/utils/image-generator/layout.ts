@@ -13,7 +13,25 @@ export const CANVAS_H = 112;
 // スロットの境界や矢印のギザギザした輪郭は背景画像由来なので、コード内で枠線を再描画する処理は行いません。
 export const BACKGROUND = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHYAAAA4CAYAAAAo9QwNAAAACXBIWXMAAFxGAABcRgEUlENBAAABk0lEQVR4nO3bUY6DIBSF4cOEVekyZCW6LpYhcVf0YeJjYwqI18P5kkn6MLlp8tdKC3X7vmeQcs49/RQe4wFgXdfqQcuyIMZoZk4IAfM8V895K38+CCFUDdq2DTFGU3OO46ia8WZ/Tz8BuYfCklJYUgpLSmFJKSwphSWlsKQUlpTCklJYUv76X6SFnPttojnnFLanFrtoV85dLYXtrHbX6sq5q6V7LCkP/G9ub9tWPczanJF5AIgxVp9aOE8+WJlzxwmKcwH0hiM3OkHxo5QSpmkyH1f32AIppa4fX0oobCHrcRW2guW4ClvJatwhw+aci/6+sRh32G+eUkrN51laLQ95xd6l9YulhsI2ZOknJUO+FTvniiLknL9elZaiArpim7AWFVDYahajAgpbxWpUQGGLWY4KKGwR61EBhf1J6Wr6CTpBQUonKEjpBAUp3WNJDfmV4lNCCN3WDgrbybmi7nV70FsxKYUlpbCkFJaUwpJSWFIKS0phSSksKYUlpbCkFJaUB9rtOlibMzKXUrL1MzFp4gNTwNqKklCKbAAAAABJRU5ErkJggg==';
 
+/** ネイティブ1pxがSVG座標で何になるか。背景を2倍で描いているぶんの係数です。 */
+export const NATIVE_PX = 2;
+
 export const ICON = 32;
+
+/** SVGのビューポート。クリップすると原点と大きさが動きます。 */
+export type ViewPort = { x: number; y: number; width: number; height: number };
+
+/**
+ * クリップ量からビューポートを求めます。
+ *
+ * 背景や各アイコンは常に同じ座標へ置き、切り出す窓の方を縮めます。描画側を動かすと
+ * スロットとの位置関係がずれるためです。
+ * @param crop 上下左右から削る量（ネイティブpx）
+ */
+export function viewPortOf(crop: number): ViewPort {
+  const inset = crop * NATIVE_PX;
+  return { x: inset, y: inset, width: CANVAS_W - inset * 2, height: CANVAS_H - inset * 2 };
+}
 
 /** 最初のスロットの内部の左上座標、およびスロット間のピッチ（間隔）。 */
 export const GRID_X = 4;

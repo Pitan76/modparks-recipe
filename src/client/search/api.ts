@@ -3,8 +3,42 @@
  */
 
 import { DEFAULT_SCALE, DEFAULT_TAG_OFFSET, imageCacheKey } from '../../core/image-key';
+import { DEFAULT_CROP, normalizeCrop, renderOptionsKey, type RenderOptions } from '../../core/render-options';
+import { parseTagNamespaces } from '../../core/tag-namespaces';
 
-export { DEFAULT_SCALE };
+export { DEFAULT_SCALE, DEFAULT_CROP };
+
+/**
+ * 画面で選べる表示設定。
+ *
+ * `tagNs` は入力された生の文字列（カンマ区切り、`*` で全部、空なら既定のバニラのみ）です。
+ * 解釈は {@link parseTagNamespaces} に任せ、ここでは持ち回るだけにします。
+ */
+export type ViewOptions = { scale: number; tagNs: string; crop: number };
+
+/** 何も選ばれていないときの表示設定。 */
+export const DEFAULT_VIEW: ViewOptions = { scale: DEFAULT_SCALE, tagNs: '', crop: DEFAULT_CROP };
+
+/**
+ * 画面の表示設定を、キーやクエリの組み立てに使う形へ直します。
+ * @param view 画面の表示設定
+ */
+function toRenderOptions(view: ViewOptions): RenderOptions {
+  return { tagNamespaces: parseTagNamespaces(view.tagNs), crop: normalizeCrop(view.crop) };
+}
+
+/**
+ * 既定と異なる表示設定だけをクエリに載せます。
+ *
+ * 既定値まで載せるとURLが分かれ、同じ絵が別々にキャッシュされます。
+ * @param query 追記先
+ * @param view 画面の表示設定
+ */
+function appendViewQuery(query: URLSearchParams, view: ViewOptions): void {
+  if (view.scale !== DEFAULT_SCALE) query.set('scale', String(view.scale));
+  if (view.tagNs) query.set('tagNs', view.tagNs);
+  if (normalizeCrop(view.crop) !== DEFAULT_CROP) query.set('crop', String(normalizeCrop(view.crop)));
+}
 
 /** 索引に載る1レシピ。 */
 export type RecipeEntry = {
@@ -54,14 +88,14 @@ export function splitId(full: string): { ns: string; id: string } {
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報。`rv` をURLに載せるために使います
- * @param scale 拡大率。既定値ならURLに載せません（キャッシュを既定値のURLに寄せるため）
+ * @param view 表示設定。既定値はURLに載せません（キャッシュを既定値のURLに寄せるため）
  */
 export function imagePath(
   recipeId: string,
   fmt: string,
   versions: Versions | null,
   assets: Assets | null,
-  scale: number = DEFAULT_SCALE
+  view: ViewOptions = DEFAULT_VIEW
 ): string {
   const p = splitId(recipeId);
   const version = versions?.[p.ns];
@@ -70,7 +104,7 @@ export function imagePath(
   // レンダラーの更新や共通タグの追加では ns のバージョンが動かない。`rv` を載せないと、
   // 新しい絵ができていても `immutable` で焼き付いた古い応答が返り続ける。
   if (assets?.rv) query.set('rv', assets.rv);
-  if (scale !== DEFAULT_SCALE) query.set('scale', String(scale));
+  appendViewQuery(query, view);
 
   const base = `/api/${encodeURIComponent(p.ns)}/${encodeURIComponent(p.id)}.${fmt}`;
   const qs = query.toString();
@@ -87,7 +121,7 @@ export function imagePath(
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報（`/api/list.json` の `assets`）
- * @param scale 拡大率
+ * @param view 表示設定
  * @returns 直接配信できないときは null
  */
 export function imageCdnPath(
@@ -95,7 +129,7 @@ export function imageCdnPath(
   fmt: string,
   versions: Versions | null,
   assets: Assets | null,
-  scale: number = DEFAULT_SCALE
+  view: ViewOptions = DEFAULT_VIEW
 ): string | null {
   if (!assets?.base) return null;
 
@@ -104,7 +138,7 @@ export function imageCdnPath(
   // バージョンが無いとサーバ側が引いた値がキーに入るため、クライアントからは行き先を当てられない。
   if (!version || version === '0') return null;
 
-  const key = imageCacheKey(assets.rv, p.ns, version, p.id, scale, DEFAULT_TAG_OFFSET, fmt);
+  const key = imageCacheKey(assets.rv, p.ns, version, p.id, view.scale, DEFAULT_TAG_OFFSET, fmt, renderOptionsKey(toRenderOptions(view)));
   return `${assets.base}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 
@@ -117,17 +151,17 @@ export function imageCdnPath(
  * @param fmt 画像形式
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報
- * @param scale 拡大率
+ * @param view 表示設定
  */
 export function imageUrl(
   recipeId: string,
   fmt: string,
   versions: Versions | null,
   assets: Assets | null,
-  scale: number = DEFAULT_SCALE
+  view: ViewOptions = DEFAULT_VIEW
 ): string {
-  const direct = imageCdnPath(recipeId, fmt, versions, assets, scale);
-  return direct ?? `${window.location.origin}${imagePath(recipeId, fmt, versions, assets, scale)}`;
+  const direct = imageCdnPath(recipeId, fmt, versions, assets, view);
+  return direct ?? `${window.location.origin}${imagePath(recipeId, fmt, versions, assets, view)}`;
 }
 
 /**

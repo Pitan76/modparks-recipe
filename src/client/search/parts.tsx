@@ -11,7 +11,8 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { SCALE_CHOICES } from './api';
+import type { ViewOptions } from './api';
+import { ViewSettings } from './view-settings';
 import type { SearchMessages } from '../../utils/i18n/search';
 
 /** 部品が共通で受け取る文言。 */
@@ -56,8 +57,10 @@ export type SearchFormProps = WithMessages & {
   onNs: (value: string) => void;
   fmt: string;
   onFmt: (value: string) => void;
-  scale: number;
+  view: ViewOptions;
   onScale: (value: number) => void;
+  onTagNs: (value: string) => void;
+  onCrop: (value: number) => void;
   namespaces: string[];
   counts: Record<string, number>;
   onSubmit: (ev: FormEvent) => void;
@@ -97,7 +100,8 @@ export function SearchForm(props: SearchFormProps) {
 }
 
 /**
- * 絞り込みの選択欄3つ。狭い画面では縦積みだと嵩むため、横一列に詰めて幅を分け合わせます。
+ * 絞り込みの選択欄と、見え方の設定を開くボタン。
+ * 狭い画面では縦積みだと嵩むため、横一列に詰めて幅を分け合わせます。
  */
 function FilterSelects(props: SearchFormProps) {
   const { t } = props;
@@ -119,11 +123,7 @@ function FilterSelects(props: SearchFormProps) {
         <MenuItem value="gif">GIF</MenuItem>
         <MenuItem value="jpg">JPG</MenuItem>
       </TextField>
-      <TextField label={t.size} select value={props.scale} onChange={(ev) => props.onScale(Number(ev.target.value))} sx={cell(1, 110)}>
-        {SCALE_CHOICES.map((scale) => (
-          <MenuItem key={scale} value={scale}>{`${scale}x`}</MenuItem>
-        ))}
-      </TextField>
+      <ViewSettings t={t} view={props.view} onScale={props.onScale} onTagNs={props.onTagNs} onCrop={props.onCrop} />
     </Stack>
   );
 }

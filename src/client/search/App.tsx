@@ -46,7 +46,7 @@ export function App({ locale }: { locale: string }) {
   const { names, request } = useNames(mcLocale);
 
   const [q, setQ] = useState('');
-  const { fmt, scale, changeFmt, changeScale } = useDisplayPrefs();
+  const { fmt, view, changeFmt, changeScale, changeTagNs, changeCrop } = useDisplayPrefs();
   const fmtOf = useFmtResolver(fmt, recipes);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'default');
@@ -143,7 +143,7 @@ export function App({ locale }: { locale: string }) {
 
   const { copiedId, failedId, copyLink, copyImage, downloadItem, downloadRecipe } = useShare({
     fmtOf,
-    scale,
+    view,
     versions,
     assets,
     recipesOf: (item) => groups[item] || [],
@@ -175,7 +175,7 @@ export function App({ locale }: { locale: string }) {
     if (ids.length === 0 || zipping) return;
 
     setZipping(t.downloadZipProgress.replace('{done}', '0').replace('{total}', String(ids.length)));
-    const blob = await buildRecipeZip(ids, fmtOf, versions, assets, scale, (done, total) => {
+    const blob = await buildRecipeZip(ids, fmtOf, versions, assets, view, (done, total) => {
       setZipping(t.downloadZipProgress.replace('{done}', String(done)).replace('{total}', String(total)));
     }).catch(() => null);
     setZipping(null);
@@ -196,8 +196,10 @@ export function App({ locale }: { locale: string }) {
           onNs={setNs}
           fmt={fmt}
           onFmt={changeFmt}
-          scale={scale}
+          view={view}
           onScale={changeScale}
+          onTagNs={changeTagNs}
+          onCrop={changeCrop}
           namespaces={namespaces}
           counts={counts}
           onSubmit={submit}
@@ -252,7 +254,7 @@ export function App({ locale }: { locale: string }) {
               fmtOf={fmtOf}
               versions={versions}
               assets={assets}
-              scale={scale}
+              view={view}
               page={page}
               onPage={setPage}
               entries={entries}

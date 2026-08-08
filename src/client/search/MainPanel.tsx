@@ -8,7 +8,7 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Pagination from '@mui/material/Pagination';
 import Typography from '@mui/material/Typography';
-import { imageUrl, type Assets, type Names, type Versions } from './api';
+import { imageUrl, type Assets, type Names, type Versions, type ViewOptions } from './api';
 import type { FmtResolver } from './format';
 import { copyTitle, SectionHead, type WithMessages } from './parts';
 import { ImageTile } from './result-parts';
@@ -30,7 +30,7 @@ export type MainPanelProps = WithMessages & {
   fmtOf: FmtResolver;
   versions: Versions | null;
   assets: Assets | null;
-  scale: number;
+  view: ViewOptions;
   page: number;
   onPage: (page: number) => void;
   entries: GridEntry[];
@@ -74,7 +74,7 @@ function RecipeGrid(props: MainPanelProps) {
             fmtOf={props.fmtOf}
             versions={props.versions}
             assets={props.assets}
-            scale={props.scale}
+            view={props.view}
             copied={props.copiedId === rid}
             failed={props.failedId === rid}
             onClick={() => props.onPick(item)}
@@ -124,11 +124,11 @@ function RecipeDetail(props: MainPanelProps & { selection: Selection }) {
             fmtOf={props.fmtOf}
             versions={props.versions}
             assets={props.assets}
-            scale={props.scale}
+            view={props.view}
             title={t.openImage}
             copied={props.copiedId === rid}
             failed={props.failedId === rid}
-            onClick={() => window.open(imageUrl(rid, props.fmtOf(rid), props.versions, props.assets, props.scale), '_blank', 'noopener')}
+            onClick={() => window.open(imageUrl(rid, props.fmtOf(rid), props.versions, props.assets, props.view), '_blank', 'noopener')}
             onCopy={(ev) => props.onCopyImage(ev, rid)}
             onDownload={(ev) => props.onDownloadRecipe(ev, rid)}
           />

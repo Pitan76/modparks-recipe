@@ -8,7 +8,7 @@ import { Env, getRecipe } from './minecraft';
 import { renderRecipePng, renderRecipeGif, renderRecipeJpg, MAX_GIF_FRAMES } from './image-generator';
 import { bytesToBase64 } from './http';
 import { runPool } from './pool';
-import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../core/tag-namespaces';
+import { DEFAULT_RENDER_OPTIONS, type RenderOptions } from '../core/render-options';
 
 /**
  * 同時に走らせるレンダリング数。
@@ -25,7 +25,7 @@ export type BatchResult = { images: Record<string, string | null>; missing: stri
  * @param env 環境変数
  * @param scale スケール倍率
  * @param tagOffset タグオフセット
- * @param tagNs タグ構成アイテムとして採用するネームスペース
+ * @param options 見た目の指定（採用ネームスペース・余白のクリップ）
  */
 function rendererFor(
   ext: string,
@@ -33,13 +33,13 @@ function rendererFor(
   scale: number,
   tagOffset: number,
   src: AssetReader,
-  tagNs: TagNamespaceFilter
+  options: RenderOptions
 ): { mime: string; render: (recipe: any) => Promise<Uint8Array> } {
-  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, MAX_GIF_FRAMES, scale, src, tagNs) };
+  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, MAX_GIF_FRAMES, scale, src, options) };
   if (ext === 'jpg' || ext === 'jpeg') {
-    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src, tagNs) };
+    return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src, options) };
   }
-  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale, src, tagNs) };
+  return { mime: 'image/png', render: (r) => renderRecipePng(r, env, tagOffset, scale, src, options) };
 }
 
 /**
@@ -73,7 +73,7 @@ async function renderOrNull(
  * @param ext 拡張子（png, gif, jpg）
  * @param scale スケール倍率
  * @param tagOffset タグオフセット
- * @param tagNs タグ構成アイテムとして採用するネームスペース（既定はバニラのみ）
+ * @param options 見た目の指定（既定はバニラのみ・クリップなし）
  * @returns レンダリングされた画像データのマップと不足しているIDのリスト
  */
 export async function renderBatch(
@@ -84,9 +84,9 @@ export async function renderBatch(
   scale: number,
   tagOffset: number,
   src: AssetReader = legacyAssetSource(env),
-  tagNs: TagNamespaceFilter = DEFAULT_TAG_NAMESPACES
+  options: RenderOptions = DEFAULT_RENDER_OPTIONS
 ): Promise<BatchResult> {
-  const { mime, render } = rendererFor(ext, env, scale, tagOffset, src, tagNs);
+  const { mime, render } = rendererFor(ext, env, scale, tagOffset, src, options);
 
   const images: Record<string, string | null> = {};
   const missing: string[] = [];

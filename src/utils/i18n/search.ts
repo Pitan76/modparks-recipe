@@ -39,6 +39,11 @@ const JA = {
   clear: '検索条件をクリア',
   noResults: '該当するアイテムがありません。',
   openImage: '画像を原寸で開く',
+  viewSettings: '表示設定',
+  tagNamespaces: 'タグに使う名前空間',
+  tagNamespacesHelp: '空ならバニラのみ。カンマ区切りで追加、* ですべて',
+  crop: '余白のクリップ',
+  cropHelp: '上下左右から削る量',
 } as const;
 
 const EN: SearchMessages = {
@@ -67,6 +72,11 @@ const EN: SearchMessages = {
   clear: 'Clear search',
   noResults: 'No matching items.',
   openImage: 'Open the image at full size',
+  viewSettings: 'Display settings',
+  tagNamespaces: 'Namespaces for tags',
+  tagNamespacesHelp: 'Empty means vanilla only. Comma-separated to add, * for all',
+  crop: 'Crop margins',
+  cropHelp: 'Trimmed from every side',
 };
 
 const TABLES: Record<string, SearchMessages> = { ja: JA, en: EN };

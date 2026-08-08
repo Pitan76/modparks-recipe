@@ -9,7 +9,7 @@
  * 許可が無ければ全件が一括APIへ落ちるだけで、結果は変わりません。
  */
 
-import { imageCdnPath, splitId, type Assets, type Versions } from './api';
+import { imageCdnPath, splitId, type Assets, type Versions, type ViewOptions } from './api';
 import type { FmtResolver } from './format';
 
 /** JSZip はページに読み込まれたものを使います。 */
@@ -44,7 +44,7 @@ type Sink = {
  * @param extOf レシピIDから拡張子を引く関数
  * @param versions ネームスペースごとのバージョン
  * @param assets 配信情報
- * @param scale 拡大率
+ * @param view 表示設定
  * @param onProgress 進捗の通知
  * @returns zip の Blob。1枚も取れなければ null
  */
@@ -53,7 +53,7 @@ export async function buildRecipeZip(
   extOf: FmtResolver,
   versions: Versions | null,
   assets: Assets | null,
-  scale: number,
+  view: ViewOptions,
   onProgress?: ZipProgress
 ): Promise<Blob | null> {
   const zip = new JSZip();
@@ -70,8 +70,8 @@ export async function buildRecipeZip(
     },
   };
 
-  const missing = await collectDirect(recipeIds, extOf, versions, assets, scale, sink);
-  await collectBatched(missing, extOf, scale, sink);
+  const missing = await collectDirect(recipeIds, extOf, versions, assets, view, sink);
+  await collectBatched(missing, extOf, view, sink);
 
   if (added === 0) return null;
   return zip.generateAsync({ type: 'blob' });
@@ -86,7 +86,7 @@ async function collectDirect(
   extOf: (recipeId: string) => string,
   versions: Versions | null,
   assets: Assets | null,
-  scale: number,
+  view: ViewOptions,
   sink: Sink
 ): Promise<string[]> {
   const missing: string[] = [];
@@ -94,7 +94,7 @@ async function collectDirect(
 
   const workers = Array.from({ length: Math.min(DIRECT_CONCURRENCY, queue.length) }, async () => {
     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
-      const url = imageCdnPath(id, extOf(id), versions, assets, scale);
+      const url = imageCdnPath(id, extOf(id), versions, assets, view);
       // 未生成なら404、CORS が未設定なら例外。どちらも一括APIへ回します。
       const bytes = url ? await fetchBytes(url) : null;
       if (!bytes) {
@@ -117,7 +117,7 @@ async function collectDirect(
 async function collectBatched(
   recipeIds: string[],
   extOf: (recipeId: string) => string,
-  scale: number,
+  view: ViewOptions,
   sink: Sink
 ): Promise<void> {
   // 一括APIは1リクエストにつき1形式なので、形式ごとに分けて投げます。
@@ -126,7 +126,7 @@ async function collectBatched(
   const workers = Array.from({ length: Math.min(BATCH_CONCURRENCY, queue.length) }, async () => {
     for (let batch = queue.shift(); batch !== undefined; batch = queue.shift()) {
       // 1バッチの失敗で全体を捨てると、数百枚のうち一部のためにやり直しになります。
-      const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, batch.ext, scale).catch(() => ({}));
+      const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, batch.ext, view).catch(() => ({}));
       for (const id of batch.ids) {
         const dataUrl = images[id];
         if (dataUrl) sink.add(`${batch.ns}:${id}`, dataUrl.slice(dataUrl.indexOf(',') + 1), true);
@@ -194,19 +194,19 @@ function splitByExt(batch: Batch, extOf: (recipeId: string) => string): Batch[] 
  * @param ns ネームスペース
  * @param ids ネームスペースを除いたレシピID
  * @param fmt 画像形式
- * @param scale 拡大率
+ * @param view 表示設定
  * @returns IDからデータURLへの対応
  */
 async function fetchBatch(
   ns: string,
   ids: string[],
   fmt: string,
-  scale: number
+  view: ViewOptions
 ): Promise<Record<string, string | null>> {
   const res = await fetch(`/api/${encodeURIComponent(ns)}/batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids, ext: fmt, scale }),
+    body: JSON.stringify({ ids, ext: fmt, scale: view.scale, tagNs: view.tagNs, crop: view.crop }),
   });
   if (!res.ok) return {};
 
