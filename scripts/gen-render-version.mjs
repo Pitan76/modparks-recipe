@@ -33,6 +33,7 @@ const SOURCES = [
   'src/core/chest.ts',
   'src/core/skull.ts',
   'src/core/math.ts',
+  'src/core/mcmeta.ts',
   'src/utils/block-icon.ts',
   'src/utils/image-generator',
 ];

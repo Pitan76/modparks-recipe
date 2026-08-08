@@ -65,7 +65,7 @@ export function getS3(): S3Client {
  */
 function contentTypeFor(key: string): string {
   if (key.endsWith('.png')) return 'image/png';
-  if (key.endsWith('.json')) return 'application/json';
+  if (key.endsWith('.json') || key.endsWith('.mcmeta')) return 'application/json';
   if (key.endsWith('.svg')) return 'image/svg+xml';
   return 'application/octet-stream';
 }

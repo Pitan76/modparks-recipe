@@ -40,6 +40,7 @@ export interface BulkCounts {
   models: number;
   items: number;
   langs: number;
+  mcmetas: number;
   skipped: number;
 }
 
@@ -53,7 +54,7 @@ const CONCURRENCY = 30;
  * @returns 種別ごとの件数
  */
 export async function ingestBulk(ctx: BulkContext, payload: any): Promise<BulkCounts> {
-  const counts: BulkCounts = { recipes: 0, tags: 0, textures: 0, models: 0, items: 0, langs: 0, skipped: 0 };
+  const counts: BulkCounts = { recipes: 0, tags: 0, textures: 0, models: 0, items: 0, langs: 0, mcmetas: 0, skipped: 0 };
 
   await ingestTags(ctx, payload.tags, counts);
   if (ctx.tagsOnly) {
@@ -80,7 +81,7 @@ function nonTagCount(payload: any): number {
 
 /** 取り込んだ総数。監査に残す件数です。 */
 export function totalOf(counts: BulkCounts): number {
-  return counts.recipes + counts.tags + counts.textures + counts.models + counts.items + counts.langs;
+  return counts.recipes + counts.tags + counts.textures + counts.models + counts.items + counts.langs + counts.mcmetas;
 }
 
 /**
@@ -186,7 +187,7 @@ async function ingestTextures(ctx: BulkContext, entries: unknown, counts: BulkCo
  * @param counts 件数の積み先
  */
 async function ingestJsonAssets(ctx: BulkContext, payload: any, counts: BulkCounts): Promise<void> {
-  const kinds: AssetKind[] = ['models', 'items'];
+  const kinds: AssetKind[] = ['models', 'items', 'mcmetas'];
 
   for (const kind of kinds) {
     const root = assetKind(kind).root;
@@ -195,7 +196,9 @@ async function ingestJsonAssets(ctx: BulkContext, payload: any, counts: BulkCoun
         counts.skipped++;
         return;
       }
-      const rel = `${root}/${path.replace(/\.json$/, '')}.json`;
+      const rel = kind === 'mcmetas'
+        ? `${root}/${path}.png.mcmeta`
+        : `${root}/${path.replace(/\.json$/, '')}.json`;
       const json = typeof val === 'string' ? val : JSON.stringify(val);
       await ctx.env.BUCKET.put(`assets/${ctx.namespace}/${rel}`, json, {
         httpMetadata: { contentType: 'application/json' },

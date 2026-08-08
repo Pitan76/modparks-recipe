@@ -46,7 +46,7 @@ interface SvgFace {
  * 16pxとして固定値（ハードコード）にしてしまうと、それより大きいアセットが 16x16 の正方形に押しつぶされてしまいます。
  * @param dataUrl PNGのデータURL
  */
-function pngSize(dataUrl: string): { w: number; h: number } {
+export function pngSize(dataUrl: string): { w: number; h: number } {
     const comma = dataUrl.indexOf(',');
     // 33バイトには、8バイトのシグネチャ、チャンクヘッダー、およびIHDRの幅/高さが含まれます。
     const header = atob(dataUrl.slice(comma + 1, comma + 1 + 64)).slice(0, 33);

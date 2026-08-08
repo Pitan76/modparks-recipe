@@ -42,7 +42,7 @@ export const ITEM_DEF_PATH = /^assets\/([^/]+)\/items\/(.+)\.json$/;
 export const LANG_PATH = /^assets\/([^/]+)\/lang\/([a-z]{2,8}(?:_[a-z0-9]{2,8})?)\.json$/;
 
 /** 抽出対象の種別。bulk 投入APIのボディのキーと一致させています。 */
-export type AssetKind = 'recipes' | 'tags' | 'textures' | 'models' | 'items' | 'langs';
+export type AssetKind = 'recipes' | 'tags' | 'textures' | 'models' | 'items' | 'langs' | 'mcmetas';
 
 /** 種別1つ分の決まりごと。 */
 export interface AssetKindSpec {
@@ -94,6 +94,15 @@ export const ASSET_KINDS: readonly AssetKindSpec[] = [
     rootAliases: [],
     container: 'assets',
     binary: true,
+    publiclyReadable: true,
+  },
+  {
+    kind: 'mcmetas',
+    jarPath: /^assets\/([^/]+)\/textures\/((?:item|block)\/.+)\.png\.mcmeta$/,
+    root: 'textures',
+    rootAliases: [],
+    container: 'assets',
+    binary: false,
     publiclyReadable: true,
   },
   {

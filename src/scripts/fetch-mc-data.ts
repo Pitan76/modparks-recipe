@@ -14,8 +14,8 @@ const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.j
 // JARファイルから抽出して R2 にミラーリングするファイルリスト。
 // キーは JAR 内のパスを維持し、Worker が `data/...` や `assets/...textures/...` のパスで読み取れるようにします。
 const TARGET_PATHS: RegExp[] = [
-  /^assets\/minecraft\/textures\/item\/.*\.png$/,
-  /^assets\/minecraft\/textures\/block\/.*\.png$/,
+  /^assets\/minecraft\/textures\/item\/.*\.(?:png|png\.mcmeta)$/,
+  /^assets\/minecraft\/textures\/block\/.*\.(?:png|png\.mcmeta)$/,
   // ブロックエンティティ（チェストなど）は平面的なブロックテクスチャを持ちません。
   // それらのスキンはエンティティアトラスに存在し、`core/chest.ts` がそれを合成されたボックスモデル上に展開します。
   /^assets\/minecraft\/textures\/entity\/.*\.png$/,
