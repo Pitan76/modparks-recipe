@@ -13,6 +13,7 @@
     "upload-lang": "tsx src/scripts/upload-lang.ts",
     "migrate-builds": "tsx src/scripts/migrate-builds.ts",
     "gc-builds": "tsx src/scripts/gc-builds.ts",
+    "reset-limits": "tsx src/scripts/reset-limits.ts",
     "build:client": "vite build --config vite.client.config.ts && vite build --config vite.extractor.config.ts",
     "check:bundles": "node scripts/check-bundles.mjs",
     "gen:render-version": "node scripts/gen-render-version.mjs",
