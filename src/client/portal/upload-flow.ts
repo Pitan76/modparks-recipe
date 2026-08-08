@@ -41,6 +41,7 @@ export type OnProgress = (steps: Step[]) => void;
  */
 const PHASES: { kind: AssetKind; maxCount: number; maxBytes: number }[] = [
   { kind: 'textures', maxCount: 80, maxBytes: 6_000_000 },
+  { kind: 'mcmetas', maxCount: 200, maxBytes: Infinity },
   { kind: 'models', maxCount: 200, maxBytes: Infinity },
   { kind: 'items', maxCount: 200, maxBytes: Infinity },
   { kind: 'tags', maxCount: 200, maxBytes: Infinity },

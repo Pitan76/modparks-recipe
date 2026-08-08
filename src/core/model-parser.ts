@@ -199,9 +199,9 @@ async function flatItemSvg(
         const texNs = idx >= 0 ? texPath.slice(0, idx) : 'minecraft';
         const texSubPath = idx >= 0 ? texPath.slice(idx + 1) : texPath;
         const logicalPath = `textures/${texSubPath}.png`;
-        const anim = await getTextureAnimation(texNs, logicalPath, src, w, h);
+        const anim = await getTextureAnimation(texNs, logicalPath, src!, w, h);
         if (anim) {
-            const frameIndex = getFrameIndexForTick(anim, tick);
+            const frameIndex = getFrameIndexForTick(anim, tick!);
             yOffset = -frameIndex * w;
         }
     }
@@ -251,9 +251,9 @@ async function collectFaces(
                 const texNs = idx >= 0 ? texPath.slice(0, idx) : defaultNs;
                 const texSubPath = idx >= 0 ? texPath.slice(idx + 1) : texPath;
                 const logicalPath = `textures/${texSubPath}.png`;
-                const anim = await getTextureAnimation(texNs, logicalPath, src, w, h);
+                const anim = await getTextureAnimation(texNs, logicalPath, src!, w, h);
                 if (anim) {
-                    const frameIndex = getFrameIndexForTick(anim, tick);
+                    const frameIndex = getFrameIndexForTick(anim, tick!);
                     const offset = frameIndex * 16;
                     finalUv = [finalUv[0], finalUv[1] + offset, finalUv[2], finalUv[3] + offset];
                 }

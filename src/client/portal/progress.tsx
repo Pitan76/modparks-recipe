@@ -16,6 +16,7 @@ import type { Messages, MessageKey } from '../../utils/i18n/portal';
 const LABEL_KEYS: Record<StepKind, MessageKey> = {
   begin: 'stepBegin',
   textures: 'stepTextures',
+  mcmetas: 'stepMcmetas',
   models: 'stepModels',
   items: 'stepItems',
   tags: 'stepTags',

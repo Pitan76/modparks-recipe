@@ -4,7 +4,7 @@
 
 import { Env } from './env';
 import { parseNamespacedId } from './id';
-import { renderBlockIconPng, renderBlockIconSvg } from '../block-icon';
+import { renderBlockIcon, renderBlockIconSvg } from '../block-icon';
 import { bytesToBase64 } from '../http';
 import { getIcon, setIcon, noteVersion } from '../icon-memo';
 import { getAssetVersion } from '../cache-version';
@@ -181,7 +181,10 @@ function pixelated(svg: string): string {
  * アイコンの実解決。最大5段の直列 R2 プローブを伴うため、呼び出し側で必ずメモしてください。
  */
 async function resolveItemImage(namespace: string, path: string, env: Env | null, src: AssetReader): Promise<string> {
-  let obj = await src.get(namespace, `textures/render3d/${path}.png`);
+  let obj = await src.get(namespace, `textures/render3d/${path}.gif`);
+  if (obj) return `data:image/gif;base64,${bytesToBase64(new Uint8Array(await obj.arrayBuffer()))}`;
+
+  obj = await src.get(namespace, `textures/render3d/${path}.png`);
   if (obj) return pngDataUrl(await obj.arrayBuffer());
 
   obj = await src.get(namespace, `textures/item/${path}.png`);
@@ -192,12 +195,13 @@ async function resolveItemImage(namespace: string, path: string, env: Env | null
     const svg = await renderBlockIconSvg(null, namespace, path, src).catch(() => null);
     if (svg) return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(pixelated(svg))))}`;
   } else {
-    const icon = await renderBlockIconPng(env, namespace, path, src).catch(() => null);
+    const icon = await renderBlockIcon(env, namespace, path, src).catch(() => null);
     if (icon) {
-      await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.png`, icon, {
-        httpMetadata: { contentType: 'image/png' },
+      const ext = icon.contentType === 'image/gif' ? 'gif' : 'png';
+      await env.BUCKET.put(`assets/${namespace}/textures/render3d/${path}.${ext}`, icon.bytes, {
+        httpMetadata: { contentType: icon.contentType },
       }).catch(() => {});
-      return `data:image/png;base64,${bytesToBase64(icon)}`;
+      return `data:${icon.contentType};base64,${bytesToBase64(icon.bytes)}`;
     }
   }
 

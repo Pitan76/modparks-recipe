@@ -6,6 +6,7 @@
  */
 
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
+export { Resvg };
 import { init as initSatori } from 'satori/standalone';
 
 // @ts-ignore

@@ -12,7 +12,7 @@
 import type { Env } from './minecraft';
 import { legacyAssetSource } from './build/asset-source';
 import type { AssetReader } from '../core/asset-reader';
-import { loadModel, renderModelToSvg } from '../core/model-parser';
+import { loadModel, renderModelToSvg, pngSize } from '../core/model-parser';
 import { FLAT_ITEM_PARENTS } from '../core/block-geometry';
 import { bytesToBase64 } from './http';
 import { chestModel, CHEST_VARIANTS } from '../core/chest';
@@ -20,6 +20,8 @@ import { skullModel, SKULL_TEXTURES, SKULL_KIND_BY_ITEM } from '../core/skull';
 import { readItemVisual, type ItemVisual } from '../core/item-definition';
 import { composeModels } from '../core/model-compose';
 import { getAssetVersion } from './cache-version';
+import { getTextureAnimation, type McmetaAnimation } from '../core/mcmeta';
+import { encodeGif, type GifFrame } from './gif-encoder';
 
 /**
  * アイテム定義（`items/<name>.json`）を読みます。
@@ -82,27 +84,138 @@ export const ICON_SIZE = 128;
  * @param path ブロックのパス
  * @returns PNGのバイナリ、または null
  */
+export interface RenderedIcon {
+  bytes: Uint8Array;
+  contentType: 'image/png' | 'image/gif';
+}
+
 export async function renderBlockIconPng(
   env: Env,
   ns: string,
   path: string,
   src: AssetReader = legacyAssetSource(env!)
 ): Promise<Uint8Array | null> {
-  const svg = await renderBlockIconSvg(env, ns, path, src);
-  if (!svg) return null;
+  const res = await renderBlockIcon(env, ns, path, src);
+  return res ? res.bytes : null;
+}
 
-  // ラスタライザは Worker 側だけの依存です。静的に読むとブラウザ向けのバンドルにも
-  // wasm 一式が入ってしまうため、実際にPNGが要るときだけ読み込みます。
-  const { ensureWasm, svgToPng } = await import('./wasm');
-  await ensureWasm();
-  // ピクセルアート：アンチエイリアシングは一切適用しません。
-  // shapeRendering を 0 (optimizeSpeed) に設定することで、面のクリップパスの境界がぼやける（フェザリング）のを防ぎます。
-  // imageRendering を 1 (optimizeSpeed) に設定することで、テクスチャをニアレストネイバー法でサンプリングします。
-  return svgToPng(svg, {
-    fitTo: { mode: 'width', value: ICON_SIZE },
-    shapeRendering: 0,
-    imageRendering: 1,
-  });
+async function detectModelAnimation(
+  model: any,
+  env: Env | null,
+  src: AssetReader,
+  defaultNs: string
+): Promise<McmetaAnimation | null> {
+  if (!model || !model.textures) return null;
+  const prefer = ['layer0', 'all', 'texture', 'side', 'front', 'particle', 'end', 'top'];
+  const texPaths: string[] = [];
+
+  for (const k of prefer) {
+    const v = model.textures[k];
+    if (typeof v === 'string' && v && !v.startsWith('#')) texPaths.push(v);
+  }
+  for (const v of Object.values(model.textures)) {
+    if (typeof v === 'string' && v && !v.startsWith('#') && !texPaths.includes(v)) texPaths.push(v);
+  }
+
+  for (const ref of texPaths) {
+    const idx = ref.indexOf(':');
+    const texNs = idx >= 0 ? ref.slice(0, idx) : defaultNs;
+    const texSubPath = idx >= 0 ? ref.slice(idx + 1) : ref;
+    const logicalPath = `textures/${texSubPath}.png`;
+
+    let obj = await src.get(texNs, logicalPath);
+    if (!obj && texNs !== 'minecraft') obj = await src.get('minecraft', logicalPath);
+    if (!obj) continue;
+
+    try {
+      const buf = await obj.arrayBuffer();
+      const b64 = `data:image/png;base64,${bytesToBase64(new Uint8Array(buf))}`;
+      const { w, h } = pngSize(b64);
+      if (h > w) {
+        const anim = await getTextureAnimation(texNs, logicalPath, src, w, h);
+        if (anim) return anim;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+export async function renderBlockIcon(
+  env: Env,
+  ns: string,
+  path: string,
+  src: AssetReader = legacyAssetSource(env!)
+): Promise<RenderedIcon | null> {
+  const getModel = (id: string) => modelJson(env, src, id);
+  const getTexture = (ref: string) => textureDataUrl(env, src, ns, ref);
+
+  const visual = await itemVisual(env, src, ns, path);
+  const synthetic = (await modelFromVisual(visual, getModel)) ?? (ns === 'minecraft' ? syntheticModel(path) : null);
+
+  const candidates = synthetic
+    ? [{ id: `${ns}:block/${path}`, model: synthetic }]
+    : idsFromVisual(visual, ns, path).map((id) => ({ id, model: null as any }));
+
+  for (const candidate of candidates) {
+    const model = candidate.model ?? (await loadModel(candidate.id, getModel));
+    if (!isRenderable(model)) continue;
+
+    const anim = await detectModelAnimation(model, env, src, ns);
+
+    const resolve = candidate.model
+      ? async (id: string) => (id === candidate.id ? candidate.model : await getModel(id))
+      : getModel;
+
+    const { ensureWasm, svgToPng, Resvg } = await import('./wasm');
+    await ensureWasm();
+
+    if (anim) {
+      const frames: GifFrame[] = [];
+      const frameCount = anim.frames.length;
+      let tick = 0;
+
+      for (let i = 0; i < frameCount; i++) {
+        const svg = await renderBlockIconSvg(env, ns, path, src, tick);
+        if (!svg) continue;
+
+        const resvg = new Resvg(svg, {
+          fitTo: { mode: 'width', value: ICON_SIZE },
+          shapeRendering: 0,
+          imageRendering: 1,
+        });
+        const rendered = resvg.render();
+
+        const frameTimeTicks = anim.frames[i].time;
+        const delayMs = frameTimeTicks * 50; // 1 tick = 50ms
+
+        frames.push({
+          width: rendered.width,
+          height: rendered.height,
+          pixels: rendered.pixels,
+          delayMs,
+        });
+
+        tick += frameTimeTicks;
+      }
+
+      if (frames.length > 0) {
+        return { bytes: encodeGif(frames), contentType: 'image/gif' };
+      }
+    }
+
+    const svg = await renderBlockIconSvg(env, ns, path, src, undefined);
+    if (svg) {
+      const pngBytes = svgToPng(svg, {
+        fitTo: { mode: 'width', value: ICON_SIZE },
+        shapeRendering: 0,
+        imageRendering: 1,
+      });
+      return { bytes: pngBytes, contentType: 'image/png' };
+    }
+  }
+  return null;
 }
 
 /**
@@ -116,7 +229,8 @@ export async function renderBlockIconSvg(
   env: Env | null,
   ns: string,
   path: string,
-  src: AssetReader = legacyAssetSource(env!)
+  src: AssetReader = legacyAssetSource(env!),
+  tick?: number
 ): Promise<string | null> {
   const getModel = (id: string) => modelJson(env, src, id);
   const getTexture = (ref: string) => textureDataUrl(env, src, ns, ref);
@@ -145,7 +259,7 @@ export async function renderBlockIconSvg(
     const resolve = candidate.model
       ? async (id: string) => (id === candidate.id ? candidate.model : await getModel(id))
       : getModel;
-    const svg = await renderModelToSvg(candidate.id, resolve, getTexture);
+    const svg = await renderModelToSvg(candidate.id, resolve, getTexture, src, tick);
     if (svg) return svg;
   }
   return null;
