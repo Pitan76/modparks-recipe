@@ -113,7 +113,7 @@ function FilterSelects(props: SearchFormProps) {
       <TextField label={t.namespace} select value={props.ns} onChange={(ev) => props.onNs(ev.target.value)} sx={cell(2, 200)}>
         {props.namespaces.map((ns) => (
           <MenuItem key={ns} value={ns}>
-            {`${ns === 'all' ? 'All' : ns === 'default' ? 'Default' : ns} (${props.counts[ns] ?? 0})`}
+            {`${ns === 'all' ? 'All' : ns} (${props.counts[ns] ?? 0})`}
           </MenuItem>
         ))}
       </TextField>

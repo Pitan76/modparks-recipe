@@ -49,7 +49,7 @@ export function App({ locale }: { locale: string }) {
   const { fmt, view, changeFmt, changeScale, changeTagNs, changeCrop } = useDisplayPrefs();
   const fmtOf = useFmtResolver(fmt, recipes);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'default');
+  const [ns, setNs] = useState(() => INITIAL_PARAMS.get('ns') || 'all');
   const [showImages, setShowImages] = useState(() => INITIAL_PARAMS.get('view') !== 'list');
   const [page, setPage] = useState(1);
   const [itemPage, setItemPage] = useState(1);
@@ -63,8 +63,6 @@ export function App({ locale }: { locale: string }) {
       Object.keys(counts).sort((a, b) => {
         if (a === 'all') return -1;
         if (b === 'all') return 1;
-        if (a === 'default') return -1;
-        if (b === 'default') return 1;
         return counts[b] - counts[a] || a.localeCompare(b);
       }),
     [counts]
@@ -73,7 +71,6 @@ export function App({ locale }: { locale: string }) {
   const query = q.trim().toLowerCase();
   const scope = useMemo(() => {
     if (ns === 'all') return items;
-    if (ns === 'default') return items.filter((x) => namespacesOf(groups, x).some((n) => n !== 'minecraft'));
     return items.filter((x) => namespacesOf(groups, x).includes(ns));
   }, [groups, items, ns]);
   const filtered = useMemo(() => {
@@ -98,7 +95,7 @@ export function App({ locale }: { locale: string }) {
     }
   }, [recipes, groups, select]);
 
-  useEffect(() => replaceQuery((p) => (ns === 'default' ? p.delete('ns') : p.set('ns', ns))), [ns]);
+  useEffect(() => replaceQuery((p) => (ns === 'all' ? p.delete('ns') : p.set('ns', ns))), [ns]);
   useEffect(() => {
     replaceQuery((p) => (showImages ? p.delete('view') : p.set('view', 'list')));
     setPage(1);
@@ -111,7 +108,7 @@ export function App({ locale }: { locale: string }) {
 
   // 索引に無い namespace が ?ns= で来ると、選択肢に無い値のまま0件になる
   useEffect(() => {
-    if (ns !== 'all' && ns !== 'default' && items.length > 0 && !counts[ns]) setNs('default');
+    if (ns !== 'all' && items.length > 0 && !counts[ns]) setNs('all');
   }, [items, counts, ns]);
 
   const itemPageCount = Math.max(1, Math.ceil(filtered.length / ITEM_PAGE_SIZE));
@@ -123,11 +120,7 @@ export function App({ locale }: { locale: string }) {
     const out: GridEntry[] = [];
     filtered.forEach((item) =>
       (groups[item] || []).forEach((rid) => {
-        // Mod を選んでいる間は、その Mod が定義したレシピだけを見せます。バニラのアイテムを
-        // 作る Mod のレシピを選んだのに、バニラ側のレシピまで並ぶと選んだ意味がなくなります。
-        if (ns === 'default') {
-          if (splitId(rid).ns === 'minecraft') return;
-        } else if (ns !== 'all' && splitId(rid).ns !== ns) {
+        if (ns !== 'all' && splitId(rid).ns !== ns) {
           return;
         }
         out.push({ rid, item });
