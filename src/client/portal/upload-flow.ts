@@ -277,7 +277,7 @@ async function postBulk(
 ): Promise<number> {
   const query = session ? `?session=${encodeURIComponent(session)}` : '';
   const res = await fetch(`/api/${ns}/bulk${query}`, { method: 'POST', headers, body: JSON.stringify(part) });
-  if (res.status === 429) throw new Error(t.errorLimit);
+  if (res.status === 429) throw new Error(await limitMessage(res, t));
   if (!res.ok) throw await detailedError(res, t, whereOf(ns, part));
 
   const body = (await res.json()) as Record<string, number>;
@@ -299,6 +299,19 @@ async function endSession(
   }
   const res = await fetch(url, { method: 'POST', headers });
   if (!res.ok) throw await detailedError(res, t, `commit ${ns}`);
+}
+
+/**
+ * 429 の理由を文言に振り分けます。
+ *
+ * 日次の投稿枠と namespace の所有上限はどちらも 429 で返りますが、投稿者から見て意味も
+ * 対処も違います。同じ文言にすると「残り3回あるのに上限」という表示になります。
+ * @param res 429 の応答
+ * @param t 文言表
+ */
+async function limitMessage(res: Response, t: Messages): Promise<string> {
+  const body = await res.text().catch(() => '');
+  return body.includes('Namespace') ? t.errorNamespaceLimit : t.errorLimit;
 }
 
 /**

@@ -7,6 +7,7 @@ import { writeRoutes } from './routes/write';
 import { ingestRoutes } from './routes/ingest';
 import { imageRoutes } from './routes/images';
 import { adminRoutes } from './routes/admin';
+import { adminLimitRoutes } from './routes/admin-limits';
 import { langRoutes } from './routes/lang';
 import { listRoutes } from './routes/list';
 import { migrateRoutes } from './routes/migrate';
@@ -45,6 +46,7 @@ app.route('/', langRoutes);
 app.route('/', imageRoutes);
 // 管理用ユーティリティ（R2のクリーンアップ、インデックスの再構築）。
 app.route('/', adminRoutes);
+app.route('/', adminLimitRoutes);
 // 既存のフラットなアセットを build へ移行する管理用API。
 app.route('/', migrateRoutes);
 app.route('/', gcRoutes);
