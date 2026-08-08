@@ -9,6 +9,8 @@ import { useState, type MouseEvent } from 'react';
 import { imagePath, imageUrl, splitId, type Assets, type Versions, type ViewOptions } from './api';
 import type { FmtResolver } from './format';
 import { copyText, downloadUrl } from '../shared/browser';
+import { cropImageBlob } from './crop-image';
+import { DEFAULT_CROP, normalizeCrop } from '../../core/crop';
 
 /** コピー結果を出しておく時間。 */
 const FLASH_MS = 2000;
@@ -56,10 +58,19 @@ export function useShare(ctx: ShareContext): Share {
     });
   };
 
+  /**
+   * 1枚を保存させます。
+   *
+   * クリップ指定があるときだけ、一度取ってから削って渡します。見えている絵は CSS で
+   * 切り抜いているだけなので、URLをそのまま渡すと余白付きの絵が保存されます。
+   */
   const downloadRecipe = (ev: MouseEvent, rid: string) => {
     ev.stopPropagation();
     const ext = ctx.fmtOf(rid);
-    downloadUrl(imagePath(rid, ext, ctx.versions, ctx.assets, ctx.view), `${splitId(rid).id}.${ext}`);
+    const url = imagePath(rid, ext, ctx.versions, ctx.assets, ctx.view);
+    const name = `${splitId(rid).id}.${ext}`;
+    if (normalizeCrop(ctx.view.crop) === DEFAULT_CROP) return downloadUrl(url, name);
+    downloadCropped(url, name, ctx.view.crop);
   };
 
   return {
@@ -80,4 +91,24 @@ export function useShare(ctx: ShareContext): Share {
     },
     downloadRecipe,
   };
+}
+
+/**
+ * 取得して切り抜いてから保存させます。
+ *
+ * 取得や描画に失敗したときは元のURLをそのまま渡します。切り抜けないことと
+ * 保存できないことは別なので、巻き添えで何も保存されない方が困ります。
+ * @param url 画像の取得先
+ * @param fileName 保存名
+ * @param crop 削る量（ネイティブpx）
+ */
+async function downloadCropped(url: string, fileName: string, crop: number): Promise<void> {
+  const res = await fetch(url).catch(() => null);
+  if (!res?.ok) return downloadUrl(url, fileName);
+
+  const cropped = await cropImageBlob(await res.blob(), crop);
+  const objectUrl = URL.createObjectURL(cropped);
+  downloadUrl(objectUrl, fileName);
+  // 即座に解放すると保存が始まる前に失効することがあるため、少し置いてから捨てます。
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
 }

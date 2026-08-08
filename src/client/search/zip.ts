@@ -11,11 +11,12 @@
 
 import { imageCdnPath, splitId, type Assets, type Versions, type ViewOptions } from './api';
 import type { FmtResolver } from './format';
+import { cropImageBlob } from './crop-image';
 
 /** JSZip はページに読み込まれたものを使います。 */
 declare const JSZip: {
   new (): {
-    file(name: string, data: ArrayBuffer | string, options?: { base64: true }): void;
+    file(name: string, data: Blob): void;
     generateAsync(options: { type: 'blob' }): Promise<Blob>;
   };
 };
@@ -34,7 +35,7 @@ export type ZipProgress = (done: number, total: number) => void;
 
 /** 集める先。zip への追加と進捗の更新をまとめて受け持ちます。 */
 type Sink = {
-  add(recipeId: string, data: ArrayBuffer | string, base64: boolean): void;
+  add(recipeId: string, image: Blob): Promise<void>;
   step(): void;
 };
 
@@ -61,8 +62,10 @@ export async function buildRecipeZip(
   let added = 0;
 
   const sink: Sink = {
-    add(recipeId, data, base64) {
-      zip.file(`${splitId(recipeId).id}.${extOf(recipeId)}`, data, base64 ? { base64: true } : undefined);
+    // 表示は CSS で切り抜いているだけなので、受け取ったバイトは丸のままです。
+    // 見えている絵と同じものを渡すために、詰める直前でここでも削ります。
+    async add(recipeId, image) {
+      zip.file(`${splitId(recipeId).id}.${extOf(recipeId)}`, await cropImageBlob(image, view.crop));
       added++;
     },
     step() {
@@ -96,12 +99,12 @@ async function collectDirect(
     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
       const url = imageCdnPath(id, extOf(id), versions, assets, view);
       // 未生成なら404、CORS が未設定なら例外。どちらも一括APIへ回します。
-      const bytes = url ? await fetchBytes(url) : null;
-      if (!bytes) {
+      const image = url ? await fetchImage(url) : null;
+      if (!image) {
         missing.push(id);
         continue;
       }
-      sink.add(id, bytes, false);
+      await sink.add(id, image);
       sink.step();
     }
   });
@@ -129,7 +132,7 @@ async function collectBatched(
       const images: Record<string, string | null> = await fetchBatch(batch.ns, batch.ids, batch.ext, view).catch(() => ({}));
       for (const id of batch.ids) {
         const dataUrl = images[id];
-        if (dataUrl) sink.add(`${batch.ns}:${id}`, dataUrl.slice(dataUrl.indexOf(',') + 1), true);
+        if (dataUrl) await sink.add(`${batch.ns}:${id}`, await dataUrlToBlob(dataUrl));
         sink.step();
       }
     }
@@ -138,16 +141,25 @@ async function collectBatched(
 }
 
 /**
- * URLの中身をバイト列で読みます。
+ * URLの中身を画像として読みます。
  * @returns 取れなければ null
  */
-async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
+async function fetchImage(url: string): Promise<Blob | null> {
   try {
     const res = await fetch(url);
-    return res.ok ? await res.arrayBuffer() : null;
+    return res.ok ? await res.blob() : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * 一括APIが返すデータURLを Blob に直します。
+ * @param dataUrl `data:image/png;base64,...` 形式の文字列
+ */
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
 }
 
 /** 一括APIへ渡す単位。IDはネームスペースを除いた部分です。 */
