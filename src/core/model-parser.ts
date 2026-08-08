@@ -101,13 +101,9 @@ export async function loadModel(
         textures: { ...(parent.textures || {}), ...(model.textures || {}) },
         elements: model.elements || parent.elements,
         display: { ...(parent.display || {}), ...(model.display || {}) },
+        isFlat: parent?.isFlat || FLAT_ITEM_PARENTS.has(model.parent),
     };
 
-    // 平面アイテムかどうかは `parent` を1段見るだけで判定されます。チェーンの途中に中継モデル
-    // （音楽ディスクの `template_music_disc` など）が挟まると、その1段が中継の名前になり、
-    // 平面アイテムだと分からなくなって何も描かれません。祖先が平面なら名前を引き継ぎます。
-    // 親は再帰済みなので、何段挟まっても先頭まで伝わります。
-    if (!merged.elements && FLAT_ITEM_PARENTS.has(parent.parent)) merged.parent = parent.parent;
     return merged;
 }
 
@@ -162,7 +158,7 @@ export async function renderModelToSvg(
     const model = await loadModel(modelId, getModelJson);
     if (!model) return null;
 
-    if (FLAT_ITEM_PARENTS.has(model.parent)) return flatItemSvg(model, getTextureBase64);
+    if (model.isFlat || FLAT_ITEM_PARENTS.has(model.parent)) return flatItemSvg(model, getTextureBase64);
     if (!model.elements) return null;
 
     const faces = await collectFaces(model, getTextureBase64);

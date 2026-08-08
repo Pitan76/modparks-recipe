@@ -193,7 +193,7 @@ function idsFromVisual(visual: ItemVisual | null, ns: string, path: string): str
  */
 function isRenderable(model: any): boolean {
   if (!model) return false;
-  if (FLAT_ITEM_PARENTS.has(model.parent)) return true;
+  if (model.isFlat || FLAT_ITEM_PARENTS.has(model.parent)) return true;
   return Array.isArray(model.elements) && model.elements.length > 0;
 }
 
