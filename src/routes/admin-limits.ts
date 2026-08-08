@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { requireAdmin } from '../utils/auth/admin';
 import { isValidNamespace } from '../utils/asset-path';
+import { limitsFor, UNLIMITED } from '../utils/auth/limits';
 
 export const adminLimitRoutes = new Hono<{ Bindings: Env }>();
 
@@ -55,8 +56,78 @@ adminLimitRoutes.get('/admin/limits', async (c) => {
     .bind(identityId)
     .all<{ ns: string; trust: string; claimed_at: string }>();
 
-  return c.json({ identityId, day, used: quota?.used ?? 0, namespaces: owned.results ?? [] });
+  return c.json({
+    identityId, day, used: quota?.used ?? 0,
+    limits: await limitsFor(c.env, identityId),
+    namespaces: owned.results ?? [],
+  });
 });
+
+/**
+ * identity ごとの上限を上書きします。
+ *
+ * `-1` は無制限、省略した項目は変更しません。既定値へ戻すには `default` を渡します。
+ * 例: GET /admin/limits/set?secret=...&identity=...&ns=50&daily=-1
+ *     GET /admin/limits/set?secret=...&identity=...&ns=default
+ */
+adminLimitRoutes.get('/admin/limits/set', async (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  const identityId = c.req.query('identity');
+  if (!identityId) return c.text('Missing identity', 400);
+
+  const nsLimit = parseLimit(c.req.query('ns'));
+  const dailyLimit = parseLimit(c.req.query('daily'));
+  if (nsLimit === 'invalid' || dailyLimit === 'invalid') return c.text('Invalid limit', 400);
+
+  // 既存行を読んでから書き戻します。「変更なし」と「既定値へ戻す（NULL）」を SQL の
+  // COALESCE で表そうとすると、どちらも NULL になって区別できません。
+  const row = await c.env.DB.prepare('SELECT ns_limit, daily_limit FROM identity_limits WHERE identity_id = ?')
+    .bind(identityId)
+    .first<{ ns_limit: number | null; daily_limit: number | null }>();
+
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO identity_limits (identity_id, ns_limit, daily_limit, updated_at) VALUES (?, ?, ?, ?)`
+  )
+    .bind(
+      identityId,
+      merged(nsLimit, row?.ns_limit ?? null),
+      merged(dailyLimit, row?.daily_limit ?? null),
+      new Date().toISOString()
+    )
+    .run();
+
+  return c.json({ ok: true, identityId, limits: await limitsFor(c.env, identityId) });
+});
+
+/** 上限の指定。未指定は変更なし、`default` は既定値へ戻す。 */
+type LimitInput = number | 'keep' | 'reset' | 'invalid';
+
+/**
+ * 上限の指定を読み取ります。
+ * @param raw クエリの値
+ */
+function parseLimit(raw: string | undefined): LimitInput {
+  if (raw === undefined) return 'keep';
+  if (raw === 'default') return 'reset';
+
+  const n = parseInt(raw, 10);
+  // 0 は「1回も許さない」という意味になり、事故で投稿を止めます。無制限は -1 です。
+  if (!Number.isFinite(n) || n < UNLIMITED || n === 0) return 'invalid';
+  return n;
+}
+
+/**
+ * 指定と既存値から、保存する値を決めます。
+ * @param input 読み取った指定
+ * @param current 既存の値
+ * @returns 保存する値。NULL は既定値を使うという意味
+ */
+function merged(input: LimitInput, current: number | null): number | null {
+  if (typeof input === 'number') return input;
+  return input === 'reset' ? null : current;
+}
 
 /**
  * その日の投稿枠を戻します。identity を省略すると全員分を消します。

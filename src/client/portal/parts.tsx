@@ -54,6 +54,18 @@ export function SignInView({ t, providers }: WithMessages & { providers: Provide
   );
 }
 
+/**
+ * 残り投稿数の表示。
+ *
+ * 上限なしは負値で届きます（`-1`）。そのまま差し込むと「残り-1回」になります。
+ * @param t 文言表
+ * @param remaining 残り回数
+ */
+function remainingLabel(t: Messages, remaining: number): string {
+  if (remaining < 0) return t.remainingUnlimited;
+  return t.remaining.replace('{remaining}', String(remaining));
+}
+
 /** ログイン中の表示とログアウト。 */
 export function AccountRow({ t, me, onSignOut }: WithMessages & { me: Me; onSignOut: () => void }) {
   return (
@@ -61,7 +73,7 @@ export function AccountRow({ t, me, onSignOut }: WithMessages & { me: Me; onSign
       <Typography variant="body2" sx={{ flexGrow: 1, minWidth: 0 }}>
         {me.displayName}
       </Typography>
-      <Chip size="small" variant="outlined" label={t.remaining.replace('{remaining}', String(me.remaining))} />
+      <Chip size="small" variant="outlined" label={remainingLabel(t, me.remaining)} />
       <Button size="small" variant="outlined" onClick={onSignOut}>
         {t.signOut}
       </Button>

@@ -9,6 +9,7 @@
  *   MP_RECIPE_URL=... ADMIN_SECRET=... tsx src/scripts/reset-limits.ts <identityId>
  *   ... tsx src/scripts/reset-limits.ts <identityId> --quota
  *   ... tsx src/scripts/reset-limits.ts <identityId> --namespaces
+ *   ... tsx src/scripts/reset-limits.ts --name ぴたん --set-ns 50 --set-daily -1  (-1 = 無制限)
  *   ... tsx src/scripts/reset-limits.ts --ns techreborn
  */
 
@@ -61,6 +62,10 @@ type Options = {
   ns: string | null;
   quota: boolean;
   namespaces: boolean;
+  /** namespace 所有の上限。`-1` は無制限、`default` は既定値へ戻す。 */
+  setNs: string | null;
+  /** 日次の投稿上限。`-1` は無制限、`default` は既定値へ戻す。 */
+  setDaily: string | null;
 };
 
 /**
@@ -95,7 +100,9 @@ function parseArgs(argv: string[]): Options {
     return at >= 0 ? argv[at + 1] ?? null : null;
   };
   // フラグと、その値を除いた最初の位置引数が identity のID。
-  const taken = new Set(['--ns', '--name'].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0));
+  const taken = new Set(
+    ['--ns', '--name', '--set-ns', '--set-daily'].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0)
+  );
   const positional = argv.filter((a, i) => !a.startsWith('--') && !taken.has(i));
 
   return {
@@ -104,6 +111,8 @@ function parseArgs(argv: string[]): Options {
     ns: valueOf('--ns'),
     quota: argv.includes('--quota'),
     namespaces: argv.includes('--namespaces'),
+    setNs: valueOf('--set-ns'),
+    setDaily: valueOf('--set-daily'),
   };
 }
 
@@ -113,9 +122,11 @@ function parseArgs(argv: string[]): Options {
  */
 async function showLimits(identityId: string): Promise<void> {
   const limits = await callAdmin('/admin/limits', { identity: identityId });
+  const shown = (n: number): string => (n === -1 ? 'unlimited' : String(n));
+
   console.log(`identity: ${identityId}`);
-  console.log(`  daily uploads used (${limits.day}): ${limits.used}`);
-  console.log(`  namespaces owned: ${limits.namespaces.length}`);
+  console.log(`  daily uploads used (${limits.day}): ${limits.used} / ${shown(limits.limits.dailyLimit)}`);
+  console.log(`  namespaces owned: ${limits.namespaces.length} / ${shown(limits.limits.nsLimit)}`);
   for (const owned of limits.namespaces as OwnedNamespace[]) {
     console.log(`    ${owned.ns} (${owned.trust}) ${owned.claimed_at}`);
   }
@@ -142,6 +153,16 @@ async function main(): Promise<void> {
   }
   await showLimits(identityId);
 
+  // 上限の変更は、変更後の状態をそのまま出したいので枠の操作より先に行います。
+  if (opts.setNs || opts.setDaily) {
+    const params: Record<string, string> = { identity: identityId };
+    if (opts.setNs) params.ns = opts.setNs;
+    if (opts.setDaily) params.daily = opts.setDaily;
+
+    const updated = await callAdmin('/admin/limits/set', params);
+    console.log(`limits updated: ns=${updated.limits.nsLimit} daily=${updated.limits.dailyLimit} (-1 = unlimited)`);
+  }
+
   if (opts.quota) {
     const reset = await callAdmin('/admin/limits/reset-quota', { identity: identityId });
     console.log(`reset daily quota: ${reset.deleted} row(s)`);
@@ -153,7 +174,8 @@ async function main(): Promise<void> {
     console.log(`released unverified namespaces: ${released.released} row(s)`);
   }
 
-  if (!opts.quota && !opts.namespaces) console.log('(nothing changed; pass --quota and/or --namespaces)');
+  const changed = opts.quota || opts.namespaces || opts.setNs || opts.setDaily;
+  if (!changed) console.log('(nothing changed; pass --quota / --namespaces / --set-ns / --set-daily)');
 }
 
 main().catch((e) => {
