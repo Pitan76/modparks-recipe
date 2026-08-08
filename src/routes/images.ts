@@ -6,7 +6,7 @@ import { AssetSource } from '../utils/build/asset-source';
 import { toChannel } from '../utils/build/mc-version';
 import { Hono } from 'hono';
 import { Env, getRecipe } from '../utils/minecraft';
-import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet } from '../utils/image-generator';
+import { renderRecipePng, renderRecipeGif, renderRecipeJpg, normalizeScale, renderRecipeSpriteSheet, MAX_GIF_FRAMES } from '../utils/image-generator';
 import { imageCacheKey, deliveryVersion, imageVersion } from '../utils/image-cdn';
 import { parseTagNamespaces, tagNamespaceKey } from '../core/tag-namespaces';
 import { renderBatch } from '../utils/batch-render';
@@ -214,7 +214,7 @@ imageRoutes.get('/api/:namespace/:filename{.+}', async (c) => {
 
   let body: Uint8Array;
   if (ext === 'gif') {
-    body = await renderRecipeGif(recipeData, c.env, 5, scale, src, tagNamespaces); // 5フレーム
+    body = await renderRecipeGif(recipeData, c.env, MAX_GIF_FRAMES, scale, src, tagNamespaces);
   } else if (ext === 'jpg' || ext === 'jpeg') {
     body = await renderRecipeJpg(recipeData, c.env, tagOffset, scale, src, tagNamespaces);
   } else {

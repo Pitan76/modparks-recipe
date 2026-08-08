@@ -5,7 +5,7 @@
 import { legacyAssetSource } from './build/asset-source';
 import type { AssetReader } from '../core/asset-reader';
 import { Env, getRecipe } from './minecraft';
-import { renderRecipePng, renderRecipeGif, renderRecipeJpg } from './image-generator';
+import { renderRecipePng, renderRecipeGif, renderRecipeJpg, MAX_GIF_FRAMES } from './image-generator';
 import { bytesToBase64 } from './http';
 import { runPool } from './pool';
 import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../core/tag-namespaces';
@@ -15,9 +15,6 @@ import { DEFAULT_TAG_NAMESPACES, type TagNamespaceFilter } from '../core/tag-nam
  * 最大200件を一斉にラスタライズするとCPUとメモリが一度に立ち上がるため、幅を絞ります。
  */
 const RENDER_CONCURRENCY = 8;
-
-/** GIFのフレーム数。タグの構成アイテムを切り替えて見せるためのもの。 */
-const GIF_FRAMES = 5;
 
 /** バッチレンダリングの結果。 */
 export type BatchResult = { images: Record<string, string | null>; missing: string[] };
@@ -38,7 +35,7 @@ function rendererFor(
   src: AssetReader,
   tagNs: TagNamespaceFilter
 ): { mime: string; render: (recipe: any) => Promise<Uint8Array> } {
-  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, GIF_FRAMES, scale, src, tagNs) };
+  if (ext === 'gif') return { mime: 'image/gif', render: (r) => renderRecipeGif(r, env, MAX_GIF_FRAMES, scale, src, tagNs) };
   if (ext === 'jpg' || ext === 'jpeg') {
     return { mime: 'image/jpeg', render: (r) => renderRecipeJpg(r, env, tagOffset, scale, src, tagNs) };
   }

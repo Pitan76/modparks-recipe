@@ -16,7 +16,7 @@ import { AssetSource } from '../utils/build/asset-source';
 import { JarAssetReader } from '../utils/preview/jar-reader';
 import { isCraftingType } from '../core/recipe';
 import { RECIPE_PATH } from '../core/paths';
-import { renderRecipePng, renderRecipeGif, normalizeScale } from '../utils/image-generator';
+import { renderRecipePng, renderRecipeGif, normalizeScale, MAX_GIF_FRAMES } from '../utils/image-generator';
 import { bytesToBase64 } from '../utils/http';
 import { runPool } from '../utils/pool';
 
@@ -96,7 +96,7 @@ async function renderAll(c: any, zip: JSZip, recipes: PreviewRecipe[]): Promise<
  * @param reader アセット読み出し口
  */
 function renderOne(data: any, env: Env, ext: string, scale: number, reader: JarAssetReader): Promise<Uint8Array> {
-  if (ext === 'gif') return renderRecipeGif(data, env, 5, scale, reader);
+  if (ext === 'gif') return renderRecipeGif(data, env, MAX_GIF_FRAMES, scale, reader);
   return renderRecipePng(data, env, 0, scale, reader);
 }
 
