@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { Env } from '../utils/minecraft';
 import { decodeBase64, contentTypeForKey, plainEntries } from '../utils/http';
-import { requireWrite } from '../utils/auth/guard';
+import { requireWrite, canWriteNonTags, type WriteGrant } from '../utils/auth/guard';
 import { storeRecipe } from '../utils/recipe-store';
 import { bumpAssetVersion } from '../utils/cache-version';
 import { putLang, isValidLocale, isValidLangBody } from '../utils/lang-store';
@@ -24,6 +24,17 @@ import { ingestBulk, totalOf } from '../utils/bulk-ingest';
 
 export const writeRoutes = new Hono<{ Bindings: Env }>();
 
+/**
+ * 共有ネームスペースへタグ以外を書こうとしていれば、そのまま返せる拒否応答を返します。
+ * @param c Honoのコンテキストオブジェクト
+ * @param grant 許可された主体
+ * @param ns 対象ネームスペース
+ * @returns 書いてよければ null
+ */
+function denyNonTags(c: any, grant: WriteGrant, ns: string): Response | null {
+  if (canWriteNonTags(grant, ns)) return null;
+  return c.text('Shared namespace accepts tags only', 403);
+}
 
 // 単一のレシピJSONをアップロードします。リクエストボディ = レシピのJSONデータ。
 writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
@@ -32,6 +43,9 @@ writeRoutes.put('/api/:namespace/recipe/:id', async (c) => {
 
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
+
+  const denied = denyNonTags(c, grant, namespace);
+  if (denied) return denied;
 
   const body = await c.req.text();
   let data: any;
@@ -50,6 +64,9 @@ writeRoutes.put('/api/:namespace/texture/:path{.+}', async (c) => {
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
 
+  const denied = denyNonTags(c, grant, namespace);
+  if (denied) return denied;
+
   const key = `assets/${namespace}/textures/${path}`;
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   await c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: contentTypeForKey(key) } });
@@ -65,6 +82,9 @@ writeRoutes.put('/api/:namespace/model/:path{.+}', async (c) => {
 
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
+
+  const denied = denyNonTags(c, grant, namespace);
+  if (denied) return denied;
 
   const body = await c.req.text();
   try { JSON.parse(body); } catch { return c.text('Invalid JSON', 400); }
@@ -101,6 +121,9 @@ writeRoutes.put('/api/:namespace/lang/:locale', async (c) => {
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
 
+  const denied = denyNonTags(c, grant, namespace);
+  if (denied) return denied;
+
   const locale = c.req.param('locale').replace(/\.json$/, '');
   if (!isValidLocale(locale)) return c.text('Invalid locale', 400);
 
@@ -122,6 +145,9 @@ writeRoutes.post('/api/:namespace/recipe/:id/bundle', async (c) => {
 
   const grant = await requireWrite(c, namespace);
   if (grant instanceof Response) return grant;
+
+  const denied = denyNonTags(c, grant, namespace);
+  if (denied) return denied;
 
   let payload: any;
   try { payload = await c.req.json(); } catch { return c.text('Invalid JSON', 400); }
@@ -205,16 +231,24 @@ writeRoutes.post('/api/:namespace/bulk', async (c) => {
   // build を作るセッションでは、同じ内容を blob にも積む。commit で build マニフェストに畳まれる。
   const collector = meta?.build ? new PatchCollector(c.env) : null;
 
-  const counts = await ingestBulk({ env: c.env, namespace, session: session ?? null, collector }, p);
+  const counts = await ingestBulk(
+    { env: c.env, namespace, session: session ?? null, collector, tagsOnly: !canWriteNonTags(grant, namespace) },
+    p
+  );
 
   if (collector && !collector.isEmpty) await stagePatch(c.env, namespace, session!, collector.toPatch());
 
   // セッション中は bump しない。commit 時に1回だけ上げる（投入中はキャッシュを定着させない）。
   if (!session) await bumpAssetVersion(c.env, namespace);
   // 誰が入れたかを残す。所有権は移りうるので、投入時点の主体を別に持っておく必要がある。
-  await recordUpload(c.env, {
-    identityId: grant.identityId, ns: namespace, source: 'bulk',
-    items: totalOf(counts),
-  });
+  //
+  // セッション中は残さない。1回の投稿が数十回の bulk に分かれるため、ここで記録すると
+  // 履歴が同じ mod の断片で埋まる。投入1回分は commit が1行にまとめて残す。
+  if (!session) {
+    await recordUpload(c.env, {
+      identityId: grant.identityId, ns: namespace, source: 'bulk',
+      items: totalOf(counts),
+    });
+  }
   return c.json({ ok: true, namespace, ...counts, session: session ?? null });
 });

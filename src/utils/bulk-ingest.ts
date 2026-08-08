@@ -28,6 +28,8 @@ export interface BulkContext {
   session: string | null;
   /** build を作るセッションでのみ渡します。同じ内容を blob にも積みます。 */
   collector: PatchCollector | null;
+  /** 共有ネームスペースへのトークン投稿。タグ以外は受け取らず、まとめて skipped に落とします。 */
+  tagsOnly: boolean;
 }
 
 /** 種別ごとの取り込み件数。レスポンスのJSON形状と一致させています。 */
@@ -53,13 +55,27 @@ const CONCURRENCY = 20;
 export async function ingestBulk(ctx: BulkContext, payload: any): Promise<BulkCounts> {
   const counts: BulkCounts = { recipes: 0, tags: 0, textures: 0, models: 0, items: 0, langs: 0, skipped: 0 };
 
-  await ingestRecipes(ctx, payload.recipes, counts);
   await ingestTags(ctx, payload.tags, counts);
+  if (ctx.tagsOnly) {
+    counts.skipped += nonTagCount(payload);
+    return counts;
+  }
+
+  await ingestRecipes(ctx, payload.recipes, counts);
   await ingestTextures(ctx, payload.textures, counts);
   await ingestJsonAssets(ctx, payload, counts);
   await ingestLangs(ctx, payload.langs, counts);
 
   return counts;
+}
+
+/**
+ * タグ以外の送信物の件数。共有ネームスペースでは受け取らないため、skipped に積みます。
+ * @param payload リクエストボディ
+ */
+function nonTagCount(payload: any): number {
+  const kinds = ['recipes', 'textures', 'models', 'items', 'langs'];
+  return kinds.reduce((n, kind) => n + plainEntries(payload?.[kind]).length, 0);
 }
 
 /** 取り込んだ総数。監査に残す件数です。 */
