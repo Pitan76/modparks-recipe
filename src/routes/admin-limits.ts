@@ -13,6 +13,27 @@ import { isValidNamespace } from '../utils/asset-path';
 export const adminLimitRoutes = new Hono<{ Bindings: Env }>();
 
 /**
+ * identity を表示名で探します。
+ *
+ * identity のIDは画面のどこにも出ないため、管理操作の対象を指すには名前から引ける必要があります。
+ * 例: GET /admin/identities?secret=...&q=ぴたん
+ */
+adminLimitRoutes.get('/admin/identities', async (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  const q = c.req.query('q');
+  const sql = `SELECT i.id, i.display_name, COUNT(n.ns) AS owned
+     FROM identities i LEFT JOIN namespaces n ON n.owner_id = i.id
+     ${q ? 'WHERE i.display_name LIKE ?' : ''}
+     GROUP BY i.id ORDER BY i.display_name LIMIT 50`;
+
+  const stmt = c.env.DB.prepare(sql);
+  const rows = await (q ? stmt.bind(`%${q}%`) : stmt).all<{ id: string; display_name: string; owned: number }>();
+  return c.json({ identities: rows.results ?? [] });
+});
+
+/**
  * identity ごとの上限の状況を返します。
  *
  * 「残り3回と出ているのに上限エラーが出る」ような食い違いは、日次枠と namespace 所有という

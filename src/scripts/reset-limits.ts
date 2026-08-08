@@ -54,21 +54,54 @@ function requireEnv(): void {
 }
 
 /** コマンドラインの指定。 */
-type Options = { identityId: string | null; ns: string | null; quota: boolean; namespaces: boolean };
+type Options = {
+  identityId: string | null;
+  /** 表示名。identity のIDが分からないときの入口。 */
+  name: string | null;
+  ns: string | null;
+  quota: boolean;
+  namespaces: boolean;
+};
+
+/**
+ * 表示名から identity を1つに絞ります。
+ *
+ * 表示名は一意ではないため、複数当たったら選ばせます。取り違えたまま所有権を剥がすと、
+ * 別人の namespace が開放されます。
+ * @param name 表示名（部分一致）
+ * @returns identity のID
+ */
+async function resolveIdentity(name: string): Promise<string> {
+  const found = await callAdmin('/admin/identities', { q: name });
+  const list = found.identities as { id: string; display_name: string; owned: number }[];
+
+  if (list.length === 0) throw new Error(`No identity matched: ${name}`);
+  if (list.length > 1) {
+    for (const i of list) console.log(`  ${i.id}  ${i.display_name}  (${i.owned} ns)`);
+    throw new Error(`${list.length} identities matched; pass the id instead`);
+  }
+
+  console.log(`resolved "${name}" -> ${list[0].id} (${list[0].display_name})`);
+  return list[0].id;
+}
 
 /**
  * 引数を読み取ります。
  * @param argv `process.argv.slice(2)`
  */
 function parseArgs(argv: string[]): Options {
-  const nsAt = argv.indexOf('--ns');
-  const ns = nsAt >= 0 ? argv[nsAt + 1] ?? null : null;
-  // フラグと、`--ns` の値を除いた最初の位置引数が identity。
-  const positional = argv.filter((a, i) => !a.startsWith('--') && i !== nsAt + 1);
+  const valueOf = (flag: string): string | null => {
+    const at = argv.indexOf(flag);
+    return at >= 0 ? argv[at + 1] ?? null : null;
+  };
+  // フラグと、その値を除いた最初の位置引数が identity のID。
+  const taken = new Set(['--ns', '--name'].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0));
+  const positional = argv.filter((a, i) => !a.startsWith('--') && !taken.has(i));
 
   return {
     identityId: positional[0] ?? null,
-    ns,
+    name: valueOf('--name'),
+    ns: valueOf('--ns'),
     quota: argv.includes('--quota'),
     namespaces: argv.includes('--namespaces'),
   };
@@ -103,20 +136,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!opts.identityId) throw new Error('Usage: tsx src/scripts/reset-limits.ts <identityId> [--quota] [--namespaces]');
-  await showLimits(opts.identityId);
+  const identityId = opts.name ? await resolveIdentity(opts.name) : opts.identityId;
+  if (!identityId) {
+    throw new Error('Usage: tsx src/scripts/reset-limits.ts (<identityId> | --name <表示名>) [--quota] [--namespaces]');
+  }
+  await showLimits(identityId);
 
   if (opts.quota) {
-    const reset = await callAdmin('/admin/limits/reset-quota', { identity: opts.identityId });
+    const reset = await callAdmin('/admin/limits/reset-quota', { identity: identityId });
     console.log(`reset daily quota: ${reset.deleted} row(s)`);
   }
 
   // verified は正規の作者が確認を通して得たものなので剥がさない。
   if (opts.namespaces) {
-    const released = await callAdmin('/admin/limits/release', {
-      identity: opts.identityId,
-      trust: 'unverified',
-    });
+    const released = await callAdmin('/admin/limits/release', { identity: identityId, trust: 'unverified' });
     console.log(`released unverified namespaces: ${released.released} row(s)`);
   }
 
