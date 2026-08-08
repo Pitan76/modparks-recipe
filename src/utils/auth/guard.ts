@@ -69,6 +69,20 @@ export async function requireWrite(c: any, ns: string): Promise<WriteGrant | Res
 }
 
 /**
+ * 共有ネームスペースへ、タグ以外を書き込める主体かどうかを返します。
+ *
+ * 共有ネームスペースは所有者を置かない＝トークンさえあれば誰でも書けるため、所有権の判定だけでは
+ * レシピやテクスチャの上書きを止められません。共通タグを分担して書き足すという本来の用途はタグに
+ * 限られるので、トークン主体にはタグ以外を書かせません。バニラのアセットを入れるのは共有シークレット
+ * を持つ取り込みパイプラインと管理スクリプトの仕事です。
+ * @param grant 許可された主体
+ * @param ns 対象ネームスペース
+ */
+export function canWriteNonTags(grant: WriteGrant, ns: string): boolean {
+  return grant.identityId === null || !isSharedNamespace(ns);
+}
+
+/**
  * 拒否理由に対応する本文を返します。
  * @param denial 拒否理由
  */
