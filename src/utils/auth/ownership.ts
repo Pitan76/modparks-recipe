@@ -16,8 +16,6 @@ export type Trust = 'verified' | 'unverified';
 /** namespace の所有権レコード。 */
 export type Ownership = { ns: string; trust: Trust; ownerId: string; claimedAt: string };
 
-/** 1つの identity が保持できる namespace の上限（unverified の乱取りを防ぐため）。 */
-const MAX_UNVERIFIED_NAMESPACES = 5;
 
 /**
  * namespace の所有権を取得します。

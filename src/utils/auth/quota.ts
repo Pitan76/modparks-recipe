@@ -8,14 +8,8 @@
 
 import type { Env } from '../minecraft';
 import { isDevMode } from '../dev';
+import { limitsFor, withinLimit, UNLIMITED } from './limits';
 
-/**
- * 1 identity が1日に投稿できる jar の本数。
- *
- * 枠は ModParks 側の Mod 開発者に優先して回します。こちらのポータルは、ModParks に
- * プロジェクトを持たない人のための入口という位置づけなので、少なく取ってあります。
- */
-export const DAILY_UPLOAD_LIMIT = 3;
 
 /**
  * 投稿1本分の枠を消費します。
@@ -38,7 +32,9 @@ export async function consumeUploadQuota(env: Env, identityId: string): Promise<
     .bind(identityId, day)
     .first<{ used: number }>();
 
-  return (row?.used ?? DAILY_UPLOAD_LIMIT + 1) <= DAILY_UPLOAD_LIMIT;
+  const { dailyLimit } = await limitsFor(env, identityId);
+  // 加算に失敗したときは通しません。数えられていない投稿を許すと、上限が意味を失います。
+  return withinLimit(row?.used ?? Infinity, dailyLimit);
 }
 
 /**
@@ -47,12 +43,14 @@ export async function consumeUploadQuota(env: Env, identityId: string): Promise<
  * @param identityId 主体のID
  */
 export async function remainingUploads(env: Env, identityId: string): Promise<number> {
-  if (isDevMode(env)) return DAILY_UPLOAD_LIMIT;
+  const { dailyLimit } = await limitsFor(env, identityId);
+  if (isDevMode(env)) return UNLIMITED;
+  if (dailyLimit === UNLIMITED) return UNLIMITED;
 
   const day = new Date().toISOString().slice(0, 10);
   const row = await env.DB.prepare('SELECT used FROM upload_quota WHERE identity_id = ? AND day = ?')
     .bind(identityId, day)
     .first<{ used: number }>();
 
-  return Math.max(0, DAILY_UPLOAD_LIMIT - (row?.used ?? 0));
+  return Math.max(0, dailyLimit - (row?.used ?? 0));
 }
