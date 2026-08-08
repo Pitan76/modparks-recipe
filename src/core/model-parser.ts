@@ -23,6 +23,8 @@ import {
     type Vec2,
     type Vec3,
 } from './math';
+import type { AssetReader } from './asset-reader';
+import { getTextureAnimation, getFrameIndexForTick } from './mcmeta';
 
 interface SvgFace {
     pts2d: Vec2[];
@@ -153,15 +155,17 @@ function spriteOf(value: any): string | null {
 export async function renderModelToSvg(
     modelId: string,
     getModelJson: (id: string) => Promise<any>,
-    getTextureBase64: (path: string) => Promise<string | null>
+    getTextureBase64: (path: string) => Promise<string | null>,
+    src?: AssetReader,
+    tick?: number
 ): Promise<string | null> {
     const model = await loadModel(modelId, getModelJson);
     if (!model) return null;
 
-    if (model.isFlat || FLAT_ITEM_PARENTS.has(model.parent)) return flatItemSvg(model, getTextureBase64);
+    if (model.isFlat || FLAT_ITEM_PARENTS.has(model.parent)) return flatItemSvg(model, getTextureBase64, src, tick);
     if (!model.elements) return null;
 
-    const faces = await collectFaces(model, getTextureBase64);
+    const faces = await collectFaces(model, getTextureBase64, src, tick, modelId);
     if (faces.length === 0) return null;
     // まずボックス単位、次に面単位で並べます。面の重心だけで比べると、大きな面と小さな突起を
     // 1枚の平面として扱うことになり、手前に出ているはずの突起が大きな面に上塗りされます
@@ -179,16 +183,30 @@ export async function renderModelToSvg(
  */
 async function flatItemSvg(
     model: any,
-    getTextureBase64: (path: string) => Promise<string | null>
+    getTextureBase64: (path: string) => Promise<string | null>,
+    src?: AssetReader,
+    tick?: number
 ): Promise<string | null> {
     const texPath = resolveTexture('#layer0', model.textures);
     if (!texPath) return null;
     const b64 = await getTextureBase64(texPath);
     if (!b64) return null;
     // アニメーションテクスチャは縦長のフレーム群（帯状）です。最初のフレームのみを表示します。
-    const { w } = pngSize(b64);
+    const { w, h } = pngSize(b64);
+    let yOffset = 0;
+    if (src && tick !== undefined && h > w) {
+        const idx = texPath.indexOf(':');
+        const texNs = idx >= 0 ? texPath.slice(0, idx) : 'minecraft';
+        const texSubPath = idx >= 0 ? texPath.slice(idx + 1) : texPath;
+        const logicalPath = `textures/${texSubPath}.png`;
+        const anim = await getTextureAnimation(texNs, logicalPath, src, w, h);
+        if (anim) {
+            const frameIndex = getFrameIndexForTick(anim, tick);
+            yOffset = -frameIndex * w;
+        }
+    }
     return `<svg viewBox="0 0 ${w} ${w}" xmlns="http://www.w3.org/2000/svg">`
-        + `<image href="${b64}" width="${w}" height="${w}" preserveAspectRatio="xMinYMin slice"`
+        + `<image href="${b64}" width="${w}" height="${h}" y="${yOffset}" preserveAspectRatio="xMinYMin slice"`
         + ` image-rendering="optimizeSpeed"/></svg>`;
 }
 
@@ -199,11 +217,15 @@ async function flatItemSvg(
  */
 async function collectFaces(
     model: any,
-    getTextureBase64: (path: string) => Promise<string | null>
+    getTextureBase64: (path: string) => Promise<string | null>,
+    src?: AssetReader,
+    tick?: number,
+    modelId?: string
 ): Promise<SvgFace[]> {
     const gui = guiTransform(model);
     const windingSign = guiWindingSign(gui);
     const faces: SvgFace[] = [];
+    const defaultNs = modelId && modelId.includes(':') ? modelId.split(':')[0] : 'minecraft';
 
     for (const el of model.elements) {
         const elementZ = elementDepth(el, gui);
@@ -220,10 +242,26 @@ async function collectFaces(
             const b64 = await getTextureBase64(texPath);
             if (!b64) continue;
 
+            const { w, h } = pngSize(b64);
             const { w: texW, h: texH } = imageSize(b64, model.atlasUv === true);
+
+            let finalUv = face.uv || defaultUv(dir, el.from, el.to);
+            if (src && tick !== undefined && h > w && model.atlasUv !== true) {
+                const idx = texPath.indexOf(':');
+                const texNs = idx >= 0 ? texPath.slice(0, idx) : defaultNs;
+                const texSubPath = idx >= 0 ? texPath.slice(idx + 1) : texPath;
+                const logicalPath = `textures/${texSubPath}.png`;
+                const anim = await getTextureAnimation(texNs, logicalPath, src, w, h);
+                if (anim) {
+                    const frameIndex = getFrameIndexForTick(anim, tick);
+                    const offset = frameIndex * 16;
+                    finalUv = [finalUv[0], finalUv[1] + offset, finalUv[2], finalUv[3] + offset];
+                }
+            }
+
             faces.push({
                 pts2d,
-                uv: face.uv || defaultUv(dir, el.from, el.to),
+                uv: finalUv,
                 b64,
                 texW,
                 texH,
@@ -295,7 +333,7 @@ function buildSvg(faces: SvgFace[]): string {
         // 画像にフィルターをかけると変換前の矩形サイズに対して計算されますが、その後にUV行列によって縮小されるため、
         // フィルター領域が潰れた際に resvg が面を描画対象からドロップしてしまいます。
         body += `<g clip-path="url(#${clipId})"${filter}><image href="${f.b64}" width="${f.texW}" height="${f.texH}"`
-            + ` transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"/></g>\n`;
+            + ` preserveAspectRatio="xMinYMin slice" transform="matrix(${m.join(', ')})" image-rendering="optimizeSpeed"/></g>\n`;
         if (f.brightness < 1) brightnesses.add(f.brightness);
     }
 
