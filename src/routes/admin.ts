@@ -11,6 +11,8 @@ import { sweepStaleIngests } from '../utils/ingest';
 import { reindexStep, normalizeBatch } from '../utils/reindex';
 import { listUploads } from '../utils/audit';
 import { deliveryVersion } from '../utils/image-cdn';
+import { purgeNamespaceRecipes } from '../utils/recipe-purge';
+import { isValidNamespace } from '../utils/asset-path';
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -29,6 +31,28 @@ adminRoutes.get('/admin/uploads', async (c) => {
     limit,
   });
   return c.json({ count: uploads.length, uploads });
+});
+
+/**
+ * ネームスペース配下のレシピを取り下げます。共有ネームスペースへ誤って流れ込んだレシピの回収用です。
+ *
+ * タグ・テクスチャ・モデル・言語ファイルは残します。共有ネームスペースのそれらは他のmodの
+ * レシピを描くのに要るためです。
+ *
+ * 既定は数えるだけです。実際に消すには `?delete=1` を付けてください。
+ * 例: GET /admin/purge-recipes/minecraft?secret=...&delete=1
+ */
+adminRoutes.get('/admin/purge-recipes/:namespace', async (c) => {
+  const secret = c.req.query('secret');
+  if (!c.env.ADMIN_SECRET || secret !== c.env.ADMIN_SECRET) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const { namespace } = c.req.param();
+  if (!isValidNamespace(namespace)) return c.text('Invalid namespace', 400);
+
+  const result = await purgeNamespaceRecipes(c.env, namespace, c.req.query('delete') === '1');
+  return c.json({ ok: true, ...result });
 });
 
 /**
