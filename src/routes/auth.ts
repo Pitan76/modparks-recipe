@@ -130,7 +130,9 @@ authRoutes.get('/auth/me/uploads', async (c) => {
   if (!grant) return c.text('Unauthorized', 401);
 
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '30', 10) || 30, 1), 100);
-  const uploads = await listUploads(c.env, { identityId: grant.identityId, limit });
+  // 何も入らなかった確定は出しません。共有ネームスペースの確定が毎回「0件」で並ぶだけで、
+  // 本人が何を投稿したかを確かめるという履歴の目的を邪魔します。記録自体は残ります。
+  const uploads = await listUploads(c.env, { identityId: grant.identityId, nonEmpty: true, limit });
   return c.json({ uploads });
 });
 
