@@ -170,15 +170,15 @@ export async function sendWithSession(
   const progress = new Progress(extracted, onProgress);
   const sessions: Session[] = [];
 
-  progress.start('begin');
-  for (const ns of extracted.namespaces) {
-    sessions.push({ ns, session: await beginSession(ns, headers) });
-    progress.advance('begin', 1);
-  }
-  progress.finish('begin');
-
   let count = 0;
   try {
+    progress.start('begin');
+    for (const ns of extracted.namespaces) {
+      sessions.push({ ns, session: await beginSession(ns, headers, t) });
+      progress.advance('begin', 1);
+    }
+    progress.finish('begin');
+
     for (const phase of PHASES) {
       progress.start(phase.kind);
       count += await runPhase(extracted, sessions, phase, headers, t, progress);
@@ -244,9 +244,18 @@ async function runPhase(
 
 /**
  * 取り込みセッションを開始します。
+ *
+ * 書けないことが確定する応答（未認証・権限なし・上限）は、ここで止めます。以前はこれも
+ * 「セッションを開けなかった」として無視して先へ進んでいたため、開始が成功したように見えたまま
+ * 最初のフェーズで初めて失敗し、原因が1手順ずれて見えていました。
+ *
+ * それ以外の失敗（CDN 側が古いなど）は従来どおりセッション無しで続行します。
+ * @param ns ネームスペース
+ * @param headers 認証込みのリクエストヘッダ
+ * @param t 文言表
  * @returns セッションID。開けなければ null（セッション無しで送る）
  */
-async function beginSession(ns: string, headers: Record<string, string>): Promise<string | null> {
+async function beginSession(ns: string, headers: Record<string, string>, t: Messages): Promise<string | null> {
   const res = await fetch(`/api/${ns}/ingest/begin`, {
     method: 'POST',
     headers,
@@ -254,6 +263,8 @@ async function beginSession(ns: string, headers: Record<string, string>): Promis
     // 素性の無い build はチャネルに載らず、置き場所だけを消費します。
     body: JSON.stringify({ source: 'portal' }),
   });
+  if (res.status === 429) throw new Error(await limitMessage(res, t));
+  if (res.status === 401 || res.status === 403) throw await detailedError(res, t, `begin ${ns}`);
   if (!res.ok) {
     // 黙って落とすと、以降が非トランザクションで進んだことに誰も気付けません。
     console.warn(`ingest/begin failed for ${ns}: ${res.status} ${await res.text()}`);
